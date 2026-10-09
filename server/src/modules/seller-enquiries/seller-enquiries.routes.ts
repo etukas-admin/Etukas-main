@@ -1,0 +1,24 @@
+import { Router } from "express";
+import { sellerEnquirySchema } from "@etukas/shared";
+import { prisma } from "../../config/prisma.js";
+import { sendCreated } from "../../utils/http.js";
+
+export const sellerEnquiriesRouter = Router();
+
+sellerEnquiriesRouter.post("/", async (req, res, next) => {
+  try {
+    const input = sellerEnquirySchema.parse(req.body);
+    const enquiry = await prisma.sellerEnquiry.create({
+      data: {
+        ...input,
+        gstin: input.gstin || null,
+        latitude: input.latitude ?? null,
+        longitude: input.longitude ?? null
+      }
+    });
+
+    return sendCreated(res, enquiry);
+  } catch (error) {
+    next(error);
+  }
+});

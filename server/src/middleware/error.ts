@@ -1,5 +1,7 @@
 import type { ErrorRequestHandler, RequestHandler } from "express";
+import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
+import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
 
 export const notFoundHandler: RequestHandler = (req, _res, next) => {
@@ -21,8 +23,24 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     });
   }
 
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === "P2021" || error.code === "P2022") {
+      return res.status(500).json({
+        ok: false,
+        error: {
+          code: "DATABASE_SCHEMA_OUT_OF_DATE",
+          message: "Seller enquiry storage is not ready yet. Please run the latest database migration and try again.",
+          details: env.NODE_ENV === "production" ? undefined : error.meta
+        }
+      });
+    }
+  }
+
   return res.status(500).json({
     ok: false,
-    error: { code: "INTERNAL_SERVER_ERROR", message: "Something went wrong" }
+    error: {
+      code: "INTERNAL_SERVER_ERROR",
+      message: env.NODE_ENV === "production" ? "Something went wrong" : error instanceof Error ? error.message : "Something went wrong"
+    }
   });
 };

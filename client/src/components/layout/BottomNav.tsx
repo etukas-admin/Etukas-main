@@ -1,11 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { Grid3X3, Home, ReceiptText, UserRound } from "lucide-react";
+import { Grid3X3, Home, ShoppingCart, UserRound } from "lucide-react";
 
 const items = [
   ["Home", "/", Home],
   ["Categories", "/categories", Grid3X3],
-  ["Orders", "/orders", ReceiptText],
-  ["Account", "/login", UserRound]
+  ["Account", "/login", UserRound],
+  ["Cart", "/cart", ShoppingCart]
 ] as const;
 
 export function BottomNav() {

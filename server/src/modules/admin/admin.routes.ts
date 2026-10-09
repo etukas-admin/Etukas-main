@@ -31,6 +31,42 @@ adminRouter.get("/sellers", async (_req, res, next) => {
   }
 });
 
+adminRouter.get("/seller-enquiries", async (_req, res, next) => {
+  try {
+    const enquiries = await prisma.sellerEnquiry.findMany({
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        contactPerson: true,
+        businessName: true,
+        email: true,
+        mobile: true,
+        businessType: true,
+        city: true,
+        state: true,
+        status: true,
+        latitude: true,
+        longitude: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+    return sendOk(res, enquiries);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/seller-enquiries/:id", async (req, res, next) => {
+  try {
+    const enquiry = await prisma.sellerEnquiry.findUnique({ where: { id: req.params.id } });
+    if (!enquiry) throw new HttpError(404, "SELLER_ENQUIRY_NOT_FOUND", "Seller enquiry not found");
+    return sendOk(res, enquiry);
+  } catch (error) {
+    next(error);
+  }
+});
+
 adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
   try {
     const status = req.body.status as VerificationStatus;

@@ -44,6 +44,7 @@ Required local values:
 - `SERVER_PORT`
 - `JWT_ACCESS_SECRET`
 - `JWT_REFRESH_SECRET`
+- Optional map configuration: `MAP_PROVIDER`, `MAP_PROVIDER_API_KEY`, `VITE_MAP_PROVIDER`, and `VITE_MAP_PROVIDER_API_KEY`
 
 Do not commit real `.env` files.
 
@@ -62,6 +63,8 @@ npm run db:generate
 npm run db:migrate
 npm run db:seed
 ```
+
+Existing databases should apply migrations normally; do not reset production data. The seller enquiry migration adds optional nullable latitude and longitude fields, so existing enquiries remain valid without coordinates.
 
 ## Demo Accounts
 
@@ -91,6 +94,10 @@ npm run dev:client
 Frontend: `http://localhost:5173`
 
 Backend health check: `http://localhost:4000/health`
+
+Seller enquiry form: `/seller-enquiry`
+
+Admin seller enquiry review: `/admin` after signing in as an admin.
 
 ## Quality Commands
 

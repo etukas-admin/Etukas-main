@@ -1,6 +1,36 @@
 import type { ApiResponse } from "@etukas/shared";
+import type { SellerEnquiryInput } from "@etukas/shared";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
+
+type ApiErrorPayload = {
+  code: string;
+  message: string;
+  details?: unknown;
+};
+
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public code: string,
+    public status: number,
+    public details?: unknown
+  ) {
+    super(message);
+  }
+}
+
+function detailsToMessage(error: ApiErrorPayload) {
+  if (error.code === "VALIDATION_ERROR" && error.details && typeof error.details === "object" && "fieldErrors" in error.details) {
+    const fieldErrors = (error.details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+    const messages = Object.entries(fieldErrors ?? {})
+      .flatMap(([field, values]) => values.map((value) => `${field}: ${value}`))
+      .filter(Boolean);
+    if (messages.length > 0) return messages.join("; ");
+  }
+
+  return error.message;
+}
 
 let accessToken: string | null = localStorage.getItem("etukas_access_token");
 let csrfToken: string | null = localStorage.getItem("etukas_csrf_token");
@@ -10,7 +40,7 @@ async function refreshCsrfToken(): Promise<string> {
   const payload = (await response.json()) as ApiResponse<{ csrfToken: string }>;
 
   if (!response.ok || !payload.ok) {
-    throw new Error(payload.ok ? "Unable to initialize secure session" : payload.error.message);
+    throw new ApiError(payload.ok ? "Unable to initialize secure session" : payload.error.message, payload.ok ? "CSRF_INIT_FAILED" : payload.error.code, response.status, payload.ok ? undefined : payload.error.details);
   }
 
   csrfToken = payload.data.csrfToken;
@@ -53,7 +83,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 
   if (!payload.ok) {
-    throw new Error(payload.error.message);
+    throw new ApiError(detailsToMessage(payload.error), payload.error.code, response.status, payload.error.details);
   }
   return payload.data;
 }
@@ -68,6 +98,9 @@ export const marketplaceApi = {
     return result.user;
   },
   register: (body: { name: string; email: string; mobile: string; password: string }) => api<User>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
+  submitSellerEnquiry: (body: SellerEnquiryInput) => api<SellerEnquiry>("/seller-enquiries", { method: "POST", body: JSON.stringify(body) }),
+  adminSellerEnquiries: () => api<SellerEnquiry[]>("/admin/seller-enquiries"),
+  adminSellerEnquiry: (id: string) => api<SellerEnquiry>(`/admin/seller-enquiries/${encodeURIComponent(id)}`),
   cart: () => api<Cart>("/cart"),
   addToCart: (storeProductId: string, quantity: number) => api("/cart/items", { method: "POST", body: JSON.stringify({ storeProductId, quantity }) })
 };
@@ -111,6 +144,15 @@ export type StoreProduct = {
     images: { url: string; altText: string }[];
     category: Category;
   };
+};
+
+export type SellerEnquiry = Omit<SellerEnquiryInput, "latitude" | "longitude"> & {
+  id: string;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  status: "NEW" | "CONTACTED" | "APPROVED" | "REJECTED";
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type Cart = {

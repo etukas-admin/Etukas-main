@@ -10,6 +10,7 @@ import { cartsRouter } from "./modules/carts/carts.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
 import { ordersRouter } from "./modules/orders/orders.routes.js";
 import { productsRouter } from "./modules/products/products.routes.js";
+import { sellerEnquiriesRouter } from "./modules/seller-enquiries/seller-enquiries.routes.js";
 import { sellerRouter } from "./modules/seller-profiles/seller.routes.js";
 import { storesRouter } from "./modules/stores/stores.routes.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
@@ -38,6 +39,7 @@ export function createApp() {
   app.use("/api/v1/stores", storesRouter);
   app.use("/api/v1/cart", cartsRouter);
   app.use("/api/v1/orders", ordersRouter);
+  app.use("/api/v1/seller-enquiries", sellerEnquiriesRouter);
   app.use("/api/v1/seller", sellerRouter);
   app.use("/api/v1/admin", adminRouter);
   app.get("/api/v1/search", (req, res) => {

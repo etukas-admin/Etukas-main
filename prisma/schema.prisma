@@ -26,6 +26,13 @@ enum BusinessType {
   MANUFACTURER
 }
 
+enum SellerEnquiryStatus {
+  NEW
+  CONTACTED
+  APPROVED
+  REJECTED
+}
+
 enum OrderStatus {
   PENDING_PAYMENT
   PLACED
@@ -116,6 +123,29 @@ model SellerVerificationDocument {
   fileName        String
   mimeType        String
   createdAt       DateTime      @default(now())
+}
+
+model SellerEnquiry {
+  id             String              @id @default(cuid())
+  contactPerson  String
+  businessName   String
+  email          String
+  mobile         String
+  businessType   BusinessType
+  gstin          String?
+  addressLine1   String
+  city           String
+  state          String
+  postalCode     String
+  latitude       Decimal?            @db.Decimal(10, 7)
+  longitude      Decimal?            @db.Decimal(10, 7)
+  status         SellerEnquiryStatus @default(NEW)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([city, state])
+  @@index([latitude, longitude])
 }
 
 model Store {
