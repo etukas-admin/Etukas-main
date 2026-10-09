@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+!.env.example
+coverage/
+.turbo/
+.DS_Store
+*.log
+*.tsbuildinfo
+client/.vite/
+server/generated/

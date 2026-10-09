@@ -1,0 +1,30 @@
+{
+  "name": "etukas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Etukas.com building materials marketplace monorepo",
+  "workspaces": [
+    "client",
+    "server",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "npm --workspace client run dev",
+    "dev:server": "npm --workspace server run dev",
+    "build": "npm --workspace @etukas/shared run build && npm --workspace server run build && npm --workspace client run build",
+    "lint": "npm --workspaces --if-present run lint",
+    "typecheck": "npm --workspace @etukas/shared run build && npm --workspaces --if-present run typecheck",
+    "test": "npm --workspaces --if-present run test",
+    "db:generate": "npm --workspace server run db:generate",
+    "db:migrate": "npm --workspace server run db:migrate",
+    "db:seed": "npm --workspace server run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.1",
+    "prettier": "^3.3.3"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}
