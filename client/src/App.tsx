@@ -1,4 +1,5 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { useEffect } from "react";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { LoginPage } from "./features/auth/LoginPage";
 import { RegisterPage } from "./features/auth/RegisterPage";
@@ -11,8 +12,15 @@ import { ProductsPage } from "./features/products/ProductsPage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
 import { StoresPage } from "./features/stores/StoresPage";
+import { initMobileApp } from "./lib/mobile";
 
 export default function App() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    initMobileApp(() => navigate(-1));
+  }, [navigate]);
+
   return (
     <Routes>
       <Route element={<Layout />}>

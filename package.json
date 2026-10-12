@@ -18,7 +18,11 @@
     "test": "npm --workspaces --if-present run test",
     "db:generate": "npm --workspace server run db:generate",
     "db:migrate": "npm --workspace server run db:migrate",
-    "db:seed": "npm --workspace server run db:seed"
+    "db:seed": "npm --workspace server run db:seed",
+    "mobile:build": "npm --workspace client run build:mobile",
+    "mobile:sync": "npm --workspace client run cap:sync",
+    "mobile:android": "npm --workspace client run cap:android",
+    "mobile:ios": "npm --workspace client run cap:ios"
   },
   "devDependencies": {
     "concurrently": "^9.0.1",

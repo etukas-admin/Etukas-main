@@ -108,6 +108,37 @@ npm run test
 npm run build
 ```
 
+## Mobile App (Android & iOS)
+
+Etukas includes native Android and iOS mobile project configurations powered by Capacitor.
+
+### Commands
+
+1. **Build web assets & sync to native mobile projects**:
+   ```bash
+   npm run mobile:build
+   ```
+2. **Sync changes without full rebuild**:
+   ```bash
+   npm run mobile:sync
+   ```
+3. **Open Android Studio (requires Android Studio installed)**:
+   ```bash
+   npm run mobile:android
+   ```
+4. **Open Xcode on macOS (requires Xcode installed)**:
+   ```bash
+   npm run mobile:ios
+   ```
+
+### Native Mobile Features Included:
+- **Android & iOS wrapper projects**: Located in `client/android` and `client/ios`.
+- **Status Bar & Splash Screen**: Styled with Etukas brand theme colors.
+- **Hardware & Gesture Navigation**: Built-in Android back button handling.
+- **Notch & Safe Area adaptation**: Dynamic Island and safe area padding (`pt-safe`, `pb-safe`, `viewport-fit=cover`).
+- **Cross-Origin & Native Webview Support**: Server CORS configured to accept native mobile origins (`capacitor://localhost`, `https://localhost`, `http://localhost`).
+
+
 ## Troubleshooting
 
 - If PowerShell blocks npm, run `npm.cmd install` and `npm.cmd run dev`.

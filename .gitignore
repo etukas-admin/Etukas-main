@@ -11,3 +11,9 @@ coverage/
 *.tsbuildinfo
 client/.vite/
 server/generated/
+.gradle/
+**/android/.gradle/
+**/android/app/build/
+**/android/build/
+**/ios/App/build/
+**/ios/App/Pods/

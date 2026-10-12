@@ -19,10 +19,38 @@ import { sendOk } from "./utils/http.js";
 
 export function createApp() {
   const app = express();
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(
     cors({
-      origin: env.NODE_ENV === "production" ? [env.CLIENT_URL] : [env.CLIENT_URL, "http://localhost:5173"],
+      origin: (origin, callback) => {
+        // Allow mobile native apps, curl, or requests without Origin header
+        if (!origin) return callback(null, true);
+
+        // Native Capacitor Android/iOS origins
+        if (
+          origin.startsWith("capacitor://") ||
+          origin.startsWith("ionic://") ||
+          origin === "http://localhost" ||
+          origin === "https://localhost"
+        ) {
+          return callback(null, true);
+        }
+
+        // Allowed web client origins
+        if (
+          origin === env.CLIENT_URL ||
+          origin === "http://localhost:5173" ||
+          /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(origin)
+        ) {
+          return callback(null, true);
+        }
+
+        if (env.NODE_ENV !== "production") {
+          return callback(null, true);
+        }
+
+        return callback(new Error(`CORS blocked for origin: ${origin}`));
+      },
       credentials: true
     })
   );
