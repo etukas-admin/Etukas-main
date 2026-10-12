@@ -16,6 +16,7 @@ export function Layout() {
             <div>
               <div className="text-2xl font-extrabold text-white">Etukas.com</div>
               <p className="mt-3 text-sm text-gray-300">A local-first marketplace for trusted building materials, stores, and construction services.</p>
+                            <p className="mt-3 text-sm text-gray-300">© 2023 Etukas.com. All rights reserved.</p>
             </div>
             {["Company", "Help", "Policies"].map((title) => (
               <div key={title}>
