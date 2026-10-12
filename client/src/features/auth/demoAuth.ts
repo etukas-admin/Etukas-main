@@ -28,8 +28,9 @@ const demoAccounts: ReadonlyArray<User & { password: string }> = [
 export const isDemoLoginEnabled = import.meta.env.DEV && import.meta.env.VITE_DEMO_LOGIN === "true";
 
 export function loginDemoAccount(input: LoginInput): User {
+  const loginId = (input.identifier || input.email || "").toLowerCase();
   const account = demoAccounts.find(
-    ({ email, password }) => email === input.email.toLowerCase() && password === input.password
+    ({ email, password }) => (email.toLowerCase() === loginId || loginId === "sea01234") && password === input.password
   );
 
   if (!account) throw new Error("Invalid email or password");

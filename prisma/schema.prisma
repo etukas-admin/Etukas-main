@@ -98,14 +98,16 @@ model CustomerProfile {
 
 model SellerProfile {
   id                  String                         @id @default(cuid())
+  sellerId            String?                        @unique
   userId              String                         @unique
   user                User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   contactPerson       String
-  businessName        String
-  businessType        BusinessType
+  businessName        String                         @default("")
+  businessType        BusinessType                   @default(RETAILER)
   gstin               String?
   verificationStatus  VerificationStatus             @default(PENDING)
   rejectionReason     String?
+  registrationStep    Int                            @default(1)
   stores              Store[]
   documents           SellerVerificationDocument[]
   createdAt           DateTime                       @default(now())
@@ -162,6 +164,7 @@ model Store {
   latitude          Decimal?       @db.Decimal(9, 6)
   longitude         Decimal?       @db.Decimal(9, 6)
   serviceRadiusKm   Int            @default(25)
+  storeImageUrl     String?
   isActive          Boolean        @default(true)
   storeProducts     StoreProduct[]
   orders            Order[]

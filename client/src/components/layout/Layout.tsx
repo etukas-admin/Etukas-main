@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { BottomNav } from "./BottomNav";
 
@@ -24,7 +24,7 @@ export function Layout() {
                 <ul className="mt-3 space-y-2 text-sm text-gray-300">
                   <li>About Etukas</li>
                   <li>Contact support</li>
-                  <li><a href="/seller-enquiry">Seller onboarding</a></li>
+                  <li><Link to="/seller-hub" className="hover:text-white transition-colors">Seller onboarding</Link></li>
                 </ul>
               </div>
             ))}

@@ -11,6 +11,7 @@ import { HomePage } from "./features/home/HomePage";
 import { ProductsPage } from "./features/products/ProductsPage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
+import { SellerHubPage } from "./features/seller/SellerHubPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { initMobileApp } from "./lib/mobile";
 
@@ -32,7 +33,8 @@ export default function App() {
         <Route path="orders" element={<PlannedModulePage title="Orders" />} />
         <Route path="checkout" element={<PlannedModulePage title="Checkout" />} />
         <Route path="customer" element={<PlannedModulePage title="Customer Account" />} />
-        <Route path="seller-enquiry" element={<SellerEnquiryPage />} />
+        <Route path="seller-hub" element={<SellerHubPage />} />
+        <Route path="seller-enquiry" element={<SellerHubPage />} />
         <Route path="seller" element={<SellerDashboard />} />
         <Route path="admin" element={<AdminDashboard />} />
         <Route path="rentals" element={<PlannedModulePage title="Rentals" />} />

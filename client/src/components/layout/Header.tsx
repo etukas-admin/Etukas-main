@@ -1,8 +1,10 @@
-import { Link, NavLink } from "react-router-dom";
-import { MapPin, Menu, Search, ShoppingCart, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Link, NavLink, useNavigate } from "react-router-dom";
+import { LogOut, MapPin, Menu, Search, ShoppingCart, UserRound } from "lucide-react";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { Logo } from "../common/Logo";
 import { Input } from "../ui/Input";
+import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 
 const nav = [
   ["Home", "/"],
@@ -13,7 +15,22 @@ const nav = [
 ] as const;
 
 export function Header() {
+  const navigate = useNavigate();
   const isMobileScrolled = useMobileScrollState();
+  const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setCurrentUser(getStoredUser());
+    };
+    window.addEventListener("etukas_auth_change", handleAuthChange);
+    return () => window.removeEventListener("etukas_auth_change", handleAuthChange);
+  }, []);
+
+  const handleLogout = async () => {
+    await marketplaceApi.logout();
+    navigate("/");
+  };
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur">
@@ -55,9 +72,32 @@ export function Header() {
             </NavLink>
           ))}
         </nav>
-        <Link to="/login" className="focus-ring hidden rounded-md p-2 text-gray-700 hover:bg-gray-50 md:inline-flex" aria-label="My account">
-          <UserRound size={20} />
-        </Link>
+        {currentUser ? (
+          <div className="hidden items-center gap-2 md:flex">
+            <Link
+              to={currentUser.roles.includes("SELLER") ? "/seller" : currentUser.roles.includes("ADMIN") ? "/admin" : "/customer"}
+              className="flex items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors"
+            >
+              <UserRound size={16} />
+              <span className="max-w-[110px] truncate">{currentUser.name.split(" ")[0]}</span>
+              {currentUser.sellerId && (
+                <span className="rounded bg-orange-200/80 px-1 text-[10px] font-mono">{currentUser.sellerId}</span>
+              )}
+            </Link>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-gray-600 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+              title="Sign out of Etukas"
+            >
+              <LogOut size={15} />
+              <span>Logout</span>
+            </button>
+          </div>
+        ) : (
+          <Link to="/login" className="focus-ring hidden rounded-md p-2 text-gray-700 hover:bg-gray-50 md:inline-flex" aria-label="Sign in">
+            <UserRound size={20} />
+          </Link>
+        )}
         <Link to="/cart" className="focus-ring relative rounded-md p-2 text-gray-700 hover:bg-gray-50" aria-label="Cart">
           <ShoppingCart size={21} />
           <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-etukas-red px-1 text-[11px] font-bold text-white">0</span>

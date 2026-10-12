@@ -11,13 +11,14 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false
 });
 
-export function cookieOptions() {
+export function cookieOptions(maxAgeMs = 30 * 24 * 60 * 60 * 1000, path = "/") {
   return {
     httpOnly: true,
     secure: env.COOKIE_SECURE,
     sameSite: env.COOKIE_SAME_SITE,
     domain: env.COOKIE_DOMAIN || undefined,
-    path: "/api/v1/auth"
+    path,
+    maxAge: maxAgeMs
   } as const;
 }
 
