@@ -24,7 +24,32 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
       prisma.storeProduct.count({ where: { storeId: { in: storeIds }, stockQuantity: { lte: 10 } } })
     ]);
     const revenue = await prisma.order.aggregate({ where: { storeId: { in: storeIds }, status: { in: [OrderStatus.DELIVERED, OrderStatus.DISPATCHED, OrderStatus.ACCEPTED] } }, _sum: { totalMinor: true } });
-    return sendOk(res, { totalOrders: orders, productsListed: products, lowStockProducts: lowStock, revenueMinor: revenue._sum.totalMinor ?? 0, verificationStatus: profile.verificationStatus });
+    return sendOk(res, {
+      sellerId: profile.sellerId,
+      businessName: profile.businessName,
+      contactPerson: profile.contactPerson,
+      totalOrders: orders,
+      productsListed: products,
+      lowStockProducts: lowStock,
+      revenueMinor: revenue._sum.totalMinor ?? 0,
+      verificationStatus: profile.verificationStatus
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+sellerRouter.get("/profile", async (req, res, next) => {
+  try {
+    const profile = await prisma.sellerProfile.findUnique({
+      where: { userId: req.user!.id },
+      include: {
+        user: { select: { name: true, email: true, mobile: true } },
+        stores: true
+      }
+    });
+    if (!profile) throw new HttpError(404, "SELLER_NOT_FOUND", "Seller profile not found");
+    return sendOk(res, profile);
   } catch (error) {
     next(error);
   }
