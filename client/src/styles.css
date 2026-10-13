@@ -62,12 +62,14 @@ textarea {
   @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-etukas-red;
 }
 
-.category-strip {
+.category-strip,
+.no-scrollbar {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
-.category-strip::-webkit-scrollbar {
+.category-strip::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
   display: none;
 }
 

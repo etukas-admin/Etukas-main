@@ -3,6 +3,7 @@ import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { LoginPage } from "./features/auth/LoginPage";
 import { RegisterPage } from "./features/auth/RegisterPage";
+import { CustomerAccountPage } from "./features/customer/CustomerAccountPage";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { CartPage } from "./features/cart/CartPage";
 import { CategoriesPage } from "./features/categories/CategoriesPage";
@@ -12,6 +13,7 @@ import { ProductsPage } from "./features/products/ProductsPage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
 import { SellerHubPage } from "./features/seller/SellerHubPage";
+import { PartnerHubPage } from "./features/seller/PartnerHubPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { initMobileApp } from "./lib/mobile";
 
@@ -32,8 +34,9 @@ export default function App() {
         <Route path="cart" element={<CartPage />} />
         <Route path="orders" element={<PlannedModulePage title="Orders" />} />
         <Route path="checkout" element={<PlannedModulePage title="Checkout" />} />
-        <Route path="customer" element={<PlannedModulePage title="Customer Account" />} />
-        <Route path="seller-hub" element={<SellerHubPage />} />
+        <Route path="customer" element={<CustomerAccountPage />} />
+        <Route path="partner-hub" element={<PartnerHubPage />} />
+        <Route path="seller-hub" element={<Navigate to="/partner-hub" replace />} />
         <Route path="seller-enquiry" element={<SellerHubPage />} />
         <Route path="seller" element={<SellerDashboard />} />
         <Route path="admin" element={<AdminDashboard />} />

@@ -206,11 +206,11 @@ export function SellerDashboard() {
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-black tracking-tight">{businessName}</h1>
                   <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono text-xs font-bold text-orange-400 border border-orange-500/30">
-                    ID: {sellerId}
+                    Partner ID: {sellerId}
                   </span>
                 </div>
                 <p className="text-sm text-gray-400">
-                  Welcome, <strong className="text-gray-200">{contactPerson}</strong> | Authorized Building Materials Merchant
+                  Welcome, <strong className="text-gray-200">{contactPerson}</strong> | Authorized Etukas Partner
                 </p>
               </div>
             </div>
@@ -220,7 +220,7 @@ export function SellerDashboard() {
               {verificationStatus === "APPROVED" ? (
                 <div className="flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-2 text-emerald-400">
                   <BadgeCheck size={20} />
-                  <span className="text-sm font-bold">Verified Seller</span>
+                  <span className="text-sm font-bold">Verified Partner</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3.5 py-2 text-amber-300">
@@ -235,7 +235,7 @@ export function SellerDashboard() {
               <button
                 onClick={handleLogout}
                 className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 hover:bg-red-600 hover:border-red-600 hover:text-white transition-all shadow-sm"
-                title="Log out of Seller Hub"
+                title="Log out of Partner Dashboard"
               >
                 <LogOut size={16} />
                 <span>Logout</span>

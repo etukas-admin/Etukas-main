@@ -7,8 +7,10 @@ import {
   EyeOff,
   KeyRound,
   LogIn,
+  PackageCheck,
   ShieldCheck,
-  Store,
+  ShoppingBag,
+  Truck,
   UserCheck
 } from "lucide-react";
 import { useState } from "react";
@@ -58,7 +60,7 @@ export function LoginPage() {
   const resetMutation = useMutation({
     mutationFn: async () => {
       if (!resetIdentifier.trim()) {
-        throw new Error("Please enter your Email, Seller ID, or Mobile number");
+        throw new Error("Please enter your registered Email or Mobile number");
       }
       if (resetNewPassword.length < 6) {
         throw new Error("New password must be at least 6 characters");
@@ -72,14 +74,13 @@ export function LoginPage() {
       });
     },
     onSuccess: (data) => {
-      setResetSuccessMessage(data.message);
+      setResetSuccessMessage(data.message || "Password updated successfully!");
       setResetErrorMessage(null);
-      // Prefill login input
       form.setValue("identifier", resetIdentifier.trim());
       setTimeout(() => {
         setIsResetMode(false);
         setResetSuccessMessage(null);
-      }, 3000);
+      }, 2500);
     },
     onError: (err: Error) => {
       setResetErrorMessage(err.message);
@@ -93,98 +94,96 @@ export function LoginPage() {
 
   return (
     <main className="mx-auto grid min-h-[75vh] max-w-6xl items-center gap-12 px-4 py-12 md:grid-cols-2 lg:px-8">
-      {/* Left Promo / Branding Column */}
+      {/* Left Promo / Branding Column for Customer Buyers */}
       <section className="space-y-6">
-        <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3.5 py-1 text-xs font-bold text-orange-600">
-          <ShieldCheck size={16} /> Etukas Unified Access
+        <div className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3.5 py-1 text-xs font-bold text-etukas-red">
+          <ShoppingBag size={16} /> Etukas Customer Account
         </div>
 
         <h1 className="text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">
-          Sign in with your <span className="text-orange-500">Seller ID</span>, Email, or Mobile.
+          Sign in to your <span className="text-etukas-red">Customer Account</span>
         </h1>
 
         <p className="text-base text-gray-600">
-          Access your Seller Hub dashboard, manage building materials inventory, fulfill customer bulk orders, or track delivery coordinates in real time.
+          Order cement, steel, bricks, electricals, and tiles directly from verified local suppliers with on-site delivery tracking.
         </p>
 
-        {/* Feature Cards */}
+        {/* Customer Buyer Features */}
         <div className="space-y-3 pt-2">
           <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
-            <div className="rounded-lg bg-orange-100 p-2 text-orange-600">
-              <Store size={20} />
+            <div className="rounded-lg bg-red-100 p-2 text-etukas-red">
+              <Truck size={20} />
             </div>
             <div>
-              <h4 className="font-bold text-gray-900 text-sm">Seller Hub Portal</h4>
+              <h4 className="font-bold text-gray-900 text-sm">Direct Site Delivery</h4>
               <p className="text-xs text-gray-500">
-                Log in directly using your auto-generated Seller ID (e.g., <strong>SEA01234</strong>) and password.
+                Heavy materials delivered safely to your construction site or renovation project.
               </p>
             </div>
           </div>
 
           <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
             <div className="rounded-lg bg-emerald-100 p-2 text-emerald-600">
-              <UserCheck size={20} />
+              <PackageCheck size={20} />
             </div>
             <div>
-              <h4 className="font-bold text-gray-900 text-sm">Long-Lived Session</h4>
+              <h4 className="font-bold text-gray-900 text-sm">Real-Time Order Tracking</h4>
               <p className="text-xs text-gray-500">
-                Stay signed in securely on this browser across visits and page refreshes.
+                Track order confirmation, dispatch, vehicle location, and view GST invoices instantly.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-white p-3.5 shadow-sm">
+            <div className="rounded-lg bg-blue-100 p-2 text-blue-600">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <h4 className="font-bold text-gray-900 text-sm">Verified Building Materials</h4>
+              <p className="text-xs text-gray-500">
+                100% genuine products directly from certified dealers and top brand distributors.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Quick Demo Credentials */}
+        {/* Demo Customer Credential */}
         <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 text-xs text-gray-600">
           <div className="font-bold uppercase tracking-wider text-gray-500 text-[11px] mb-2">
-            Quick Fill Demo Accounts:
+            Quick Fill Demo Account:
           </div>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => handleQuickFill("seller.demo@etukas.local", "Etukas@123")}
-              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:border-orange-400 hover:text-orange-600 shadow-2xs"
-            >
-              Demo Seller (Sai Traders)
-            </button>
-            <button
-              type="button"
               onClick={() => handleQuickFill("customer.demo@etukas.local", "Etukas@123")}
-              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:border-orange-400 hover:text-orange-600 shadow-2xs"
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 font-semibold text-gray-700 hover:border-red-400 hover:text-etukas-red shadow-2xs transition-colors"
             >
-              Demo Customer
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickFill("admin.demo@etukas.local", "Etukas@123")}
-              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 font-semibold text-gray-700 hover:border-orange-400 hover:text-orange-600 shadow-2xs"
-            >
-              Demo Admin
+              Demo Customer Account
             </button>
           </div>
         </div>
       </section>
 
-      {/* Right Column: Login or Reset Form */}
+      {/* Right Column: Customer Sign In Form */}
       <div className="rounded-3xl border border-gray-200/80 bg-white p-8 shadow-xl shadow-gray-100">
         {!isResetMode ? (
-          /* LOGIN FORM */
+          /* CUSTOMER LOGIN FORM */
           <form onSubmit={form.handleSubmit((values) => login.mutate(values))} className="space-y-5">
             <div>
-              <h2 className="text-2xl font-black text-gray-900">Sign In</h2>
+              <h2 className="text-2xl font-black text-gray-900">Customer Sign In</h2>
               <p className="mt-1 text-xs text-gray-500">
-                Enter your Seller ID, registered email, or mobile number
+                Enter your registered email address or 10-digit mobile number
               </p>
             </div>
 
-            {/* Identifier input */}
+            {/* Email / Mobile input */}
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                Seller ID / Email / Mobile
+                Email or Mobile Number
               </label>
               <Input
                 className="mt-1.5 h-11"
-                placeholder="e.g. SEA01234, 9876543210, or seller@etukas.local"
+                placeholder="e.g. name@example.com or 9876543210"
                 {...form.register("identifier")}
               />
               <p className="mt-1 text-xs text-red-500">{form.formState.errors.identifier?.message}</p>
@@ -199,7 +198,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setIsResetMode(true)}
-                  className="text-xs font-semibold text-orange-600 hover:text-orange-700 hover:underline"
+                  className="text-xs font-semibold text-etukas-red hover:underline"
                 >
                   Forgot password?
                 </button>
@@ -231,19 +230,15 @@ export function LoginPage() {
             ) : null}
 
             <Button
-              className="mt-2 h-11 w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm shadow-md shadow-orange-500/20"
+              className="mt-2 h-11 w-full bg-etukas-red hover:bg-red-700 text-white font-bold text-sm shadow-md shadow-red-500/20"
               disabled={login.isPending}
             >
-              <LogIn size={18} /> {login.isPending ? "Signing in..." : "Sign in to Dashboard"}
+              <LogIn size={18} /> {login.isPending ? "Signing in..." : "Sign in to Customer Account"}
             </Button>
 
             <div className="border-t border-gray-100 pt-4 text-center text-xs text-gray-500">
               New to Etukas?{" "}
-              <Link to="/seller-hub" className="font-bold text-orange-600 hover:underline">
-                Register as a Seller
-              </Link>{" "}
-              or{" "}
-              <Link to="/register" className="font-bold text-orange-600 hover:underline">
+              <Link to="/register" className="font-bold text-etukas-red hover:underline">
                 Create Customer Account
               </Link>
             </div>
@@ -266,7 +261,7 @@ export function LoginPage() {
               <div>
                 <h2 className="text-xl font-black text-gray-900">Reset Password</h2>
                 <p className="text-xs text-gray-500">
-                  Update your account password instantly
+                  Update your customer account password
                 </p>
               </div>
             </div>
@@ -288,12 +283,12 @@ export function LoginPage() {
               >
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
-                    Seller ID / Email / Mobile
+                    Email or Mobile Number
                   </label>
                   <Input
                     required
                     className="mt-1.5 h-11"
-                    placeholder="Enter your registered Seller ID, Email, or Mobile"
+                    placeholder="Enter your registered Email or Mobile"
                     value={resetIdentifier}
                     onChange={(e) => setResetIdentifier(e.target.value)}
                   />
@@ -343,7 +338,7 @@ export function LoginPage() {
                 ) : null}
 
                 <Button
-                  className="mt-2 h-11 w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm"
+                  className="mt-2 h-11 w-full bg-etukas-red hover:bg-red-700 text-white font-bold text-sm"
                   disabled={resetMutation.isPending}
                 >
                   <KeyRound size={18} /> {resetMutation.isPending ? "Updating Password..." : "Update Password"}

@@ -111,7 +111,13 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const marketplaceApi = {
   categories: () => api<Category[]>("/categories"),
-  products: () => api<StoreProduct[]>("/products?pageSize=8"),
+  products: (params?: { category?: string; pageSize?: number; q?: string }) => {
+    const query = new URLSearchParams();
+    query.set("pageSize", String(params?.pageSize ?? 24));
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    return api<StoreProduct[]>(`/products?${query.toString()}`);
+  },
   stores: () => api<Store[]>("/stores/nearby?city=Hyderabad"),
   login: async (body: { email?: string; identifier?: string; password: string }) => {
     const result = await api<{ accessToken: string; csrfToken: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify(body) });
@@ -172,9 +178,11 @@ export type StoreProduct = {
   id: string;
   priceMinor: number;
   currency: string;
+  discountMinor?: number;
   stockQuantity: number;
   minOrderQuantity: number;
   deliveryEta: string;
+  updatedAt?: string;
   store: Store;
   product: {
     id: string;
