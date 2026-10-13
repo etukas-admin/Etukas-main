@@ -125,7 +125,7 @@ export function Header() {
               <UserRound size={20} />
             </Link>
           )}
-          <Link to="/cart" className="focus-ring relative rounded-md p-2 text-gray-700 hover:bg-gray-50" aria-label="Cart">
+          <Link to="/cart" className="focus-ring relative hidden rounded-md p-2 text-gray-700 hover:bg-gray-50 md:inline-flex" aria-label="Cart">
             <ShoppingCart size={21} />
             <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-etukas-red px-1 text-[11px] font-bold text-white">
               {cartCount}
