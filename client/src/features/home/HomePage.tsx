@@ -5,7 +5,8 @@ import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useCategories, useProducts, useStores } from "../../hooks/useMarketplace";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
-import { formatMoney } from "../../lib/utils";
+import { FlashDealsCarousel } from "./FlashDealsCarousel";
+import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 
 const iconMap = [Package, ShieldCheck, Truck, BadgeCheck];
 const promoSlides = [
@@ -33,7 +34,7 @@ export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
   const categories = useCategories();
-  const products = useProducts();
+  const products = useProducts({ pageSize: 24 });
   const stores = useStores();
 
   useEffect(() => {
@@ -105,32 +106,12 @@ export function HomePage() {
           </div>
           <ArrowRight size={20} />
         </Link>
-
-        <section className="overflow-hidden rounded-xl bg-gradient-to-br from-[#182ca2] to-[#365cf3] p-3 text-white shadow-sm">
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-extrabold">Popular picks</h2>
-            <Link to="/products" className="inline-flex items-center gap-1 text-[10px] font-semibold">See all <ArrowRight size={12} /></Link>
-          </div>
-          <div className="category-strip flex snap-x snap-mandatory gap-2 overflow-x-auto">
-            {products.isLoading
-              ? Array.from({ length: 3 }).map((_, index) => <Skeleton key={index} className="h-32 min-w-28 bg-white/20" />)
-              : products.data?.map((item) => (
-                  <Link key={item.id} to={`/products?category=${item.product.category.slug}`} className="w-28 shrink-0 snap-start overflow-hidden rounded-lg bg-white text-etukas-black">
-                    <img className="h-20 w-full bg-gray-100 object-cover" src={item.product.images[0]?.url} alt={item.product.images[0]?.altText ?? item.product.name} />
-                    <div className="p-2">
-                      <p className="truncate text-[10px] font-bold">{item.product.name}</p>
-                      <p className="mt-0.5 text-[10px] font-extrabold text-etukas-red">{formatMoney(item.priceMinor)} <span className="font-medium text-gray-500">/{item.product.unit}</span></p>
-                    </div>
-                  </Link>
-                ))}
-          </div>
-        </section>
       </section>
 
       <section className="hidden bg-etukas-black px-4 py-2 text-xs font-semibold text-white md:block">
         <div className="mx-auto flex max-w-7xl items-center gap-3 overflow-hidden">
           <span className="h-2 w-2 rounded-full bg-etukas-red" />
-          Verified sellers, live stock checks, COD-ready checkout, and city-based discovery for Hyderabad demo data
+          Verified sellers, live yard stock checks, COD-ready checkout, and city-based discovery for Hyderabad
         </div>
       </section>
 
@@ -166,49 +147,34 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-8 px-4 py-8 lg:px-6">
-        <div>
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold">Nearby Stores</h2>
-            <Link to="/stores" className="text-sm font-semibold text-etukas-red">View All Stores</Link>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {stores.data?.map((store) => (
-              <article key={store.id} className="rounded-md border border-gray-100 p-4">
-                <span className="rounded bg-etukas-green px-2 py-1 text-xs font-bold text-white">In Stock</span>
-                <h3 className="mt-3 font-bold">{store.name}</h3>
-                <p className="mt-1 flex items-center gap-1 text-sm text-gray-500"><MapPin size={15} /> {store.city}, {store.state}</p>
-                <p className="mt-3 text-sm text-gray-700">Service radius {store.serviceRadiusKm} km</p>
-              </article>
-            ))}
-          </div>
-        </div>
+      {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
+      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} />
 
-        <div>
-          <div className="mb-4 hidden items-center justify-between md:flex">
-            <h2 className="text-xl font-extrabold">Popular Products</h2>
-            <Link to="/products" className="text-sm font-semibold text-etukas-red">View Products</Link>
+      {/* Nearby Stores Section */}
+      <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-extrabold text-gray-900 sm:text-2xl">Nearby Stores & Yards</h2>
+            <p className="text-xs text-gray-500 sm:text-sm">Verified suppliers in your area with fast local fulfillment</p>
           </div>
-          <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-4">
-            {products.isLoading
-              ? Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-72" />)
-              : products.data?.map((item) => (
-                  <article key={item.id} className="overflow-hidden rounded-md border border-gray-100 bg-white">
-                    <img className="h-36 w-full object-cover" src={item.product.images[0]?.url} alt={item.product.images[0]?.altText ?? item.product.name} />
-                    <div className="p-4">
-                      <span className="rounded bg-etukas-green px-2 py-1 text-xs font-bold text-white">In Stock</span>
-                      <h3 className="mt-3 min-h-12 font-bold">{item.product.name}</h3>
-                      <p className="text-sm text-gray-500">{item.store.name} • Delivery in {item.deliveryEta}</p>
-                      <div className="mt-3 flex items-center justify-between">
-                        <strong>{formatMoney(item.priceMinor)} <span className="text-xs font-medium text-gray-500">/{item.product.unit}</span></strong>
-                        <Button className="min-h-9 px-3">Add</Button>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-          </div>
+          <Link to="/stores" className="text-xs font-bold text-etukas-red sm:text-sm hover:underline">View All Stores &rarr;</Link>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+          {stores.data?.map((store) => (
+            <article key={store.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow transition-shadow">
+              <div className="flex items-center justify-between">
+                <span className="rounded bg-etukas-green/10 px-2 py-0.5 text-xs font-bold text-etukas-green">Verified Yard</span>
+                <span className="text-[11px] text-gray-400">Radius {store.serviceRadiusKm} km</span>
+              </div>
+              <h3 className="mt-3 font-bold text-gray-900">{store.name}</h3>
+              <p className="mt-1 flex items-center gap-1 text-xs text-gray-500"><MapPin size={13} className="text-etukas-red shrink-0" /> {store.city}, {store.state}</p>
+            </article>
+          ))}
         </div>
       </section>
+
+      {/* 2. Vertical Blocks Grid (Multi-Column Grid) */}
+      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} />
 
       <section className="border-y border-gray-100 bg-gray-50 px-4 py-10">
         <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">

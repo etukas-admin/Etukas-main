@@ -5,8 +5,11 @@ export function useCategories() {
   return useQuery({ queryKey: ["categories"], queryFn: marketplaceApi.categories });
 }
 
-export function useProducts() {
-  return useQuery({ queryKey: ["products"], queryFn: marketplaceApi.products });
+export function useProducts(params?: { category?: string; pageSize?: number; q?: string }) {
+  return useQuery({
+    queryKey: ["products", params],
+    queryFn: () => marketplaceApi.products(params)
+  });
 }
 
 export function useStores() {
