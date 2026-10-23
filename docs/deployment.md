@@ -40,6 +40,21 @@ Set the following in the Vercel Project Settings under **Environment Variables**
 
 ## Backend
 
+### Backend on Vercel
+If deploying `server` as a separate Vercel project:
+
+In the Vercel Project Settings under **General -> Build & Development Settings**:
+- **Root Directory**: `server`
+- **Include source files outside of the Root Directory in the Build Step**: MUST be **Enabled** (to access `packages/shared` and `prisma/schema.prisma`).
+- **Framework Preset**: `Other`
+- **Build Command**: `npm run build` (or leave default to execute `build` in `server/package.json`)
+- **Output Directory**: Leave empty / default
+- **Install Command**: `npm install` (default)
+- **Node.js Version**: `20.x` (or `22.x`)
+
+Rewrite rules routing incoming API requests to the serverless entry point (`/api/index.ts`) are defined in `server/vercel.json`.
+
+### Backend on Persistent Node Host (Alternative)
 Deploy `server` to a Node.js host such as Render, Fly.io, Railway, ECS, or a VPS. Use managed PostgreSQL. Required production variables:
 
 - `DATABASE_URL`

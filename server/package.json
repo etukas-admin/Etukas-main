@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npm --workspace @etukas/shared run build && tsc -p tsconfig.json",
+    "build": "npm run db:generate && npm --workspace @etukas/shared run build && tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "lint": "npm --workspace @etukas/shared run build && tsc -p tsconfig.json --noEmit",
     "typecheck": "npm --workspace @etukas/shared run build && tsc -p tsconfig.json --noEmit",
