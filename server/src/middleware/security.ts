@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import rateLimit from "express-rate-limit";
+import * as rateLimitModule from "express-rate-limit";
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
 
-export const loginLimiter = rateLimit({
+export const loginLimiter = rateLimitModule.default({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
