@@ -1,7 +1,7 @@
+import { createRequire } from "node:module";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
-import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
@@ -18,6 +18,8 @@ import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requireCsrf } from "./middleware/security.js";
 import { HttpError, sendOk } from "./utils/http.js";
+
+const helmet = createRequire(import.meta.url)("helmet") as typeof import("helmet").default;
 
 export function createApp() {
   const app = express();
