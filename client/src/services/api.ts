@@ -1,7 +1,21 @@
 import type { ApiResponse } from "@etukas/shared";
 import type { SellerEnquiryInput } from "@etukas/shared";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api/v1";
+export function normalizeApiBase(rawUrl?: string): string {
+  const trimmed = (rawUrl ?? "").trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "/api/v1";
+  }
+  if (!trimmed.endsWith("/api/v1")) {
+    if (trimmed.endsWith("/api")) {
+      return `${trimmed}/v1`;
+    }
+    return `${trimmed}/api/v1`;
+  }
+  return trimmed;
+}
+
+export const API_BASE = normalizeApiBase(import.meta.env.VITE_API_URL);
 
 type ApiErrorPayload = {
   code: string;
@@ -20,7 +34,39 @@ export class ApiError extends Error {
   }
 }
 
-function detailsToMessage(error: ApiErrorPayload) {
+export async function parseJsonResponse<T>(response: Response, url: string): Promise<ApiResponse<T>> {
+  const contentType = response.headers.get("content-type") ?? "";
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text) as ApiResponse<T>;
+  } catch {
+    const trimmed = text.trim();
+    const isHtml =
+      trimmed.toLowerCase().startsWith("<!doctype") ||
+      trimmed.toLowerCase().startsWith("<html") ||
+      contentType.includes("text/html");
+
+    if (isHtml) {
+      throw new ApiError(
+        `Backend API returned an HTML page (HTTP ${response.status}) instead of JSON for ${url}. Ensure VITE_API_URL is configured in your Vercel deployment to point to your backend service.`,
+        "NON_JSON_RESPONSE",
+        response.status,
+        { contentType, preview: trimmed.slice(0, 200) }
+      );
+    }
+
+    throw new ApiError(
+      `Invalid JSON response (HTTP ${response.status}) from ${url}: ${trimmed.slice(0, 100) || "empty response"}`,
+      "INVALID_JSON",
+      response.status,
+      { contentType, preview: trimmed.slice(0, 200) }
+    );
+  }
+}
+
+function detailsToMessage(error?: ApiErrorPayload) {
+  if (!error) return "Unknown server error";
   if (error.code === "VALIDATION_ERROR" && error.details && typeof error.details === "object" && "fieldErrors" in error.details) {
     const fieldErrors = (error.details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
     const messages = Object.entries(fieldErrors ?? {})
@@ -29,28 +75,65 @@ function detailsToMessage(error: ApiErrorPayload) {
     if (messages.length > 0) return messages.join("; ");
   }
 
-  return error.message;
+  return error.message || "Unknown server error";
 }
 
-let accessToken: string | null = localStorage.getItem("etukas_access_token");
-let csrfToken: string | null = localStorage.getItem("etukas_csrf_token");
+function getStorageItem(key: string): string | null {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      return window.localStorage.getItem(key);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return null;
+}
+
+function setStorageItem(key: string, value: string): void {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function removeStorageItem(key: string): void {
+  try {
+    if (typeof window !== "undefined" && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+let accessToken: string | null = getStorageItem("etukas_access_token");
+let csrfToken: string | null = getStorageItem("etukas_csrf_token");
 
 async function refreshCsrfToken(): Promise<string> {
-  const response = await fetch(`${API_BASE}/auth/csrf`, { credentials: "include" });
-  const payload = (await response.json()) as ApiResponse<{ csrfToken: string }>;
+  const url = `${API_BASE}/auth/csrf`;
+  const response = await fetch(url, { credentials: "include" });
+  const payload = await parseJsonResponse<{ csrfToken: string }>(response, url);
 
   if (!response.ok || !payload.ok) {
-    throw new ApiError(payload.ok ? "Unable to initialize secure session" : payload.error.message, payload.ok ? "CSRF_INIT_FAILED" : payload.error.code, response.status, payload.ok ? undefined : payload.error.details);
+    throw new ApiError(
+      payload.ok ? `Unable to initialize secure session (HTTP ${response.status})` : payload.error.message,
+      payload.ok ? "CSRF_INIT_FAILED" : payload.error.code,
+      response.status,
+      payload.ok ? undefined : payload.error.details
+    );
   }
 
   csrfToken = payload.data.csrfToken;
-  localStorage.setItem("etukas_csrf_token", csrfToken);
+  setStorageItem("etukas_csrf_token", csrfToken);
   return csrfToken;
 }
 
 export function getStoredUser(): User | null {
   try {
-    const raw = localStorage.getItem("etukas_user");
+    const raw = getStorageItem("etukas_user");
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -60,21 +143,25 @@ export function getStoredUser(): User | null {
 export function setSession(nextAccessToken: string | null, nextCsrfToken?: string | null, nextUser?: User | null) {
   accessToken = nextAccessToken;
   csrfToken = nextCsrfToken ?? csrfToken;
-  if (nextAccessToken) localStorage.setItem("etukas_access_token", nextAccessToken);
-  else localStorage.removeItem("etukas_access_token");
-  if (nextCsrfToken) localStorage.setItem("etukas_csrf_token", nextCsrfToken);
+  if (nextAccessToken) setStorageItem("etukas_access_token", nextAccessToken);
+  else removeStorageItem("etukas_access_token");
+  if (nextCsrfToken) setStorageItem("etukas_csrf_token", nextCsrfToken);
   if (nextUser !== undefined) {
-    if (nextUser) localStorage.setItem("etukas_user", JSON.stringify(nextUser));
-    else localStorage.removeItem("etukas_user");
+    if (nextUser) setStorageItem("etukas_user", JSON.stringify(nextUser));
+    else removeStorageItem("etukas_user");
   }
-  window.dispatchEvent(new Event("etukas_auth_change"));
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("etukas_auth_change"));
+  }
 }
 
 export function clearSession() {
   setSession(null, null, null);
-  localStorage.removeItem("etukas_access_token");
-  localStorage.removeItem("etukas_user");
-  window.dispatchEvent(new Event("etukas_auth_change"));
+  removeStorageItem("etukas_access_token");
+  removeStorageItem("etukas_user");
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("etukas_auth_change"));
+  }
 }
 
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -87,24 +174,31 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
   if (csrfToken && init.method && init.method !== "GET") headers.set("x-csrf-token", csrfToken);
 
-  let response = await fetch(`${API_BASE}${path}`, {
+  const url = `${API_BASE}${path}`;
+  let response = await fetch(url, {
     ...init,
     headers,
     credentials: "include"
   });
-  let payload = (await response.json()) as ApiResponse<T>;
-  if (requiresCsrf && !payload.ok && payload.error.code === "CSRF_FAILED") {
+  let payload = await parseJsonResponse<T>(response, url);
+
+  if (requiresCsrf && !payload.ok && payload.error?.code === "CSRF_FAILED") {
     headers.set("x-csrf-token", await refreshCsrfToken());
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(url, {
       ...init,
       headers,
       credentials: "include"
     });
-    payload = (await response.json()) as ApiResponse<T>;
+    payload = await parseJsonResponse<T>(response, url);
   }
 
   if (!payload.ok) {
-    throw new ApiError(detailsToMessage(payload.error), payload.error.code, response.status, payload.error.details);
+    throw new ApiError(
+      detailsToMessage(payload.error),
+      payload.error?.code || `HTTP_${response.status}`,
+      response.status,
+      payload.error?.details
+    );
   }
   return payload.data;
 }

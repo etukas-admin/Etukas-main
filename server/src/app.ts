@@ -17,7 +17,7 @@ import { storesRouter } from "./modules/stores/stores.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requireCsrf } from "./middleware/security.js";
-import { sendOk } from "./utils/http.js";
+import { HttpError, sendOk } from "./utils/http.js";
 
 export function createApp() {
   const app = express();
@@ -48,6 +48,11 @@ export function createApp() {
     next();
   });
 
+  const allowedClientUrls = env.CLIENT_URL
+    .split(",")
+    .map((u) => u.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(
     cors({
@@ -65,11 +70,13 @@ export function createApp() {
           return callback(null, true);
         }
 
-        // Allowed web client origins
+        const normalizedOrigin = origin.trim().replace(/\/+$/, "");
+
+        // Allowed web client origins (normalized without trailing slashes)
         if (
-          origin === env.CLIENT_URL ||
-          origin === "http://localhost:5173" ||
-          /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(origin)
+          allowedClientUrls.includes(normalizedOrigin) ||
+          normalizedOrigin === "http://localhost:5173" ||
+          /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(normalizedOrigin)
         ) {
           return callback(null, true);
         }
@@ -78,7 +85,7 @@ export function createApp() {
           return callback(null, true);
         }
 
-        return callback(new Error(`CORS blocked for origin: ${origin}`));
+        return callback(new HttpError(403, "CORS_BLOCKED", `CORS blocked for origin: ${origin}`));
       },
       credentials: true
     })
