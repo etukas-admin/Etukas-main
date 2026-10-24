@@ -8,7 +8,7 @@
     "build": "npm --workspace @etukas/shared run build && tsc -b && vite build",
     "typecheck": "npm --workspace @etukas/shared run build && tsc -b --noEmit",
     "lint": "npm --workspace @etukas/shared run build && tsc -b --noEmit",
-    "test": "npm --workspace @etukas/shared run build && tsc -b --noEmit",
+    "test": "npm --workspace @etukas/shared run build && tsc -b --noEmit && vitest run",
     "cap:sync": "cap sync",
     "cap:android": "cap open android",
     "cap:ios": "cap open ios",
