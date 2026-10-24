@@ -14,12 +14,40 @@ import { sellerEnquiriesRouter } from "./modules/seller-enquiries/seller-enquiri
 import { sellerRegistrationRouter } from "./modules/seller-registration/seller-registration.routes.js";
 import { sellerRouter } from "./modules/seller-profiles/seller.routes.js";
 import { storesRouter } from "./modules/stores/stores.routes.js";
+import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requireCsrf } from "./middleware/security.js";
 import { sendOk } from "./utils/http.js";
 
 export function createApp() {
   const app = express();
+
+  // Normalize incoming URLs from Vercel rewrites or reverse proxies
+  app.use((req, _res, next) => {
+    const matchedPath =
+      (req.headers["x-matched-path"] as string | undefined) ||
+      (req.headers["x-vercel-matched-path"] as string | undefined) ||
+      (req.headers["x-invoke-path"] as string | undefined) ||
+      (req.headers["x-forwarded-uri"] as string | undefined);
+
+    if (
+      matchedPath &&
+      (req.url === "/api/index" ||
+        req.url === "/api" ||
+        req.url === "/api/" ||
+        req.url.startsWith("/api/index?") ||
+        req.url.startsWith("/api?"))
+    ) {
+      if (matchedPath.includes("?")) {
+        req.url = matchedPath;
+      } else {
+        const queryIdx = req.url.indexOf("?");
+        req.url = queryIdx !== -1 ? `${matchedPath}${req.url.slice(queryIdx)}` : matchedPath;
+      }
+    }
+    next();
+  });
+
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(
     cors({
@@ -60,8 +88,26 @@ export function createApp() {
   app.use(pinoHttp({ redact: ["req.headers.authorization", "req.headers.cookie", "res.headers.set-cookie"] }));
   app.use(requireCsrf);
 
+  const dbHealthHandler: express.RequestHandler = async (_req, res) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      return sendOk(res, { status: "ok", database: "connected" });
+    } catch {
+      return res.status(503).json({
+        ok: false,
+        error: {
+          code: "DATABASE_UNAVAILABLE",
+          message: "Database readiness check failed"
+        }
+      });
+    }
+  };
+
+  app.get(["/", "/api", "/api/index"], (_req, res) => sendOk(res, { status: "ok", service: "etukas-api" }));
   app.get("/health", (_req, res) => sendOk(res, { status: "ok", service: "etukas-api" }));
   app.get("/api/v1/health", (_req, res) => sendOk(res, { status: "ok", service: "etukas-api" }));
+  app.get("/health/db", dbHealthHandler);
+  app.get("/api/v1/health/db", dbHealthHandler);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/categories", categoriesRouter);
   app.use("/api/v1/products", productsRouter);

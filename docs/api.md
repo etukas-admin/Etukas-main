@@ -18,6 +18,8 @@ or:
 
 - `GET /health`
 - `GET /api/v1/health`
+- `GET /health/db`
+- `GET /api/v1/health/db`
 - `POST /api/v1/auth/register`
 - `POST /api/v1/auth/login`
 - `POST /api/v1/auth/refresh`
