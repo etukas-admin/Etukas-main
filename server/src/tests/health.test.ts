@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import request from "supertest";
-import { createApp } from "../app.js";
+import { createApp } from "../express-app.js";
 import { prisma } from "../config/prisma.js";
 
 describe("Health endpoints", () => {

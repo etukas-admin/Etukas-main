@@ -1,4 +1,4 @@
-import { createApp } from "../src/app.js";
+import { createApp } from "../src/express-app.js";
 
 const app = createApp();
 

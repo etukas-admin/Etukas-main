@@ -1,5 +1,5 @@
 import { env } from "./config/env.js";
-import { createApp } from "./app.js";
+import { createApp } from "./express-app.js";
 
 const app = createApp();
 
