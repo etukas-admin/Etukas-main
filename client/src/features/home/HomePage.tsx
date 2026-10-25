@@ -3,12 +3,24 @@ import { ArrowRight, BadgeCheck, MapPin, Package, Search, ShieldCheck, Truck } f
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
-import { useCategories, useProducts, useStores } from "../../hooks/useMarketplace";
+import { useProducts, useStores } from "../../hooks/useMarketplace";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 
-const iconMap = [Package, ShieldCheck, Truck, BadgeCheck];
+const homeCategories = [
+  { name: "Bricks and blocks", slug: "bricks-blocks", icon: Package },
+  { name: "Cement", slug: "cement", icon: ShieldCheck },
+  { name: "Cement poles", slug: "cement-poles", icon: Truck },
+  { name: "Construction machinery", slug: "construction-machinery", icon: BadgeCheck },
+  { name: "Electrical materials", slug: "electrical-materials", icon: Package },
+  { name: "Paints", slug: "paints", icon: ShieldCheck },
+  { name: "Plumbing", slug: "plumbing", icon: Truck },
+  { name: "Sand and aggregates", slug: "sand-aggregates", icon: BadgeCheck },
+  { name: "Steel and iron bars", slug: "steel-iron-bars", icon: Package },
+  { name: "Tiles and flooring", slug: "tiles-flooring", icon: ShieldCheck }
+] as const;
+
 const promoSlides = [
   {
     eyebrow: "ETUKAS BUILDING DAYS",
@@ -33,7 +45,6 @@ const promoSlides = [
 export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
-  const categories = useCategories();
   const products = useProducts({ pageSize: 24 });
   const stores = useStores();
 
@@ -53,20 +64,15 @@ export function HomePage() {
           </Link>
         </div>
         <div className={`category-strip flex gap-3 overflow-x-auto md:grid md:grid-cols-5 md:gap-4 md:pb-2 lg:grid-cols-10 ${isMobileScrolled ? "pb-0 md:pb-2" : "pb-1"}`}>
-          {categories.isLoading
-            ? Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className={`${isMobileScrolled ? "h-16" : "h-20"} min-w-20 md:h-28 md:min-w-24`} />)
-            : categories.data?.map((category, index) => {
-                const Icon = iconMap[index % iconMap.length];
-                return (
-                  <Link key={category.id} to={`/products?category=${category.slug}`} className="group min-w-20 text-center md:min-w-24">
-                    <div className={`mx-auto grid place-items-center rounded-full bg-etukas-pink text-etukas-black transition-[height,width] duration-300 ease-in-out group-hover:text-etukas-red md:h-16 md:w-16 ${isMobileScrolled ? "h-9 w-9 md:h-16 md:w-16" : "h-11 w-11 md:h-16 md:w-16"}`}>
-                      <Icon size={20} className={`transform transition-transform duration-300 ease-in-out md:hidden ${isMobileScrolled ? "scale-[0.8]" : "scale-100"}`} />
-                      <Icon size={28} className="hidden md:block" />
-                    </div>
-                    <div className="mt-1 text-[10px] font-semibold leading-tight md:mt-2 md:text-xs">{category.name}</div>
-                  </Link>
-                );
-              })}
+          {homeCategories.map(({ name, slug, icon: Icon }) => (
+            <Link key={slug} to={`/products?category=${slug}`} className="group min-w-20 text-center md:min-w-24">
+              <div className={`mx-auto grid place-items-center rounded-full bg-etukas-pink text-etukas-black transition-[height,width] duration-300 ease-in-out group-hover:text-etukas-red md:h-16 md:w-16 ${isMobileScrolled ? "h-9 w-9 md:h-16 md:w-16" : "h-11 w-11 md:h-16 md:w-16"}`}>
+                <Icon size={20} className={`transform transition-transform duration-300 ease-in-out md:hidden ${isMobileScrolled ? "scale-[0.8]" : "scale-100"}`} />
+                <Icon size={28} className="hidden md:block" />
+              </div>
+              <div className="mt-1 text-[10px] font-semibold leading-tight md:mt-2 md:text-xs">{name}</div>
+            </Link>
+          ))}
         </div>
       </section>
 

@@ -74,29 +74,25 @@ function CementBrandGrid() {
 export function ProductsPage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category");
-  const products = useProducts();
-
-  if (category === "cement") {
-    return (
-      <main className="mx-auto max-w-7xl px-4 py-5 lg:px-6">
-        <CementBrandGrid />
-      </main>
-    );
-  }
+  const products = useProducts({ category: category ?? undefined, pageSize: 24 });
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
+      {category === "cement" ? <CementBrandGrid /> : null}
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <h1 className="text-3xl font-extrabold">Products</h1>
+          <h1 className="text-3xl font-extrabold">{category ? `${category.replace(/-/g, " ")} products` : "Products"}</h1>
           <p className="mt-2 text-gray-600">Compare live listings from nearby verified stores.</p>
         </div>
         <Button variant="secondary"><SlidersHorizontal size={18} /> Filters</Button>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {products.isLoading
-          ? Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-72" />)
-          : products.data?.map((item) => (
+      {products.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-72" />)}
+        </div>
+      ) : products.data?.length ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {products.data.map((item) => (
               <article key={item.id} className="rounded-md border border-gray-100">
                 <img className="h-40 w-full rounded-t-md object-cover" src={item.product.images[0]?.url} alt={item.product.name} />
                 <div className="p-4">
@@ -109,8 +105,13 @@ export function ProductsPage() {
                   </div>
                 </div>
               </article>
-            ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-md border border-gray-100 p-6 text-center text-gray-600">
+          No products are currently listed{category ? " in this category" : ""}.
+        </p>
+      )}
     </main>
   );
 }
