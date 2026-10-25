@@ -400,6 +400,22 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
+model HomepageBanner {
+  id             String   @id @default(cuid())
+  eyebrow        String   @default("")
+  title          String
+  description    String   @default("")
+  imageUrl       String
+  mobileImageUrl String?
+  linkUrl        String?
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([isActive, sortOrder])
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String?

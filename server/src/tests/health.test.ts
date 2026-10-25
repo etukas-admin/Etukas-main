@@ -10,6 +10,15 @@ describe("Health endpoints", () => {
     vi.restoreAllMocks();
   });
 
+  describe("Admin API authorization", () => {
+    it("rejects unauthenticated access to partner management", async () => {
+      const response = await request(createApp()).get("/api/v1/admin/sellers");
+      expect(response.status).toBe(401);
+      expect(response.body.ok).toBe(false);
+      expect(response.body.error.code).toBe("UNAUTHENTICATED");
+    });
+  });
+
   describe("GET /health and GET /api/v1/health", () => {
     it("returns 200 OK with service status for /health", async () => {
       const response = await request(app).get("/health");

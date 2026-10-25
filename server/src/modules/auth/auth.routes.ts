@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import { loginSchema, registerSchema, resetPasswordSchema } from "@etukas/shared";
+import { Role } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth, signAccessToken, signRefreshToken } from "../../middleware/auth.js";
@@ -24,8 +25,8 @@ authRouter.post("/register", async (req, res, next) => {
         email: input.email.toLowerCase(),
         mobile: input.mobile,
         passwordHash,
-        roles: [input.role],
-        customerProfile: input.role === "CUSTOMER" ? { create: {} } : undefined
+        roles: [Role.CUSTOMER],
+        customerProfile: { create: {} }
       },
       select: { id: true, name: true, email: true, mobile: true, roles: true }
     });
@@ -158,6 +159,9 @@ authRouter.post("/reset-password", async (req, res, next) => {
 
     if (!user) {
       throw new HttpError(404, "USER_NOT_FOUND", "No account found matching this Email, Seller ID, or Mobile number");
+    }
+    if (user.roles.includes(Role.ADMIN)) {
+      throw new HttpError(403, "ADMIN_PASSWORD_RESET_DISABLED", "Administrator passwords must be reset by an authorized operator.");
     }
 
     const passwordHash = await bcrypt.hash(input.newPassword, 12);

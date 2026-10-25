@@ -11,6 +11,10 @@ productsRouter.get("/", async (req, res, next) => {
     const skip = (query.page - 1) * query.pageSize;
     const where = {
       isActive: true,
+      store: {
+        isActive: true,
+        sellerProfile: { verificationStatus: "APPROVED" as const }
+      },
       product: {
         category: query.category ? { slug: query.category } : undefined,
         OR: query.q
@@ -40,8 +44,12 @@ productsRouter.get("/", async (req, res, next) => {
 
 productsRouter.get("/:id", async (req, res, next) => {
   try {
-    const item = await prisma.storeProduct.findUnique({
-      where: { id: req.params.id },
+    const item = await prisma.storeProduct.findFirst({
+      where: {
+        id: req.params.id,
+        isActive: true,
+        store: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } }
+      },
       include: { product: { include: { category: true, images: true } }, store: true }
     });
     if (!item) throw new HttpError(404, "PRODUCT_NOT_FOUND", "Product listing not found");

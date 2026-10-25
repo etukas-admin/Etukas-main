@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BadgeCheck, MapPin, Package, Search, ShieldCheck, Truck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
@@ -7,6 +8,7 @@ import { useProducts, useStores } from "../../hooks/useMarketplace";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
+import { marketplaceApi } from "../../services/api";
 
 const homeCategories = [
   { name: "Bricks and blocks", slug: "bricks-blocks", icon: Package },
@@ -21,7 +23,7 @@ const homeCategories = [
   { name: "Tiles and flooring", slug: "tiles-flooring", icon: ShieldCheck }
 ] as const;
 
-const promoSlides = [
+const defaultPromoSlides = [
   {
     eyebrow: "ETUKAS BUILDING DAYS",
     title: "Build strong.\nSpend smart.",
@@ -47,13 +49,20 @@ export function HomePage() {
   const [activePromo, setActivePromo] = useState(0);
   const products = useProducts({ pageSize: 24 });
   const stores = useStores();
+  const banners = useQuery({ queryKey: ["home", "banners"], queryFn: marketplaceApi.publicBanners });
+  const promoSlides = banners.data?.length ? banners.data : defaultPromoSlides;
+  const slideCount = promoSlides.length;
+  const activeIndex = activePromo % slideCount;
+  const currentPromo = promoSlides[activeIndex];
+  const currentLink = "linkUrl" in currentPromo ? currentPromo.linkUrl : undefined;
+  const promoLink = currentLink?.startsWith("/") && !currentLink.startsWith("//") ? currentLink : "/products";
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      setActivePromo((current) => (current + 1) % promoSlides.length);
+      setActivePromo((current) => (current + 1) % slideCount);
     }, 4500);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [slideCount]);
 
   return (
     <main>
@@ -76,31 +85,26 @@ export function HomePage() {
         </div>
       </section>
 
+      {banners.isError ? <p className="sr-only" role="status">Homepage promotions could not be refreshed; default promotions are shown.</p> : null}
+
       <section className="mx-auto max-w-7xl space-y-3 px-4 py-3 md:hidden">
-        <div className={`relative isolate flex h-36 overflow-hidden rounded-xl bg-gradient-to-r ${promoSlides[activePromo].className} p-4 text-white shadow-sm`}>
+        <div className={`relative isolate flex h-36 overflow-hidden rounded-xl bg-gradient-to-r ${"className" in currentPromo ? currentPromo.className : "from-[#a90018] via-[#d51d32] to-[#f27a36]"} p-4 text-white shadow-sm`}>
           <div className="relative z-10 flex w-[62%] flex-col justify-center">
-            <span className="text-[9px] font-bold tracking-[0.16em] text-white/80">{promoSlides[activePromo].eyebrow}</span>
-            <h1 className="mt-1 whitespace-pre-line text-xl font-extrabold leading-tight">{promoSlides[activePromo].title}</h1>
-            <p className="mt-1 text-[10px] leading-snug text-white/90">{promoSlides[activePromo].description}</p>
-            <Link to="/products" className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-white px-3 py-1 text-[10px] font-bold text-etukas-red">
+            <span className="text-[9px] font-bold tracking-[0.16em] text-white/80">{currentPromo.eyebrow}</span>
+            <h1 className="mt-1 whitespace-pre-line text-xl font-extrabold leading-tight">{currentPromo.title}</h1>
+            <p className="mt-1 text-[10px] leading-snug text-white/90">{currentPromo.description}</p>
+            <Link to={promoLink} className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-white px-3 py-1 text-[10px] font-bold text-etukas-red">
               Explore products <ArrowRight size={12} />
             </Link>
           </div>
           <img
-            src={products.data?.[activePromo % (products.data.length || 1)]?.product.images[0]?.url ?? "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"}
-            alt=""
+            src={("imageUrl" in currentPromo ? currentPromo.mobileImageUrl || currentPromo.imageUrl : undefined) ?? products.data?.[activeIndex % (products.data.length || 1)]?.product.images[0]?.url ?? "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"}
+            alt={"imageUrl" in currentPromo ? currentPromo.title : ""}
             className="absolute inset-y-0 right-0 -z-0 h-full w-[48%] object-cover opacity-55 [mask-image:linear-gradient(to_right,transparent,black_45%)]"
           />
           <div className="absolute bottom-2 right-3 z-10 flex gap-1.5" aria-label="Choose promotion">
             {promoSlides.map((slide, index) => (
-              <button
-                key={slide.eyebrow}
-                type="button"
-                aria-label={`Show promotion ${index + 1}`}
-                aria-current={activePromo === index}
-                onClick={() => setActivePromo(index)}
-                className={`h-1.5 rounded-full transition-all ${activePromo === index ? "w-5 bg-white" : "w-1.5 bg-white/60"}`}
-              />
+              <button key={slide.eyebrow + index} type="button" aria-label={`Show promotion ${index + 1}`} aria-current={activeIndex === index} onClick={() => setActivePromo(index)} className={`h-1.5 rounded-full transition-all ${activeIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/60"}`} />
             ))}
           </div>
         </div>
@@ -134,9 +138,9 @@ export function HomePage() {
         <div className="overflow-hidden rounded-md bg-etukas-red text-white">
           <div className="grid min-h-[300px] gap-6 p-6 md:grid-cols-[1fr_0.9fr] md:p-10">
             <div className="flex flex-col justify-center">
-              <p className="text-xs font-bold uppercase tracking-normal">Building materials marketplace</p>
-              <h1 className="mt-3 max-w-xl text-4xl font-extrabold leading-tight md:text-6xl">Build Better. Buy Smarter.</h1>
-              <p className="mt-4 max-w-lg text-base text-red-50 md:text-lg">Find trusted building material suppliers near you.</p>
+              <p className="text-xs font-bold uppercase tracking-normal">{banners.data?.length ? currentPromo.eyebrow : "Building materials marketplace"}</p>
+              <h1 className="mt-3 max-w-xl whitespace-pre-line text-4xl font-extrabold leading-tight md:text-6xl">{banners.data?.length ? currentPromo.title : "Build Better. Buy Smarter."}</h1>
+              <p className="mt-4 max-w-lg text-base text-red-50 md:text-lg">{banners.data?.length ? currentPromo.description : "Find trusted building material suppliers near you."}</p>
               <div className="mt-6 flex max-w-xl flex-col gap-2 rounded-md bg-white p-2 sm:flex-row">
                 <label className="relative flex-1">
                   <span className="sr-only">Search marketplace</span>
@@ -147,7 +151,7 @@ export function HomePage() {
               </div>
             </div>
             <div className="relative min-h-52 overflow-hidden rounded-md">
-              <img className="h-full w-full object-cover" src="https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1200&q=80" alt="Construction materials and building site" />
+              <img className="h-full w-full object-cover" src={"imageUrl" in currentPromo ? currentPromo.imageUrl : "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1200&q=80"} alt={"imageUrl" in currentPromo ? currentPromo.title : "Construction materials and building site"} />
             </div>
           </div>
         </div>

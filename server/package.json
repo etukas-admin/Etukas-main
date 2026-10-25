@@ -12,11 +12,13 @@
     "test": "vitest run",
     "db:generate": "prisma generate --schema ../prisma/schema.prisma",
     "db:migrate": "prisma migrate dev --schema ../prisma/schema.prisma",
-    "db:seed": "tsx ../prisma/seed.ts"
+    "db:seed": "tsx ../prisma/seed.ts",
+    "admin:create": "tsx ../prisma/create-admin.ts"
   },
   "dependencies": {
     "@etukas/shared": "file:../packages/shared",
     "@prisma/client": "^5.20.0",
+    "@vercel/blob": "^2.8.2",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",

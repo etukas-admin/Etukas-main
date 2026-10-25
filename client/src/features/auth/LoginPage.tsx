@@ -51,7 +51,7 @@ export function LoginPage() {
       return marketplaceApi.login(payload);
     },
     onSuccess: (user) => {
-      if (user.roles.includes("ADMIN")) navigate("/admin");
+      if (user.roles.includes("ADMIN")) navigate("/admin-dashboard");
       else if (user.roles.includes("SELLER")) navigate("/seller");
       else navigate("/customer");
     }

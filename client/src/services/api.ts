@@ -231,6 +231,22 @@ export const marketplaceApi = {
   submitSellerEnquiry: (body: SellerEnquiryInput) => api<SellerEnquiry>("/seller-enquiries", { method: "POST", body: JSON.stringify(body) }),
   adminSellerEnquiries: () => api<SellerEnquiry[]>("/admin/seller-enquiries"),
   adminSellerEnquiry: (id: string) => api<SellerEnquiry>(`/admin/seller-enquiries/${encodeURIComponent(id)}`),
+  adminSellers: () => api<AdminSeller[]>("/admin/sellers"),
+  adminUpdateSellerStatus: (id: string, status: "PENDING" | "APPROVED" | "REJECTED", rejectionReason?: string) =>
+    api<AdminSeller>(`/admin/sellers/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status, rejectionReason })
+    }),
+  publicBanners: () => api<HomepageBanner[]>("/banners"),
+  adminBanners: () => api<HomepageBanner[]>("/admin/banners"),
+  adminUploadBannerImage: (body: { contentType: string; imageData: string }) =>
+    api<{ url: string }>("/admin/banners/upload", { method: "POST", body: JSON.stringify(body) }),
+  adminCreateBanner: (body: HomepageBannerInput) =>
+    api<HomepageBanner>("/admin/banners", { method: "POST", body: JSON.stringify(body) }),
+  adminUpdateBanner: (id: string, body: HomepageBannerInput) =>
+    api<HomepageBanner>(`/admin/banners/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  adminDeleteBanner: (id: string) =>
+    api<{ id: string }>(`/admin/banners/${encodeURIComponent(id)}`, { method: "DELETE" }),
   cart: () => api<Cart>("/cart"),
   addToCart: (storeProductId: string, quantity: number) => api("/cart/items", { method: "POST", body: JSON.stringify({ storeProductId, quantity }) }),
   sellerRegStep1: (body: { contactPerson: string; mobile: string; email: string }) =>
@@ -296,6 +312,47 @@ export type SellerEnquiry = Omit<SellerEnquiryInput, "latitude" | "longitude"> &
   createdAt: string;
   updatedAt: string;
 };
+
+export type AdminSeller = {
+  id: string;
+  sellerId?: string | null;
+  contactPerson: string;
+  businessName: string;
+  businessType: string;
+  gstin?: string | null;
+  verificationStatus: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string | null;
+  createdAt: string;
+  user: { name: string; email: string; mobile: string };
+  stores: Array<{
+    id: string;
+    name: string;
+    phone: string;
+    addressLine1: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    latitude?: number | string | null;
+    longitude?: number | string | null;
+    isActive: boolean;
+  }>;
+};
+
+export type HomepageBanner = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  mobileImageUrl?: string | null;
+  linkUrl?: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HomepageBannerInput = Omit<HomepageBanner, "id" | "createdAt" | "updatedAt">;
 
 export type Cart = {
   id: string;

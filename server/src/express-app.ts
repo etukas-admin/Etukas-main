@@ -19,6 +19,7 @@ import {
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
+import { bannersRouter } from "./modules/banners/banners.routes.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
 import { cartsRouter } from "./modules/carts/carts.routes.js";
 import { categoriesRouter } from "./modules/categories/categories.routes.js";
@@ -151,6 +152,7 @@ export function createApp() {
   app.use("/api/v1/seller-registration", sellerRegistrationRouter);
   app.use("/api/v1/seller", sellerRouter);
   app.use("/api/v1/admin", adminRouter);
+  app.use("/api/v1/banners", bannersRouter);
   app.get("/api/v1/search", (req, res) => {
     res.redirect(307, `/api/v1/products?q=${encodeURIComponent(String(req.query.q ?? ""))}`);
   });

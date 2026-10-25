@@ -26,6 +26,7 @@ export default function App() {
 
   return (
     <Routes>
+      <Route path="/admin-dashboard" element={<AdminDashboard />} />
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="products" element={<ProductsPage />} />
@@ -39,7 +40,7 @@ export default function App() {
         <Route path="seller-hub" element={<Navigate to="/partner-hub" replace />} />
         <Route path="seller-enquiry" element={<SellerHubPage />} />
         <Route path="seller" element={<SellerDashboard />} />
-        <Route path="admin" element={<AdminDashboard />} />
+        <Route path="admin" element={<Navigate to="/admin-dashboard" replace />} />
         <Route path="rentals" element={<PlannedModulePage title="Rentals" />} />
         <Route path="real-estate" element={<PlannedModulePage title="Real Estate" />} />
         <Route path="designs" element={<PlannedModulePage title="Designs and Professionals" />} />
