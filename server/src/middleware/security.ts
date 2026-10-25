@@ -1,19 +1,8 @@
-import { createRequire } from "node:module";
 import crypto from "node:crypto";
+import rateLimit from "express-rate-limit";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
-
-type LoginRateLimitOptions = {
-  windowMs: number;
-  limit: number;
-  standardHeaders: true;
-  legacyHeaders: false;
-};
-
-const rateLimit = createRequire(import.meta.url)("express-rate-limit") as (
-  options: LoginRateLimitOptions
-) => RequestHandler;
 
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
