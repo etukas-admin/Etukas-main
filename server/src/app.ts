@@ -1,7 +1,21 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
-import { default as helmetMiddleware } from "helmet";
+import {
+  contentSecurityPolicy,
+  crossOriginOpenerPolicy,
+  crossOriginResourcePolicy,
+  originAgentCluster,
+  referrerPolicy,
+  strictTransportSecurity,
+  xContentTypeOptions,
+  xDnsPrefetchControl,
+  xDownloadOptions,
+  xFrameOptions,
+  xPermittedCrossDomainPolicies,
+  xPoweredBy,
+  xXssProtection
+} from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
@@ -53,7 +67,19 @@ export function createApp() {
     .map((u) => u.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
-  app.use(helmetMiddleware({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(contentSecurityPolicy());
+  app.use(crossOriginOpenerPolicy());
+  app.use(crossOriginResourcePolicy({ policy: "cross-origin" }));
+  app.use(originAgentCluster());
+  app.use(referrerPolicy());
+  app.use(strictTransportSecurity());
+  app.use(xContentTypeOptions());
+  app.use(xDnsPrefetchControl());
+  app.use(xDownloadOptions());
+  app.use(xFrameOptions());
+  app.use(xPermittedCrossDomainPolicies());
+  app.use(xPoweredBy());
+  app.use(xXssProtection());
   app.use(
     cors({
       origin: (origin, callback) => {
