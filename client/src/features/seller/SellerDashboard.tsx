@@ -30,7 +30,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
-import { marketplaceApi, type SellerProductListing } from "../../services/api";
+import { marketplaceApi } from "../../services/api";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
 const MATERIAL_CATEGORIES = [
@@ -45,79 +45,27 @@ const MATERIAL_CATEGORIES = [
   { id: "plumbing", name: "Plumbing & Sanitary", unit: "Units", icon: SlidersHorizontal }
 ];
 
-// Sample default inventory for seller
-const SAMPLE_PRODUCTS = [
-  {
-    id: "sp-1",
-    name: "UltraTech Super Cement (50kg)",
-    category: "cement",
-    unit: "Bag (50kg)",
-    price: 395,
-    stock: 250,
-    sku: "CEM-ULT-50",
-    isActive: true
-  },
-  {
-    id: "sp-2",
-    name: "Tata Tiscon 550D TMT Rebars (12mm)",
-    category: "iron",
-    unit: "Ton",
-    price: 64500,
-    stock: 15,
-    sku: "IRN-TAT-12",
-    isActive: true
-  },
-  {
-    id: "sp-3",
-    name: "Red Clay Bricks (Standard Grade A)",
-    category: "bricks",
-    unit: "1,000 Pcs",
-    price: 8500,
-    stock: 35,
-    sku: "BRK-RED-1K",
-    isActive: true
-  },
-  {
-    id: "sp-4",
-    name: "Washed River Sand (Plastering Grade)",
-    category: "sand",
-    unit: "Brass",
-    price: 4800,
-    stock: 20,
-    sku: "SND-RIV-01",
-    isActive: true
-  },
-  {
-    id: "sp-5",
-    name: "20mm Crushed Blue Metal Granite Aggregate",
-    category: "stones",
-    unit: "Brass",
-    price: 3200,
-    stock: 18,
-    sku: "STN-BLU-20",
-    isActive: true
-  },
-  {
-    id: "sp-6",
-    name: "Kajaria 600x600mm Double Charged Vitrified Tiles",
-    category: "tiles",
-    unit: "Box (4 pcs)",
-    price: 720,
-    stock: 80,
-    sku: "TIL-KAJ-60",
-    isActive: true
-  },
-  {
-    id: "sp-7",
-    name: "Havells 2.5 sq mm FR Multistrand Copper Wire (90m)",
-    category: "electricals",
-    unit: "Roll (90m)",
-    price: 2150,
-    stock: 45,
-    sku: "ELE-HAV-25",
-    isActive: true
-  }
-];
+const categoryIdBySlug: Record<string, string> = {
+  cement: "cement",
+  "steel-iron-bars": "iron",
+  "electrical-materials": "electricals",
+  "bricks-blocks": "bricks",
+  "sand-aggregates": "sand",
+  "stones-aggregates": "stones",
+  "tiles-flooring": "tiles",
+  plumbing: "plumbing"
+};
+
+type InventoryRow = {
+  id: string;
+  name: string;
+  category: string;
+  unit: string;
+  price: number;
+  stock: number;
+  sku: string;
+  isActive: boolean;
+};
 
 export function SellerDashboard() {
   const navigate = useNavigate();
@@ -130,7 +78,6 @@ export function SellerDashboard() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
-  const [customProducts, setCustomProducts] = useState(SAMPLE_PRODUCTS);
 
   // New product form state
   const [newProdName, setNewProdName] = useState("");
@@ -142,7 +89,7 @@ export function SellerDashboard() {
   const queryClient = useQueryClient();
 
   // Queries
-  const { data: dashboardData, isLoading: isDashLoading } = useQuery({
+  const { data: dashboardData } = useQuery({
     queryKey: ["seller-dashboard"],
     queryFn: () => marketplaceApi.sellerDashboard().catch(() => null)
   });
@@ -152,41 +99,62 @@ export function SellerDashboard() {
     queryFn: () => marketplaceApi.sellerProfile().catch(() => null)
   });
 
-  const sellerId = dashboardData?.sellerId || profileData?.sellerId || "SEA01234";
-  const businessName = dashboardData?.businessName || profileData?.businessName || "Sri Balaji Building Materials";
-  const contactPerson = dashboardData?.contactPerson || profileData?.contactPerson || "Suresh Reddy";
+  const sellerProductsQuery = useQuery({
+    queryKey: ["seller-products"],
+    queryFn: marketplaceApi.sellerProducts
+  });
+
+  const addProductMutation = useMutation({
+    mutationFn: () => marketplaceApi.sellerAddProduct({
+      name: newProdName.trim(),
+      category: newProdCategory,
+      unit: newProdUnit.trim(),
+      priceMinor: Math.round(Number(newProdPrice) * 100),
+      stockQuantity: Number(newProdStock)
+    }),
+    onSuccess: () => {
+      setNewProdName("");
+      setNewProdPrice("");
+      setNewProdStock("");
+      setShowAddModal(false);
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["seller-dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+    }
+  });
+
+  const toggleProductMutation = useMutation({
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      marketplaceApi.sellerUpdateProduct(id, { isActive }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+    }
+  });
+
+  const inventoryRows: InventoryRow[] = (sellerProductsQuery.data ?? []).map((listing) => ({
+    id: listing.id,
+    name: listing.product.name,
+    category: categoryIdBySlug[listing.product.category.slug] ?? "all",
+    unit: listing.product.unit,
+    price: listing.priceMinor / 100,
+    stock: listing.stockQuantity,
+    sku: listing.sku,
+    isActive: listing.isActive
+  }));
+
+  const sellerId = dashboardData?.sellerId || profileData?.sellerId || "Pending";
+  const businessName = dashboardData?.businessName || profileData?.businessName || "Partner Store";
+  const contactPerson = dashboardData?.contactPerson || profileData?.contactPerson || "Partner";
   const verificationStatus = dashboardData?.verificationStatus || profileData?.verificationStatus || "PENDING";
   const primaryStore = profileData?.stores?.[0];
 
   const handleAddProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newProdName || !newProdPrice || !newProdStock) return;
-
-    const newItem = {
-      id: `sp-${Date.now()}`,
-      name: newProdName,
-      category: newProdCategory,
-      unit: newProdUnit,
-      price: parseFloat(newProdPrice) || 0,
-      stock: parseInt(newProdStock, 10) || 0,
-      sku: `${newProdCategory.slice(0, 3).toUpperCase()}-${Date.now().toString().slice(-4)}`,
-      isActive: true
-    };
-
-    setCustomProducts([newItem, ...customProducts]);
-    setNewProdName("");
-    setNewProdPrice("");
-    setNewProdStock("");
-    setShowAddModal(false);
+    addProductMutation.mutate();
   };
 
-  const toggleProductActive = (id: string) => {
-    setCustomProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, isActive: !p.isActive } : p))
-    );
-  };
-
-  const filteredProducts = customProducts.filter((p) => {
+  const filteredProducts = inventoryRows.filter((p) => {
     const matchCat = selectedCategory === "all" || p.category === selectedCategory;
     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCat && matchSearch;
@@ -327,7 +295,7 @@ export function SellerDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black text-gray-900">
-                  {customProducts.length} items
+                  {inventoryRows.length} items
                 </div>
                 <div className="mt-1 text-xs text-blue-600 font-semibold">Across 7 material categories</div>
               </div>
@@ -340,7 +308,7 @@ export function SellerDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 text-3xl font-black text-gray-900">
-                  {customProducts.filter((p) => p.stock < 20).length} items
+                  {inventoryRows.filter((p) => p.stock < 20).length} items
                 </div>
                 <div className="mt-1 text-xs text-red-600 font-semibold">Low inventory warning</div>
               </div>
@@ -360,7 +328,7 @@ export function SellerDashboard() {
 
               <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
                 {MATERIAL_CATEGORIES.filter((c) => c.id !== "all").map((cat) => {
-                  const count = customProducts.filter((p) => p.category === cat.id).length;
+                  const count = inventoryRows.filter((p) => p.category === cat.id).length;
                   const Icon = cat.icon;
                   return (
                     <div
@@ -443,6 +411,12 @@ export function SellerDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
+                  {sellerProductsQuery.isLoading ? (
+                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">Loading saved inventory...</td></tr>
+                  ) : null}
+                  {sellerProductsQuery.error ? (
+                    <tr><td colSpan={7} role="alert" className="px-6 py-12 text-center text-red-700">{sellerProductsQuery.error.message}</td></tr>
+                  ) : null}
                   {filteredProducts.map((p) => (
                     <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
                       <td className="px-6 py-4">
@@ -466,7 +440,8 @@ export function SellerDashboard() {
                       </td>
                       <td className="px-6 py-4">
                         <button
-                          onClick={() => toggleProductActive(p.id)}
+                          disabled={toggleProductMutation.isPending}
+                          onClick={() => toggleProductMutation.mutate({ id: p.id, isActive: !p.isActive })}
                           className={`rounded-full px-2.5 py-0.5 text-xs font-bold transition-all ${
                             p.isActive
                               ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
@@ -478,7 +453,8 @@ export function SellerDashboard() {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <button
-                          onClick={() => toggleProductActive(p.id)}
+                          disabled={toggleProductMutation.isPending}
+                          onClick={() => toggleProductMutation.mutate({ id: p.id, isActive: !p.isActive })}
                           className="text-xs font-bold text-orange-600 hover:text-orange-700"
                         >
                           {p.isActive ? "Disable" : "Enable"}
@@ -486,7 +462,7 @@ export function SellerDashboard() {
                       </td>
                     </tr>
                   ))}
-                  {filteredProducts.length === 0 && (
+                  {!sellerProductsQuery.isLoading && !sellerProductsQuery.error && filteredProducts.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
                         No materials found matching your filters. Click &ldquo;Add New Material&rdquo; to add your stock!
@@ -496,6 +472,7 @@ export function SellerDashboard() {
                 </tbody>
               </table>
             </div>
+            {toggleProductMutation.error ? <p role="alert" className="text-sm text-red-700">{toggleProductMutation.error.message}</p> : null}
 
             {/* Modal for adding product */}
             {showAddModal && (
@@ -561,6 +538,8 @@ export function SellerDashboard() {
                         <Input
                           required
                           type="number"
+                          min="0.01"
+                          step="0.01"
                           value={newProdPrice}
                           onChange={(e) => setNewProdPrice(e.target.value)}
                           placeholder="e.g. 395"
@@ -574,12 +553,18 @@ export function SellerDashboard() {
                       <Input
                         required
                         type="number"
+                        min="0"
+                        step="1"
                         value={newProdStock}
                         onChange={(e) => setNewProdStock(e.target.value)}
                         placeholder="e.g. 100"
                         className="mt-1"
                       />
                     </div>
+
+                    {addProductMutation.error ? (
+                      <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{addProductMutation.error.message}</p>
+                    ) : null}
 
                     <div className="flex justify-end gap-3 pt-3">
                       <Button
@@ -589,8 +574,8 @@ export function SellerDashboard() {
                       >
                         Cancel
                       </Button>
-                      <Button type="submit" className="bg-orange-500 hover:bg-orange-600">
-                        Add to Store
+                      <Button type="submit" disabled={addProductMutation.isPending} className="bg-orange-500 hover:bg-orange-600">
+                        {addProductMutation.isPending ? "Saving..." : "Add to Store"}
                       </Button>
                     </div>
                   </form>

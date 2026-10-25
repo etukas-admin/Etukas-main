@@ -256,6 +256,10 @@ export const marketplaceApi = {
   sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
   sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
+  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number }) =>
+    api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
+  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number }) =>
+    api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   sellerOrders: () => api<SellerOrder[]>("/seller/orders")
 };
 

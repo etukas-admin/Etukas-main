@@ -94,7 +94,11 @@ export function ProductsPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {products.data.map((item) => (
               <article key={item.id} className="rounded-md border border-gray-100">
-                <img className="h-40 w-full rounded-t-md object-cover" src={item.product.images[0]?.url} alt={item.product.name} />
+                <img
+                  className="h-40 w-full rounded-t-md object-cover"
+                  src={item.product.images[0]?.url ?? "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"}
+                  alt={item.product.images[0]?.altText || item.product.name}
+                />
                 <div className="p-4">
                   <h2 className="font-bold">{item.product.name}</h2>
                   <p className="mt-1 text-sm text-gray-500">{item.store.name}</p>
