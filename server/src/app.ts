@@ -1,7 +1,7 @@
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import express from "express";
-import * as helmet from "helmet";
+import { default as helmetMiddleware } from "helmet";
 import { pinoHttp } from "pino-http";
 import { env } from "./config/env.js";
 import { adminRouter } from "./modules/admin/admin.routes.js";
@@ -53,7 +53,7 @@ export function createApp() {
     .map((u) => u.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
-  app.use(helmet.default({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  app.use(helmetMiddleware({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(
     cors({
       origin: (origin, callback) => {
