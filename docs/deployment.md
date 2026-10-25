@@ -46,7 +46,7 @@ If deploying `server` as a separate Vercel project:
 In the Vercel Project Settings under **General -> Build & Development Settings**:
 - **Root Directory**: `server`
 - **Include source files outside of the Root Directory in the Build Step**: MUST be **Enabled** (to access `packages/shared` and `prisma/schema.prisma`).
-- **Framework Preset**: `Other`
+- **Framework Preset**: `Other` (the backend `vercel.json` also sets `framework` to `null` so Vercel uses the `/api` serverless function instead of auto-detecting Express).
 - **Build Command**: `npm run build` (or leave default to execute `build` in `server/package.json`)
 - **Output Directory**: Leave empty / default
 - **Install Command**: `npm install` (default)
