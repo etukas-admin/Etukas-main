@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
