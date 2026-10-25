@@ -48,7 +48,7 @@ In the Vercel Project Settings under **General -> Build & Development Settings**
 - **Include source files outside of the Root Directory in the Build Step**: MUST be **Enabled** (to access `packages/shared` and `prisma/schema.prisma`).
 - **Framework Preset**: `Other` (the backend `vercel.json` also sets `framework` to `null` so Vercel uses the `/api` serverless function instead of auto-detecting Express).
 - **Build Command**: `npm run build` (or leave default to execute `build` in `server/package.json`)
-- **Output Directory**: Leave empty / default
+- **Output Directory**: `public` (configured in `server/vercel.json`; it contains a minimal fallback page while API requests are rewritten to the serverless function).
 - **Install Command**: `npm install` (default)
 - **Node.js Version**: `20.x` (or `22.x`)
 
