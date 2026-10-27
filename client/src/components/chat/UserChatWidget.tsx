@@ -2,18 +2,32 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { marketplaceApi, type ChatMessage, type ChatSession, getStoredUser } from "../../services/api";
-import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn } from "lucide-react";
+import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn, AlertCircle } from "lucide-react";
 
 export function UserChatWidget() {
-  const user = getStoredUser();
+  const storedUser = getStoredUser();
+  const { data: currentUser } = useQuery({
+    queryKey: ["auth", "me"],
+    queryFn: marketplaceApi.me,
+    initialData: storedUser ?? undefined,
+    retry: false
+  });
+  const user = currentUser ?? storedUser;
+  const userName = user?.name ? user.name.trim().split(" ")[0] : "there";
+
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [text, setText] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isSending, setIsSending] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
   const pollInterval = isOpen && sessionId ? 4000 : undefined;
 
+  // Query existing messages
   const messages = useQuery<ChatMessage[]>({
     queryKey: ["chat", "messages", sessionId],
     queryFn: () => marketplaceApi.chatMessages(sessionId!),
@@ -21,48 +35,107 @@ export function UserChatWidget() {
     refetchInterval: pollInterval
   });
 
+  // Query user's sessions to resume an open one immediately
+  const userSessions = useQuery<ChatSession[]>({
+    queryKey: ["chat", "my-sessions"],
+    queryFn: marketplaceApi.chatMySessions,
+    enabled: Boolean(user && isOpen),
+    retry: 1
+  });
+
+  // Automatically pick existing open session or set from userSessions
+  useEffect(() => {
+    if (userSessions.data && userSessions.data.length > 0 && !sessionId) {
+      const openSession = userSessions.data.find((s) => s.status === "OPEN") ?? userSessions.data[0];
+      if (openSession) {
+        setSessionId(openSession.id);
+      }
+    }
+  }, [userSessions.data, sessionId]);
+
+  // Mutation to initialize support session
   const startSession = useMutation({
     mutationFn: () => marketplaceApi.chatStartSession("Support Chat"),
     onSuccess: (session: ChatSession) => {
       setSessionId(session.id);
       queryClient.setQueryData(["chat", "messages", session.id], session.messages ?? []);
+      queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
+    },
+    onError: (err: any) => {
+      console.warn("Could not auto-start chat session:", err);
     }
   });
 
-  const sendMessage = useMutation({
-    mutationFn: (content: string) => marketplaceApi.chatSendMessage(sessionId!, content),
-    onSuccess: (msg: ChatMessage) => {
-      queryClient.setQueryData<ChatMessage[]>(["chat", "messages", sessionId], (prev) => [...(prev ?? []), msg]);
-      setText("");
-    }
-  });
-
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages.data]);
+  }, [messages.data, isOpen]);
+
+  // Focus textarea when chat window opens
+  useEffect(() => {
+    if (isOpen && !isMinimized && user) {
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    }
+  }, [isOpen, isMinimized, user]);
 
   const handleOpen = () => {
     setIsOpen(true);
     setIsMinimized(false);
-    if (user && !sessionId) startSession.mutate();
+    setErrorMessage(null);
+    if (user && !sessionId) {
+      startSession.mutate();
+    }
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || sendMessage.isPending || !sessionId) return;
-    sendMessage.mutate(trimmed);
+    if (!trimmed || isSending) return;
+
+    setIsSending(true);
+    setErrorMessage(null);
+
+    try {
+      let activeSessionId = sessionId;
+
+      // If session not ready yet, initialize on the fly before sending
+      if (!activeSessionId) {
+        const session = await marketplaceApi.chatStartSession("Support Chat");
+        activeSessionId = session.id;
+        setSessionId(session.id);
+      }
+
+      const newMsg = await marketplaceApi.chatSendMessage(activeSessionId, trimmed);
+      queryClient.setQueryData<ChatMessage[]>(["chat", "messages", activeSessionId], (prev) => [
+        ...(prev ?? []),
+        newMsg
+      ]);
+      setText("");
+
+      // Refresh session lists
+      queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
+    } catch (err: any) {
+      console.error("Failed to send support message:", err);
+      setErrorMessage(err?.message || "Failed to send message. Please check your connection and try again.");
+    } finally {
+      setIsSending(false);
+      // Refocus input
+      textareaRef.current?.focus();
+    }
   };
 
   const hasUnread = messages.data?.some((m) => m.senderRole === "ADMIN" && !m.readAt);
 
   return (
     <div style={{ position: "fixed", bottom: "24px", right: "24px", zIndex: 9999 }}>
-      {/* Chat bubble button */}
+      {/* Floating Chat Bubble Button */}
       {(!isOpen || isMinimized) && (
         <button
           id="user-chat-open-btn"
+          type="button"
           onClick={handleOpen}
           style={{
             width: "60px",
@@ -71,41 +144,42 @@ export function UserChatWidget() {
             background: "linear-gradient(135deg, #e11d48, #be123c)",
             border: "none",
             cursor: "pointer",
-            boxShadow: "0 4px 24px rgba(225,29,72,0.45)",
+            boxShadow: "0 6px 28px rgba(225,29,72,0.45)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
             transition: "transform 0.2s, box-shadow 0.2s"
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.1)"; }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
-          title="Chat with support"
+          title="Chat with Support Team"
         >
-          <MessageCircle size={26} color="#fff" />
+          <MessageCircle size={27} color="#fff" />
           {hasUnread && (
             <span style={{
               position: "absolute", top: "2px", right: "2px",
-              width: "14px", height: "14px", borderRadius: "50%",
-              background: "#22c55e", border: "2px solid white",
+              width: "15px", height: "15px", borderRadius: "50%",
+              background: "#22c55e", border: "2.5px solid white",
               animation: "pulse 2s infinite"
             }} />
           )}
         </button>
       )}
 
-      {/* Chat window */}
+      {/* Chat Window */}
       {isOpen && !isMinimized && (
         <div style={{
           width: "360px",
-          maxHeight: "520px",
+          maxHeight: "540px",
+          height: "500px",
           borderRadius: "20px",
-          boxShadow: "0 8px 48px rgba(0,0,0,0.2)",
+          boxShadow: "0 12px 50px rgba(0,0,0,0.22)",
           background: "#fff",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          border: "1px solid rgba(225,29,72,0.12)"
+          border: "1px solid rgba(225,29,72,0.15)"
         }}>
           {/* Header */}
           <div style={{
@@ -113,7 +187,8 @@ export function UserChatWidget() {
             padding: "16px 18px",
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between"
+            justifyContent: "space-between",
+            flexShrink: 0
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <div style={{
@@ -124,29 +199,42 @@ export function UserChatWidget() {
                 <Headphones size={20} color="#fff" />
               </div>
               <div>
-                <p style={{ color: "#fff", fontWeight: 700, fontSize: "15px", margin: 0 }}>Etukas Support</p>
-                <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "12px", margin: 0 }}>We typically reply in minutes</p>
+                <p style={{ color: "#fff", fontWeight: 700, fontSize: "15px", margin: 0 }}>Etukas Support Team</p>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
+                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4ade80", display: "inline-block" }} />
+                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", margin: 0 }}>Support Team is active</p>
+                </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: "4px" }}>
-              <button onClick={() => setIsMinimized(true)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}>
+              <button
+                type="button"
+                onClick={() => setIsMinimized(true)}
+                style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}
+                title="Minimize"
+              >
                 <ChevronDown size={16} />
               </button>
-              <button onClick={() => setIsOpen(false)} style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}
+                title="Close"
+              >
                 <X size={16} />
               </button>
             </div>
           </div>
 
-          {/* Content */}
+          {/* Content Area */}
           {!user ? (
-            <div style={{ padding: "32px 20px", textAlign: "center", background: "#f8f9fb" }}>
-              <div style={{ width: "56px", height: "56px", borderRadius: "50%", background: "#ffe4e6", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                <Headphones size={28} color="#e11d48" />
+            <div style={{ padding: "36px 20px", textAlign: "center", background: "#f8f9fb", flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+              <div style={{ width: "58px", height: "58px", borderRadius: "50%", background: "#ffe4e6", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px" }}>
+                <Headphones size={30} color="#e11d48" />
               </div>
-              <h3 style={{ fontSize: "16px", fontWeight: 700, margin: "0 0 8px", color: "#111827" }}>Direct Support Chat</h3>
-              <p style={{ fontSize: "13px", color: "#6b7280", margin: "0 0 20px", lineHeight: "1.5" }}>
-                Sign in to connect directly with Etukas Administrators & Support team to resolve your doubts, ask about products, orders, or partner onboarding.
+              <h3 style={{ fontSize: "17px", fontWeight: 700, margin: "0 0 8px", color: "#111827" }}>Support Team Chat</h3>
+              <p style={{ fontSize: "13px", color: "#6b7280", margin: "0 0 20px", lineHeight: "1.5", maxWidth: "280px" }}>
+                Sign in to connect directly with the Etukas Support Team to resolve your doubts, ask about products, orders, or partner onboarding.
               </p>
               <Link
                 to="/login"
@@ -157,6 +245,7 @@ export function UserChatWidget() {
                   justifyContent: "center",
                   gap: "8px",
                   width: "100%",
+                  maxWidth: "260px",
                   padding: "12px",
                   borderRadius: "12px",
                   background: "linear-gradient(135deg, #e11d48, #be123c)",
@@ -172,98 +261,156 @@ export function UserChatWidget() {
             </div>
           ) : (
             <>
-              {/* Messages */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "16px", minHeight: "280px", maxHeight: "320px", background: "#f8f9fb" }}>
-                {startSession.isPending && (
-                  <div style={{ textAlign: "center", color: "#9ca3af", fontSize: "13px", paddingTop: "40px" }}>
-                    <Loader2 size={24} style={{ animation: "spin 1s linear infinite", margin: "0 auto 8px" }} />
-                    <p>Connecting to support...</p>
+              {/* Message Stream */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "16px", background: "#f8f9fb" }}>
+                {/* Automatic Welcome Hi message from Support Team with user name */}
+                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "14px" }}>
+                  <div style={{
+                    width: "30px", height: "30px", borderRadius: "50%",
+                    background: "linear-gradient(135deg,#e11d48,#be123c)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    marginRight: "8px", flexShrink: 0, fontSize: "11px", color: "#fff", fontWeight: 700
+                  }}>
+                    <Headphones size={15} color="#fff" />
                   </div>
-                )}
-                {messages.data?.length === 0 && !startSession.isPending && (
-                  <div style={{ textAlign: "center", padding: "32px 16px" }}>
-                    <div style={{ width: "52px", height: "52px", borderRadius: "50%", background: "linear-gradient(135deg,#fce4ec,#fce7f3)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
-                      <MessageCircle size={24} color="#e11d48" />
+                  <div style={{
+                    maxWidth: "82%",
+                    padding: "12px 14px",
+                    borderRadius: "18px 18px 18px 4px",
+                    background: "#fff",
+                    color: "#1f2937",
+                    fontSize: "13.5px",
+                    lineHeight: "1.5",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                    border: "1px solid rgba(225,29,72,0.12)"
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
+                      <span style={{ fontWeight: 700, color: "#be123c", fontSize: "11.5px" }}>Support Team</span>
+                      <span style={{ fontSize: "10px", color: "#9ca3af" }}>· Just now</span>
                     </div>
-                    <p style={{ color: "#374151", fontWeight: 600, margin: "0 0 4px" }}>How can we help?</p>
-                    <p style={{ color: "#9ca3af", fontSize: "13px", margin: 0 }}>Send a message to get started. Our team will respond shortly.</p>
+                    Hi {userName}! 👋 Welcome to Etukas Support. How can our support team help you today? Feel free to ask any doubts regarding products, orders, or partner onboarding.
                   </div>
-                )}
-                {messages.data?.map((msg) => (
-                  <div
-                    key={msg.id}
-                    style={{
-                      display: "flex",
-                      justifyContent: msg.senderRole === "USER" ? "flex-end" : "flex-start",
-                      marginBottom: "12px"
-                    }}
-                  >
-                    {msg.senderRole === "ADMIN" && (
+                </div>
+
+                {/* Conversation messages */}
+                {messages.data?.map((msg) => {
+                  const isUser = msg.senderRole === "USER";
+                  return (
+                    <div
+                      key={msg.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: isUser ? "flex-end" : "flex-start",
+                        marginBottom: "12px"
+                      }}
+                    >
+                      {!isUser && (
+                        <div style={{
+                          width: "30px", height: "30px", borderRadius: "50%",
+                          background: "linear-gradient(135deg,#e11d48,#be123c)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          marginRight: "8px", flexShrink: 0, fontSize: "11px", color: "#fff", fontWeight: 700
+                        }}>
+                          <Headphones size={15} color="#fff" />
+                        </div>
+                      )}
                       <div style={{
-                        width: "28px", height: "28px", borderRadius: "50%",
-                        background: "linear-gradient(135deg,#e11d48,#be123c)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        marginRight: "8px", flexShrink: 0, fontSize: "11px", color: "#fff", fontWeight: 700
+                        maxWidth: "76%",
+                        padding: "10px 14px",
+                        borderRadius: isUser ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+                        background: isUser
+                          ? "linear-gradient(135deg,#e11d48,#be123c)"
+                          : "#fff",
+                        color: isUser ? "#fff" : "#1f2937",
+                        fontSize: "14px",
+                        lineHeight: "1.5",
+                        boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+                        border: isUser ? "none" : "1px solid #f1f5f9"
                       }}>
-                        E
-                      </div>
-                    )}
-                    <div style={{
-                      maxWidth: "72%",
-                      padding: "10px 14px",
-                      borderRadius: msg.senderRole === "USER" ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-                      background: msg.senderRole === "USER"
-                        ? "linear-gradient(135deg,#e11d48,#be123c)"
-                        : "#fff",
-                      color: msg.senderRole === "USER" ? "#fff" : "#1f2937",
-                      fontSize: "14px",
-                      lineHeight: "1.5",
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.08)"
-                    }}>
-                      {msg.content}
-                      <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.65, textAlign: "right" }}>
-                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {!isUser && (
+                          <div style={{ fontSize: "11px", fontWeight: 700, color: "#be123c", marginBottom: "3px" }}>
+                            Support Team
+                          </div>
+                        )}
+                        <div>{msg.content}</div>
+                        <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.65, textAlign: "right" }}>
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </div>
                       </div>
                     </div>
+                  );
+                })}
+
+                {errorMessage && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", background: "#fef2f2", color: "#991b1b", borderRadius: "8px", fontSize: "12px", margin: "8px 0" }}>
+                    <AlertCircle size={15} />
+                    <span>{errorMessage}</span>
                   </div>
-                ))}
+                )}
+
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
-              <div style={{ padding: "12px 14px", borderTop: "1px solid #f1f5f9", background: "#fff" }}>
+              {/* Input Area - NEVER DISABLED for typing */}
+              <div style={{ padding: "12px 14px", borderTop: "1px solid #f1f5f9", background: "#fff", flexShrink: 0 }}>
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                   <textarea
+                    ref={textareaRef}
                     id="user-chat-input"
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="Type your message..."
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Type your message to support team..."
                     rows={2}
-                    disabled={!sessionId || sendMessage.isPending}
                     style={{
-                      flex: 1, resize: "none", border: "1.5px solid #e5e7eb",
-                      borderRadius: "12px", padding: "10px 12px", fontSize: "14px",
-                      outline: "none", fontFamily: "inherit", lineHeight: "1.4",
-                      transition: "border-color 0.2s"
+                      flex: 1,
+                      resize: "none",
+                      border: "1.5px solid #e5e7eb",
+                      borderRadius: "12px",
+                      padding: "10px 12px",
+                      fontSize: "14px",
+                      outline: "none",
+                      fontFamily: "inherit",
+                      lineHeight: "1.4",
+                      transition: "border-color 0.2s",
+                      background: "#fff",
+                      color: "#111827",
+                      pointerEvents: "auto"
                     }}
                     onFocus={(e) => { e.currentTarget.style.borderColor = "#e11d48"; }}
                     onBlur={(e) => { e.currentTarget.style.borderColor = "#e5e7eb"; }}
                   />
                   <button
                     id="user-chat-send-btn"
+                    type="button"
                     onClick={handleSend}
-                    disabled={!text.trim() || sendMessage.isPending || !sessionId}
+                    disabled={!text.trim() || isSending}
                     style={{
-                      width: "42px", height: "42px", borderRadius: "12px",
+                      width: "44px",
+                      height: "44px",
+                      borderRadius: "12px",
                       background: "linear-gradient(135deg,#e11d48,#be123c)",
-                      border: "none", cursor: "pointer",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      flexShrink: 0, opacity: (!text.trim() || sendMessage.isPending || !sessionId) ? 0.5 : 1,
+                      border: "none",
+                      cursor: !text.trim() || isSending ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      opacity: (!text.trim() || isSending) ? 0.5 : 1,
                       transition: "opacity 0.2s"
                     }}
+                    title="Send message"
                   >
-                    {sendMessage.isPending ? <Loader2 size={18} color="#fff" style={{ animation: "spin 1s linear infinite" }} /> : <Send size={18} color="#fff" />}
+                    {isSending ? (
+                      <Loader2 size={18} color="#fff" style={{ animation: "spin 1s linear infinite" }} />
+                    ) : (
+                      <Send size={18} color="#fff" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -271,6 +418,7 @@ export function UserChatWidget() {
           )}
         </div>
       )}
+
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
