@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, ImagePlus, LogOut, Trash2 } from "lucide-react";
+import { ExternalLink, Handshake, ImagePlus, LayoutDashboard, LogOut, MessageSquareText, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type SellerEnquiry, type User } from "../../services/api";
 
 const emptyBanner: HomepageBannerInput = {
@@ -149,6 +149,7 @@ export function AdminDashboard() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [partnerFilter, setPartnerFilter] = useState("");
   const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("dashboard");
   const me = useQuery({ queryKey: ["admin", "me"], queryFn: marketplaceApi.me, enabled: Boolean(sessionUser), retry: false });
   const sellers = useQuery({ queryKey: ["admin", "sellers"], queryFn: marketplaceApi.adminSellers, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const banners = useQuery({ queryKey: ["admin", "banners"], queryFn: marketplaceApi.adminBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
@@ -245,34 +246,112 @@ export function AdminDashboard() {
       .toLowerCase()
       .includes(searchTerm)
   );
+  const approvedPartners = sellers.data?.filter((seller) => seller.verificationStatus === "APPROVED").length ?? 0;
+  const pendingPartners = sellers.data?.filter((seller) => seller.verificationStatus === "PENDING").length ?? 0;
+  const navigation = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "partners", label: "Partners", icon: Handshake },
+    { id: "banners", label: "Homepage banners", icon: PanelsTopLeft },
+    { id: "enquiries", label: "Seller enquiries", icon: MessageSquareText }
+  ];
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-extrabold">Etukas Admin Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-600">Signed in as {me.data.name} · {me.data.email}</p>
+    <main className="min-h-screen bg-[#f7f7f8] text-etukas-black md:flex">
+      <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white md:flex md:flex-col">
+        <a href="#dashboard" onClick={() => setActiveSection("dashboard")} className="flex h-20 items-center gap-3 border-b border-gray-100 px-6">
+          <img src="/etukas-logo.png" alt="" className="h-9 w-9 object-contain" />
+          <span className="text-xl font-extrabold tracking-tight">Etukas <span className="text-etukas-red">Admin</span></span>
+        </a>
+        <nav aria-label="Admin navigation" className="space-y-1 px-3 py-5">
+          {navigation.map(({ id, label, icon: Icon }) => (
+            <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${activeSection === id ? "bg-etukas-red text-white shadow-sm" : "text-gray-600 hover:bg-etukas-pink hover:text-etukas-red"}`}>
+              <Icon size={18} /> {label}
+            </a>
+          ))}
+        </nav>
+        <div className="mt-auto border-t border-gray-100 p-4">
+          <p className="truncate text-sm font-semibold">{me.data.name}</p>
+          <p className="truncate text-xs text-gray-500">{me.data.email}</p>
+          <button onClick={() => { void marketplaceApi.logout(); setSessionUser(null); }} className="mt-4 inline-flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-gray-600 hover:bg-etukas-pink hover:text-etukas-red">
+            <LogOut size={16} /> Sign out
+          </button>
         </div>
-        <button
-          onClick={() => { void marketplaceApi.logout(); setSessionUser(null); }}
-          className="inline-flex items-center gap-2 rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold"
-        >
-          <LogOut size={16} /> Sign out
-        </button>
-      </header>
+      </aside>
+
+      <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur md:px-8">
+          <div className="flex items-center justify-between gap-3">
+            <a href="#dashboard" onClick={() => setActiveSection("dashboard")} className="flex min-w-0 items-center gap-2 md:hidden">
+              <img src="/etukas-logo.png" alt="" className="h-8 w-8 object-contain" />
+              <span className="truncate font-extrabold">Etukas <span className="text-etukas-red">Admin</span></span>
+            </a>
+            <h1 className="hidden text-xl font-extrabold md:block">Administration</h1>
+            <p className="hidden truncate text-sm text-gray-500 lg:block">Signed in as {me.data.name} · {me.data.email}</p>
+            <button onClick={() => { void marketplaceApi.logout(); setSessionUser(null); }} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-etukas-red hover:text-etukas-red md:hidden">
+              <LogOut size={16} /><span className="hidden min-[380px]:inline">Sign out</span>
+            </button>
+          </div>
+          <nav aria-label="Admin navigation" className="no-scrollbar -mx-1 mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
+            {navigation.map(({ id, label, icon: Icon }) => (
+              <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${activeSection === id ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
+                <Icon size={15} />{label}
+              </a>
+            ))}
+          </nav>
+        </header>
+
+        <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 md:px-8 md:py-8">
+          <section id="dashboard" className="scroll-mt-32">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-[0.16em] text-etukas-red">Overview</p>
+                <h2 className="mt-1 text-2xl font-extrabold sm:text-3xl">Welcome back, {me.data.name.split(" ")[0]}</h2>
+                <p className="mt-1 text-sm text-gray-600">Manage your Etukas partner network and homepage content.</p>
+              </div>
+              <a href="#partners" onClick={() => setActiveSection("partners")} className="inline-flex items-center gap-2 rounded-lg bg-etukas-red px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-800">
+                <Handshake size={17} /> Manage partners
+              </a>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+              {[
+                { label: "Total partners", value: sellers.data?.length ?? 0, detail: "Registered businesses", icon: Handshake },
+                { label: "Approved", value: approvedPartners, detail: "Active in the network", icon: LayoutDashboard },
+                { label: "Awaiting review", value: pendingPartners, detail: "Partner applications", icon: Search },
+                { label: "Seller enquiries", value: enquiries.data?.length ?? 0, detail: "Pre-registration leads", icon: MessageSquareText }
+              ].map(({ label, value, detail, icon: Icon }) => (
+                <article key={label} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-gray-500 sm:text-sm">{label}</p>
+                    <span className="rounded-lg bg-etukas-pink p-2 text-etukas-red"><Icon size={17} /></span>
+                  </div>
+                  <p className="mt-3 text-2xl font-extrabold sm:text-3xl">{value}</p>
+                  <p className="mt-1 text-xs text-gray-500">{detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
 
       {sellerStatus.error || saveBanner.error || deleteBanner.error ? (
-        <p role="alert" className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-800">
+        <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
           {(sellerStatus.error || saveBanner.error || deleteBanner.error)?.message}
         </p>
       ) : null}
 
-      <section className="mt-8">
-        <h2 className="text-xl font-extrabold">Partners and locations</h2>
-        <label className="mt-3 block max-w-lg text-sm font-semibold">
-          Filter by partner, city, state, or postal code
-          <input value={partnerFilter} onChange={(event) => setPartnerFilter(event.target.value)} className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-normal" />
-        </label>
+      <section id="partners" className="mt-8 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Partner network</p>
+            <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Partners and locations</h2>
+            <p className="mt-1 text-sm text-gray-600">Review applications, manage partner status, and view store locations.</p>
+          </div>
+          <label className="w-full text-sm font-semibold sm:max-w-xs">
+            <span className="sr-only">Filter partners</span>
+            <span className="relative block">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input aria-label="Filter by partner, city, state, or postal code" placeholder="Search partners or locations" value={partnerFilter} onChange={(event) => setPartnerFilter(event.target.value)} className="w-full rounded-lg border border-gray-300 py-2.5 pl-9 pr-3 font-normal outline-none transition focus:border-etukas-red focus:ring-2 focus:ring-etukas-pink" />
+            </span>
+          </label>
+        </div>
         {sellers.isLoading ? <p className="mt-3 text-sm text-gray-500">Loading partner applications...</p> : null}
         {sellers.error ? <p role="alert" className="mt-3 text-sm text-red-700">{sellers.error.message}</p> : null}
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -283,11 +362,12 @@ export function AdminDashboard() {
         {sellers.data?.length === 0 || filteredSellers?.length === 0 ? <p className="mt-3 text-sm text-gray-500">No partners match this filter.</p> : null}
       </section>
 
-      <section className="mt-10">
-        <h2 className="text-xl font-extrabold">Homepage banners</h2>
+      <section id="banners" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Content</p>
+        <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Homepage banners</h2>
         <p className="mt-1 text-sm text-gray-600">Upload JPEG, PNG, or WebP images up to 5 MB. Active banners appear on the homepage.</p>
         <form
-          className="mt-4 grid gap-3 rounded-lg border border-gray-200 p-4 md:grid-cols-2"
+          className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-2"
           onSubmit={(event) => { event.preventDefault(); saveBanner.mutate(); }}
         >
           <label className="text-sm font-semibold">Eyebrow
@@ -344,8 +424,9 @@ export function AdminDashboard() {
         </div>
       </section>
 
-      <section className="mt-10">
-        <h2 className="text-xl font-extrabold">Seller enquiries</h2>
+      <section id="enquiries" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Incoming leads</p>
+        <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Seller enquiries</h2>
         <p className="mt-1 text-sm text-gray-600">Enquiries submitted before partner registration.</p>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
           <div className="space-y-2">
@@ -360,12 +441,14 @@ export function AdminDashboard() {
             ))}
             {enquiries.data?.length === 0 ? <p className="text-sm text-gray-500">No seller enquiries yet.</p> : null}
           </div>
-          <aside className="h-fit rounded-md border border-gray-200 p-4">
+          <aside className="h-fit rounded-lg border border-gray-200 bg-gray-50 p-4">
             <h3 className="font-bold">Enquiry detail</h3>
             {selectedEnquiry.data ? <EnquiryDetails enquiry={selectedEnquiry.data} /> : <p className="mt-2 text-sm text-gray-500">Select an enquiry to review submitted contact and location details.</p>}
           </aside>
         </div>
       </section>
+        </div>
+      </div>
     </main>
   );
 }
