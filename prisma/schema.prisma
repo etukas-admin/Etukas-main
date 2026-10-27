@@ -84,6 +84,8 @@ model User {
   wishlist             Wishlist?
   notifications        Notification[]
   auditLogs            AuditLog[]     @relation("ActorAuditLogs")
+  chatSessions         ChatSession[]  @relation("UserChatSessions")
+  sentMessages         ChatMessage[]  @relation("SentChatMessages")
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 }
@@ -398,6 +400,57 @@ model Notification {
   body      String
   readAt    DateTime?
   createdAt DateTime @default(now())
+}
+
+enum ChatSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum AdminNotificationType {
+  CHAT_MESSAGE
+  NEW_PARTNER
+  PARTNER_ENQUIRY
+  SYSTEM
+}
+
+model ChatSession {
+  id        String            @id @default(cuid())
+  userId    String
+  user      User              @relation("UserChatSessions", fields: [userId], references: [id], onDelete: Cascade)
+  subject   String            @default("Support Chat")
+  status    ChatSessionStatus @default(OPEN)
+  messages  ChatMessage[]
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  @@index([userId, status])
+}
+
+model ChatMessage {
+  id            String      @id @default(cuid())
+  sessionId     String
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  senderId      String
+  sender        User        @relation("SentChatMessages", fields: [senderId], references: [id])
+  senderRole    String
+  content       String
+  readAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+model AdminNotification {
+  id        String                @id @default(cuid())
+  type      AdminNotificationType
+  title     String
+  body      String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime              @default(now())
+
+  @@index([readAt, createdAt])
 }
 
 model HomepageBanner {

@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { sellerRegStep1Schema, sellerRegStep2Schema } from "@etukas/shared";
 import { prisma } from "../../config/prisma.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
+import { AdminNotificationType } from "@prisma/client";
 
 export const sellerRegistrationRouter = Router();
 
@@ -212,6 +213,19 @@ sellerRegistrationRouter.post("/step2", async (req, res, next) => {
 
       return { profile: updatedProfile, store, user };
     });
+
+    try {
+      await prisma.adminNotification.create({
+        data: {
+          type: AdminNotificationType.NEW_PARTNER,
+          title: "New Partner Registered",
+          body: `${result.profile.businessName} (${result.store.name}) registered from ${result.store.city}`,
+          metadata: { sellerId: result.profile.sellerId, profileId: result.profile.id, businessName: result.profile.businessName }
+        }
+      });
+    } catch {
+      // Non-blocking notification
+    }
 
     return sendOk(res, {
       sellerId: result.profile.sellerId,

@@ -260,7 +260,43 @@ export const marketplaceApi = {
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
   sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
-  sellerOrders: () => api<SellerOrder[]>("/seller/orders")
+  sellerOrders: () => api<SellerOrder[]>("/seller/orders"),
+
+  // ─── Chat (User) ───────────────────────────────────────────────────────────
+  chatStartSession: (subject?: string) =>
+    api<ChatSession>("/chat/sessions", { method: "POST", body: JSON.stringify({ subject }) }),
+  chatMySessions: () => api<ChatSession[]>("/chat/sessions"),
+  chatMessages: (sessionId: string) =>
+    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
+  chatSendMessage: (sessionId: string, content: string) =>
+    api<ChatMessage>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content })
+    }),
+
+  // ─── Admin chat ────────────────────────────────────────────────────────────
+  adminChatSessions: () => api<ChatSession[]>("/admin/chat/sessions"),
+  adminChatMessages: (sessionId: string) =>
+    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
+  adminChatSendMessage: (sessionId: string, content: string) =>
+    api<ChatMessage>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content })
+    }),
+  adminCloseSession: (sessionId: string) =>
+    api<ChatSession>(`/admin/chat/sessions/${encodeURIComponent(sessionId)}/close`, { method: "PATCH" }),
+  adminMarkSessionRead: (sessionId: string) =>
+    api<{ success: boolean }>(`/admin/chat/sessions/${encodeURIComponent(sessionId)}/read`, { method: "PATCH" }),
+
+  // ─── Admin notifications ───────────────────────────────────────────────────
+  adminNotifications: (unreadOnly?: boolean) =>
+    api<AdminNotification[]>(`/admin/chat/notifications${unreadOnly ? "?unread=true" : ""}`),
+  adminNotificationCount: () => api<{ count: number }>("/admin/chat/notifications/count"),
+  adminMarkNotificationsRead: (ids?: string[]) =>
+    api<{ success: boolean }>("/admin/chat/notifications/read", {
+      method: "PATCH",
+      body: JSON.stringify({ ids })
+    })
 };
 
 export type User = {
@@ -443,4 +479,36 @@ export type SellerOrder = {
   createdAt: string;
   customer: { name: string; mobile: string };
   items: Array<{ productName: string; quantity: number; priceMinorSnapshot: number }>;
+};
+
+export type ChatMessage = {
+  id: string;
+  sessionId: string;
+  senderId: string;
+  senderRole: "USER" | "ADMIN";
+  content: string;
+  readAt?: string | null;
+  createdAt: string;
+  sender: { id: string; name: string; roles: string[] };
+};
+
+export type ChatSession = {
+  id: string;
+  userId: string;
+  subject: string;
+  status: "OPEN" | "CLOSED";
+  createdAt: string;
+  updatedAt: string;
+  messages?: ChatMessage[];
+  user?: { id: string; name: string; email: string; roles: string[] };
+};
+
+export type AdminNotification = {
+  id: string;
+  type: "CHAT_MESSAGE" | "NEW_PARTNER" | "PARTNER_ENQUIRY" | "SYSTEM";
+  title: string;
+  body: string;
+  metadata?: Record<string, unknown> | null;
+  readAt?: string | null;
+  createdAt: string;
 };

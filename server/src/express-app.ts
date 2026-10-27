@@ -29,6 +29,7 @@ import { sellerEnquiriesRouter } from "./modules/seller-enquiries/seller-enquiri
 import { sellerRegistrationRouter } from "./modules/seller-registration/seller-registration.routes.js";
 import { sellerRouter } from "./modules/seller-profiles/seller.routes.js";
 import { storesRouter } from "./modules/stores/stores.routes.js";
+import { chatRouter, adminChatRouter } from "./modules/chat/chat.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { requireCsrf } from "./middleware/security.js";
@@ -153,6 +154,8 @@ export function createApp() {
   app.use("/api/v1/seller", sellerRouter);
   app.use("/api/v1/admin", adminRouter);
   app.use("/api/v1/banners", bannersRouter);
+  app.use("/api/v1/chat", chatRouter);
+  app.use("/api/v1/admin/chat", adminChatRouter);
   app.get("/api/v1/search", (req, res) => {
     res.redirect(307, `/api/v1/products?q=${encodeURIComponent(String(req.query.q ?? ""))}`);
   });

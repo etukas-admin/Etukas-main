@@ -2,6 +2,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { PartnerHeader } from "./PartnerHeader";
 import { BottomNav } from "./BottomNav";
+import { UserChatWidget } from "../chat/UserChatWidget";
 
 export function Layout() {
   const location = useLocation();
@@ -90,6 +91,9 @@ export function Layout() {
 
       {/* Customer bottom navigation is shown only on customer pages */}
       {isPartnerPage ? null : <BottomNav />}
+
+      {/* Floating Chat Widget for direct User/Partner with Admin interaction */}
+      <UserChatWidget />
     </div>
   );
 }

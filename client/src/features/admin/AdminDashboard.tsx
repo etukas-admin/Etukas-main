@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Handshake, ImagePlus, LayoutDashboard, LogOut, MessageSquareText, PanelsTopLeft, Search, Trash2 } from "lucide-react";
+import { ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MessageSquareText, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type SellerEnquiry, type User } from "../../services/api";
+import { AdminNotificationsDropdown } from "./AdminNotificationsDropdown";
+import { AdminLiveChat } from "./AdminLiveChat";
 
 const emptyBanner: HomepageBannerInput = {
   eyebrow: "",
@@ -150,15 +152,42 @@ export function AdminDashboard() {
   const [partnerFilter, setPartnerFilter] = useState("");
   const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [enquiryTab, setEnquiryTab] = useState<"chat" | "leads">("chat");
+  const [chatInitialSessionId, setChatInitialSessionId] = useState<string | null>(null);
+
   const me = useQuery({ queryKey: ["admin", "me"], queryFn: marketplaceApi.me, enabled: Boolean(sessionUser), retry: false });
   const sellers = useQuery({ queryKey: ["admin", "sellers"], queryFn: marketplaceApi.adminSellers, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const banners = useQuery({ queryKey: ["admin", "banners"], queryFn: marketplaceApi.adminBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const enquiries = useQuery({ queryKey: ["admin", "seller-enquiries"], queryFn: marketplaceApi.adminSellerEnquiries, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
+  const chatSessions = useQuery({
+    queryKey: ["admin", "chat", "sessions"],
+    queryFn: marketplaceApi.adminChatSessions,
+    enabled: Boolean(me.data?.roles.includes("ADMIN")),
+    refetchInterval: 5000
+  });
   const selectedEnquiry = useQuery({
     queryKey: ["admin", "seller-enquiries", selectedEnquiryId],
     queryFn: () => marketplaceApi.adminSellerEnquiry(selectedEnquiryId!),
     enabled: Boolean(me.data?.roles.includes("ADMIN") && selectedEnquiryId)
   });
+
+  const handleNotificationNavigate = (section: string, detailId?: string) => {
+    setActiveSection(section);
+    if (section === "enquiries") {
+      if (detailId) {
+        const isEnquiry = enquiries.data?.some((e) => e.id === detailId);
+        if (isEnquiry) {
+          setEnquiryTab("leads");
+          setSelectedEnquiryId(detailId);
+        } else {
+          setEnquiryTab("chat");
+          setChatInitialSessionId(detailId);
+        }
+      } else {
+        setEnquiryTab("chat");
+      }
+    }
+  };
 
   useEffect(() => {
     if (me.isError) {
@@ -248,11 +277,12 @@ export function AdminDashboard() {
   );
   const approvedPartners = sellers.data?.filter((seller) => seller.verificationStatus === "APPROVED").length ?? 0;
   const pendingPartners = sellers.data?.filter((seller) => seller.verificationStatus === "PENDING").length ?? 0;
+  const openChatCount = chatSessions.data?.filter((s) => s.status === "OPEN").length ?? 0;
   const navigation = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "partners", label: "Partners", icon: Handshake },
     { id: "banners", label: "Homepage banners", icon: PanelsTopLeft },
-    { id: "enquiries", label: "Seller enquiries", icon: MessageSquareText }
+    { id: "enquiries", label: "Enquiries & Live Chat", icon: MessageSquareText, badge: openChatCount }
   ];
 
   return (
@@ -263,9 +293,16 @@ export function AdminDashboard() {
           <span className="text-xl font-extrabold tracking-tight">Etukas <span className="text-etukas-red">Admin</span></span>
         </a>
         <nav aria-label="Admin navigation" className="space-y-1 px-3 py-5">
-          {navigation.map(({ id, label, icon: Icon }) => (
-            <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${activeSection === id ? "bg-etukas-red text-white shadow-sm" : "text-gray-600 hover:bg-etukas-pink hover:text-etukas-red"}`}>
-              <Icon size={18} /> {label}
+          {navigation.map(({ id, label, icon: Icon, badge }) => (
+            <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`flex items-center justify-between rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${activeSection === id ? "bg-etukas-red text-white shadow-sm" : "text-gray-600 hover:bg-etukas-pink hover:text-etukas-red"}`}>
+              <span className="flex items-center gap-3">
+                <Icon size={18} /> {label}
+              </span>
+              {badge !== undefined && badge > 0 ? (
+                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${activeSection === id ? "bg-white text-etukas-red" : "bg-rose-100 text-rose-700"}`}>
+                  {badge}
+                </span>
+              ) : null}
             </a>
           ))}
         </nav>
@@ -286,15 +323,28 @@ export function AdminDashboard() {
               <span className="truncate font-extrabold">Etukas <span className="text-etukas-red">Admin</span></span>
             </a>
             <h1 className="hidden text-xl font-extrabold md:block">Administration</h1>
-            <p className="hidden truncate text-sm text-gray-500 lg:block">Signed in as {me.data.name} · {me.data.email}</p>
-            <button onClick={() => { void marketplaceApi.logout(); setSessionUser(null); }} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-etukas-red hover:text-etukas-red md:hidden">
-              <LogOut size={16} /><span className="hidden min-[380px]:inline">Sign out</span>
-            </button>
+
+            {/* Top Right: User info, Notification bell icon, and Sign out */}
+            <div className="flex items-center gap-3">
+              <p className="hidden truncate text-sm text-gray-500 lg:block">Signed in as {me.data.name} · {me.data.email}</p>
+
+              {/* Top right notification icon for live chats, partner doubts, new partners */}
+              <AdminNotificationsDropdown onNavigate={handleNotificationNavigate} />
+
+              <button onClick={() => { void marketplaceApi.logout(); setSessionUser(null); }} className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700 hover:border-etukas-red hover:text-etukas-red">
+                <LogOut size={16} /><span className="hidden sm:inline">Sign out</span>
+              </button>
+            </div>
           </div>
           <nav aria-label="Admin navigation" className="no-scrollbar -mx-1 mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
-            {navigation.map(({ id, label, icon: Icon }) => (
+            {navigation.map(({ id, label, icon: Icon, badge }) => (
               <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${activeSection === id ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
                 <Icon size={15} />{label}
+                {badge !== undefined && badge > 0 ? (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeSection === id ? "bg-white text-etukas-red" : "bg-rose-600 text-white"}`}>
+                    {badge}
+                  </span>
+                ) : null}
               </a>
             ))}
           </nav>
@@ -315,7 +365,7 @@ export function AdminDashboard() {
             <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
               {[
                 { label: "Total partners", value: sellers.data?.length ?? 0, detail: "Registered businesses", icon: Handshake },
-                { label: "Approved", value: approvedPartners, detail: "Active in the network", icon: LayoutDashboard },
+                { label: "Live support chats", value: openChatCount, detail: "Customer & partner chats", icon: Headphones },
                 { label: "Awaiting review", value: pendingPartners, detail: "Partner applications", icon: Search },
                 { label: "Seller enquiries", value: enquiries.data?.length ?? 0, detail: "Pre-registration leads", icon: MessageSquareText }
               ].map(({ label, value, detail, icon: Icon }) => (
@@ -425,27 +475,74 @@ export function AdminDashboard() {
       </section>
 
       <section id="enquiries" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Incoming leads</p>
-        <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Seller enquiries</h2>
-        <p className="mt-1 text-sm text-gray-600">Enquiries submitted before partner registration.</p>
-        <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
-          <div className="space-y-2">
-            {enquiries.isLoading ? <p className="text-sm text-gray-500">Loading enquiries...</p> : null}
-            {enquiries.error ? <p role="alert" className="text-sm text-red-700">{enquiries.error.message}</p> : null}
-            {enquiries.data?.map((enquiry) => (
-              <button key={enquiry.id} type="button" onClick={() => setSelectedEnquiryId(enquiry.id)} className={`block w-full rounded-md border p-3 text-left ${selectedEnquiryId === enquiry.id ? "border-etukas-red bg-etukas-pink" : "border-gray-200 bg-white"}`}>
-                <span className="font-bold">{enquiry.businessName}</span>
-                <span className="ml-2 rounded bg-gray-100 px-2 py-1 text-xs font-semibold">{enquiry.status}</span>
-                <p className="mt-1 text-sm text-gray-600">{enquiry.contactPerson} · {enquiry.city}, {enquiry.state}</p>
-              </button>
-            ))}
-            {enquiries.data?.length === 0 ? <p className="text-sm text-gray-500">No seller enquiries yet.</p> : null}
+        <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Inquiries & Communication</p>
+            <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Enquiries & Live Support</h2>
+            <p className="mt-1 text-sm text-gray-600">Resolve customer & partner doubts in real-time or review submitted seller leads.</p>
           </div>
-          <aside className="h-fit rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h3 className="font-bold">Enquiry detail</h3>
-            {selectedEnquiry.data ? <EnquiryDetails enquiry={selectedEnquiry.data} /> : <p className="mt-2 text-sm text-gray-500">Select an enquiry to review submitted contact and location details.</p>}
-          </aside>
+
+          {/* Sub-tabs: Live Support Chats vs Seller Enquiries */}
+          <div className="flex gap-2 rounded-xl bg-gray-100 p-1">
+            <button
+              type="button"
+              id="admin-enquiries-chat-tab"
+              onClick={() => setEnquiryTab("chat")}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${
+                enquiryTab === "chat" ? "bg-white text-etukas-red shadow-sm" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Headphones size={15} />
+              <span>Live Support Chats</span>
+              {openChatCount > 0 && (
+                <span className="rounded-full bg-rose-100 px-1.5 py-0.2 text-[10px] text-rose-700 font-extrabold">
+                  {openChatCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              id="admin-enquiries-leads-tab"
+              onClick={() => setEnquiryTab("leads")}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold transition ${
+                enquiryTab === "leads" ? "bg-white text-etukas-red shadow-sm" : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <MessageSquareText size={15} />
+              <span>Seller Enquiries</span>
+              {enquiries.data && enquiries.data.length > 0 && (
+                <span className="rounded-full bg-gray-200 px-1.5 py-0.2 text-[10px] text-gray-700 font-extrabold">
+                  {enquiries.data.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
+
+        {enquiryTab === "chat" ? (
+          <div className="mt-4">
+            <AdminLiveChat initialSessionId={chatInitialSessionId} />
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_360px]">
+            <div className="space-y-2">
+              {enquiries.isLoading ? <p className="text-sm text-gray-500">Loading enquiries...</p> : null}
+              {enquiries.error ? <p role="alert" className="text-sm text-red-700">{enquiries.error.message}</p> : null}
+              {enquiries.data?.map((enquiry) => (
+                <button key={enquiry.id} type="button" onClick={() => setSelectedEnquiryId(enquiry.id)} className={`block w-full rounded-md border p-3 text-left ${selectedEnquiryId === enquiry.id ? "border-etukas-red bg-etukas-pink" : "border-gray-200 bg-white"}`}>
+                  <span className="font-bold">{enquiry.businessName}</span>
+                  <span className="ml-2 rounded bg-gray-100 px-2 py-1 text-xs font-semibold">{enquiry.status}</span>
+                  <p className="mt-1 text-sm text-gray-600">{enquiry.contactPerson} · {enquiry.city}, {enquiry.state}</p>
+                </button>
+              ))}
+              {enquiries.data?.length === 0 ? <p className="text-sm text-gray-500">No seller enquiries yet.</p> : null}
+            </div>
+            <aside className="h-fit rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="font-bold">Enquiry detail</h3>
+              {selectedEnquiry.data ? <EnquiryDetails enquiry={selectedEnquiry.data} /> : <p className="mt-2 text-sm text-gray-500">Select an enquiry to review submitted contact and location details.</p>}
+            </aside>
+          </div>
+        )}
       </section>
         </div>
       </div>
