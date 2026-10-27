@@ -29,7 +29,7 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
         ok: false,
         error: {
           code: "DATABASE_SCHEMA_OUT_OF_DATE",
-          message: "Seller enquiry storage is not ready yet. Please run the latest database migration and try again.",
+          message: `Database storage is not ready yet (${(error.meta as any)?.table ?? (error.meta as any)?.column ?? "schema updated"}). Please run the latest database migration and try again.`,
           details: env.NODE_ENV === "production" ? undefined : error.meta
         }
       });
