@@ -19,9 +19,26 @@ chatRouter.post("/sessions", requireAuth, async (req, res, next) => {
       include: { messages: { orderBy: { createdAt: "asc" }, include: { sender: { select: { name: true, roles: true } } } } }
     });
     if (!session) {
+      const user = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { name: true } });
+      const firstName = user?.name ? user.name.trim().split(" ")[0] : "there";
+      const adminUser = await prisma.user.findFirst({
+        where: { roles: { has: Role.ADMIN } },
+        select: { id: true }
+      });
+
       session = await prisma.chatSession.create({
-        data: { userId: req.user!.id, subject: subject ?? "Support Chat" },
-        include: { messages: { orderBy: { createdAt: "asc" }, include: { sender: { select: { name: true, roles: true } } } } }
+        data: {
+          userId: req.user!.id,
+          subject: subject ?? "Support Chat",
+          messages: {
+            create: {
+              senderId: adminUser?.id ?? req.user!.id,
+              senderRole: "ADMIN",
+              content: `Hi ${firstName}! 👋 Welcome to Etukas Support. How can our support team help you today?`
+            }
+          }
+        },
+        include: { messages: { orderBy: { createdAt: "asc" }, include: { sender: { select: { id: true, name: true, roles: true } } } } }
       });
 
       // Notify admins about new chat session
@@ -29,7 +46,7 @@ chatRouter.post("/sessions", requireAuth, async (req, res, next) => {
         data: {
           type: AdminNotificationType.CHAT_MESSAGE,
           title: "New Chat Session",
-          body: `A user has started a new support chat`,
+          body: `${user?.name ?? "A user"} started a new support chat`,
           metadata: { sessionId: session.id, userId: req.user!.id }
         }
       });

@@ -321,7 +321,7 @@ export function AdminLiveChat({ initialSessionId }: Props) {
                     >
                       <div className="flex items-center gap-1.5 mb-1 text-[11px] text-gray-400">
                         <span className="font-semibold text-gray-600">
-                          {isAdmin ? "Admin (You)" : msg.sender?.name || selectedSession.user?.name}
+                          {isAdmin ? "Support Team (You)" : msg.sender?.name || selectedSession.user?.name}
                         </span>
                         <span>·</span>
                         <span>
