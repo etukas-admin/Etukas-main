@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, BadgeCheck, MapPin, Package, Search, ShieldCheck, Truck } from "lucide-react";
+import { ArrowRight, MapPin, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
@@ -9,18 +9,99 @@ import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 import { marketplaceApi } from "../../services/api";
+import {
+  BricksBlocksIcon,
+  CementIcon,
+  IronBarsIcon,
+  SandIcon,
+  StoneAggregateIcon,
+  TilesMarblesIcon,
+  PaintsIcon,
+  PlumbingIcon,
+  ElectricalsIcon,
+  StatuesIcon,
+  CementArticlesIcon,
+} from "../../components/icons/CategoryIcons";
 
-const homeCategories = [
-  { name: "Bricks and blocks", slug: "bricks-blocks", icon: Package },
-  { name: "Cement", slug: "cement", icon: ShieldCheck },
-  { name: "Cement poles", slug: "cement-poles", icon: Truck },
-  { name: "Construction machinery", slug: "construction-machinery", icon: BadgeCheck },
-  { name: "Electrical materials", slug: "electrical-materials", icon: Package },
-  { name: "Paints", slug: "paints", icon: ShieldCheck },
-  { name: "Plumbing", slug: "plumbing", icon: Truck },
-  { name: "Sand and aggregates", slug: "sand-aggregates", icon: BadgeCheck },
-  { name: "Steel and iron bars", slug: "steel-iron-bars", icon: Package },
-  { name: "Tiles and flooring", slug: "tiles-flooring", icon: ShieldCheck }
+type HomeCategory = {
+  name: string;
+  slug: string;
+  image: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  bg: string;
+};
+
+const homeCategories: readonly HomeCategory[] = [
+  {
+    name: "Bricks & Blocks",
+    slug: "bricks-blocks",
+    image: "/images/pngimages/bricks-blocks.webp",
+    icon: BricksBlocksIcon,
+    bg: "from-orange-50 to-amber-100/70 border-orange-200/60",
+  },
+  {
+    name: "Cement",
+    slug: "cement",
+    image: "/images/pngimages/cement.webp",
+    icon: CementIcon,
+    bg: "from-red-50 to-rose-100/70 border-red-200/60",
+  },
+  {
+    name: "Iron Bars",
+    slug: "steel-iron-bars",
+    image: "/images/pngimages/steel-iron-bars.webp",
+    icon: IronBarsIcon,
+    bg: "from-sky-50 to-blue-100/70 border-blue-200/60",
+  },
+  {
+    name: "Sand",
+    slug: "sand-aggregates",
+    image: "/images/pngimages/sand.webp",
+    icon: SandIcon,
+    bg: "from-amber-50 to-yellow-100/70 border-amber-200/60",
+  },
+  {
+    name: "Stone / Aggregate",
+    slug: "sand-aggregates",
+    image: "/images/pngimages/stone-aggregates.webp",
+    icon: StoneAggregateIcon,
+    bg: "from-stone-100 to-slate-200/70 border-stone-300/60",
+  },
+  {
+    name: "Tiles/Marbles",
+    slug: "tiles-flooring",
+    image: "/images/pngimages/tiles-flooring.webp",
+    icon: TilesMarblesIcon,
+    bg: "from-teal-50 to-emerald-100/70 border-teal-200/60",
+  },
+  {
+    name: "Paints",
+    slug: "paints",
+    image: "/images/pngimages/paints.webp",
+    icon: PaintsIcon,
+    bg: "from-pink-50 to-rose-100/70 border-pink-200/60",
+  },
+  {
+    name: "Plumbing",
+    slug: "plumbing",
+    image: "/images/pngimages/plumbing.webp",
+    icon: PlumbingIcon,
+    bg: "from-cyan-50 to-sky-100/70 border-cyan-200/60",
+  },
+  {
+    name: "Electricals",
+    slug: "electrical-materials",
+    image: "/images/pngimages/electrical-materials.webp",
+    icon: ElectricalsIcon,
+    bg: "from-yellow-50 to-amber-100/80 border-yellow-200/70",
+  },
+  {
+    name: "Cement Articles",
+    slug: "cement-poles",
+    image: "/images/pngimages/cement-articles.webp",
+    icon: CementArticlesIcon,
+    bg: "from-slate-50 to-gray-200/70 border-slate-300/60",
+  },
 ] as const;
 
 const defaultPromoSlides = [
@@ -72,14 +153,37 @@ export function HomePage() {
             View All <ArrowRight size={16} />
           </Link>
         </div>
-        <div className={`category-strip flex gap-3 overflow-x-auto md:grid md:grid-cols-5 md:gap-4 md:pb-2 lg:grid-cols-10 ${isMobileScrolled ? "pb-0 md:pb-2" : "pb-1"}`}>
-          {homeCategories.map(({ name, slug, icon: Icon }) => (
-            <Link key={slug} to={`/products?category=${slug}`} className="group min-w-20 text-center md:min-w-24">
-              <div className={`mx-auto grid place-items-center rounded-full bg-etukas-pink text-etukas-black transition-[height,width] duration-300 ease-in-out group-hover:text-etukas-red md:h-16 md:w-16 ${isMobileScrolled ? "h-9 w-9 md:h-16 md:w-16" : "h-11 w-11 md:h-16 md:w-16"}`}>
-                <Icon size={20} className={`transform transition-transform duration-300 ease-in-out md:hidden ${isMobileScrolled ? "scale-[0.8]" : "scale-100"}`} />
-                <Icon size={28} className="hidden md:block" />
+        <div className={`category-strip flex gap-3 overflow-x-auto px-0.5 md:grid md:grid-cols-5 md:gap-4 md:pb-2 lg:grid-cols-10 ${isMobileScrolled ? "pb-0 md:pb-2" : "pb-1.5"}`}>
+          {homeCategories.map(({ name, slug, image, icon: Icon, bg }) => (
+            <Link
+              key={name + slug}
+              to={`/products?category=${slug}`}
+              className="group flex min-w-[74px] flex-col items-center text-center transition-transform md:min-w-[84px]"
+            >
+              <div
+                className={`relative mx-auto flex items-center justify-center transition-all duration-300 ease-out group-hover:-translate-y-1 active:scale-95 ${
+                  isMobileScrolled
+                    ? "h-11 w-11 md:h-16 md:w-16"
+                    : "h-16 w-16 md:h-20 md:w-20"
+                }`}
+              >
+                {image ? (
+                  <img
+                    src={image}
+                    alt={name}
+                    className="h-full w-full object-contain drop-shadow-sm transition-transform duration-300 group-hover:scale-110"
+                    loading="eager"
+                  />
+                ) : (
+                  <Icon
+                    size={isMobileScrolled ? 34 : 52}
+                    className="transition-transform duration-300 drop-shadow-sm group-hover:scale-105"
+                  />
+                )}
               </div>
-              <div className="mt-1 text-[10px] font-semibold leading-tight md:mt-2 md:text-xs">{name}</div>
+              <div className="mt-1.5 line-clamp-2 max-w-[76px] text-center text-[11px] font-bold leading-tight text-gray-900 transition-colors group-hover:text-etukas-red md:max-w-[88px] md:text-xs">
+                {name}
+              </div>
             </Link>
           ))}
         </div>
