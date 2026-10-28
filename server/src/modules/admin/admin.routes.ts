@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { put } from "@vercel/blob";
+import { del, put } from "@vercel/blob";
 import { Router } from "express";
 import { Role, VerificationStatus } from "@prisma/client";
 import { z } from "zod";
@@ -57,6 +57,84 @@ adminRouter.get("/banners", async (_req, res, next) => {
   try {
     const banners = await prisma.homepageBanner.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "desc" }] });
     return sendOk(res, banners);
+  } catch (error) {
+    next(error);
+  }
+});
+
+adminRouter.get("/ad-banners", async (_req, res, next) => {
+  try {
+    const images = await prisma.adBannerImage.findMany({ orderBy: [{ section: "asc" }, { bannerNumber: "asc" }, { createdAt: "desc" }] });
+    return sendOk(res, images);
+  } catch (error) {
+    next(error);
+  }
+});
+
+const adBannerImageSchema = z.object({
+  section: z.number().int().min(1).max(3),
+  bannerNumber: z.number().int().min(1).max(3),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  imageData: z.string().min(1)
+});
+
+const adBannerImageTypes = {
+  "image/jpeg": { extension: ".jpg", signature: (bytes: Buffer) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff },
+  "image/png": { extension: ".png", signature: (bytes: Buffer) => bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  "image/webp": { extension: ".webp", signature: (bytes: Buffer) => bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP" }
+} as const;
+
+adminRouter.post("/ad-banners", async (req, res, next) => {
+  let uploadedUrl: string | undefined;
+  let databaseSaved = false;
+  try {
+    const { section, bannerNumber, contentType, imageData } = adBannerImageSchema.parse(req.body);
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)) {
+      throw new HttpError(400, "INVALID_IMAGE", "Upload a JPEG, PNG, or WebP image.");
+    }
+    const imageBuffer = Buffer.from(imageData, "base64");
+    const imageType = adBannerImageTypes[contentType];
+    if (imageBuffer.length === 0 || imageBuffer.length > 500 * 1024 || !imageType.signature(imageBuffer)) {
+      throw new HttpError(400, "INVALID_IMAGE", "The image is invalid or exceeds the 500 KB limit.");
+    }
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) throw new HttpError(503, "BLOB_STORAGE_NOT_CONFIGURED", "Image storage is not configured on the backend.");
+
+    const blob = await put(`ad-banners/section-${section}/banner-${bannerNumber}/${randomUUID()}${imageType.extension}`, imageBuffer, {
+      access: "public",
+      addRandomSuffix: false,
+      contentType,
+      token
+    });
+    uploadedUrl = blob.url;
+    const image = await prisma.$transaction(async (tx) => {
+      await tx.adBannerImage.updateMany({ where: { section, bannerNumber, isCurrent: true }, data: { isCurrent: false } });
+      return tx.adBannerImage.create({
+        data: { section, bannerNumber, imageUrl: blob.url, contentType, sizeBytes: imageBuffer.length, isCurrent: true }
+      });
+    });
+    databaseSaved = true;
+    await prisma.auditLog.create({ data: { actorId: req.user!.id, action: "AD_BANNER_IMAGE_UPLOADED", target: image.id } });
+    return sendOk(res, image, 201);
+  } catch (error) {
+    if (uploadedUrl && !databaseSaved && process.env.BLOB_READ_WRITE_TOKEN) {
+      try { await del(uploadedUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }); } catch { /* Keep the original request error. */ }
+    }
+    next(error);
+  }
+});
+
+adminRouter.delete("/ad-banners/:id", async (req, res, next) => {
+  try {
+    const image = await prisma.adBannerImage.findUnique({ where: { id: req.params.id } });
+    if (!image) throw new HttpError(404, "AD_BANNER_NOT_FOUND", "Ad banner image not found.");
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token) throw new HttpError(503, "BLOB_STORAGE_NOT_CONFIGURED", "Image storage is not configured on the backend.");
+
+    await del(image.imageUrl, { token });
+    await prisma.adBannerImage.delete({ where: { id: image.id } });
+    await prisma.auditLog.create({ data: { actorId: req.user!.id, action: "AD_BANNER_IMAGE_DELETED", target: image.id } });
+    return sendOk(res, { id: image.id });
   } catch (error) {
     next(error);
   }

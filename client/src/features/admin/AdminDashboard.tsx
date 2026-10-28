@@ -149,6 +149,11 @@ export function AdminDashboard() {
   const [draft, setDraft] = useState<HomepageBannerInput>(emptyBanner);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [adBannerSection, setAdBannerSection] = useState(1);
+  const [adBannerNumber, setAdBannerNumber] = useState(1);
+  const [adBannerFile, setAdBannerFile] = useState<File | null>(null);
+  const [adBannerFileError, setAdBannerFileError] = useState<string | null>(null);
+  const [adBannerPreview, setAdBannerPreview] = useState<string | null>(null);
   const [partnerFilter, setPartnerFilter] = useState("");
   const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("dashboard");
@@ -158,6 +163,7 @@ export function AdminDashboard() {
   const me = useQuery({ queryKey: ["admin", "me"], queryFn: marketplaceApi.me, enabled: Boolean(sessionUser), retry: false });
   const sellers = useQuery({ queryKey: ["admin", "sellers"], queryFn: marketplaceApi.adminSellers, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const banners = useQuery({ queryKey: ["admin", "banners"], queryFn: marketplaceApi.adminBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
+  const adBanners = useQuery({ queryKey: ["admin", "ad-banners"], queryFn: marketplaceApi.adminAdBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const enquiries = useQuery({ queryKey: ["admin", "seller-enquiries"], queryFn: marketplaceApi.adminSellerEnquiries, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
   const chatSessions = useQuery({
     queryKey: ["admin", "chat", "sessions"],
@@ -170,6 +176,16 @@ export function AdminDashboard() {
     queryFn: () => marketplaceApi.adminSellerEnquiry(selectedEnquiryId!),
     enabled: Boolean(me.data?.roles.includes("ADMIN") && selectedEnquiryId)
   });
+
+  useEffect(() => {
+    if (!adBannerFile) {
+      setAdBannerPreview(null);
+      return;
+    }
+    const previewUrl = URL.createObjectURL(adBannerFile);
+    setAdBannerPreview(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [adBannerFile]);
 
   const handleNotificationNavigate = (section: string, detailId?: string) => {
     setActiveSection(section);
@@ -243,6 +259,31 @@ export function AdminDashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin", "banners"] });
       queryClient.invalidateQueries({ queryKey: ["home", "banners"] });
+    }
+  });
+  const saveAdBanner = useMutation({
+    mutationFn: async () => {
+      if (!adBannerFile) throw new Error("Choose an image to upload.");
+      if (adBannerFile.size > 500 * 1024) throw new Error("Choose an image that is 500 KB or smaller.");
+      return marketplaceApi.adminCreateAdBanner({
+        section: adBannerSection,
+        bannerNumber: adBannerNumber,
+        contentType: adBannerFile.type,
+        imageData: await imageToBase64(adBannerFile)
+      });
+    },
+    onSuccess: () => {
+      setAdBannerFile(null);
+      setAdBannerFileError(null);
+      queryClient.invalidateQueries({ queryKey: ["admin", "ad-banners"] });
+      queryClient.invalidateQueries({ queryKey: ["home", "ad-banners"] });
+    }
+  });
+  const deleteAdBanner = useMutation({
+    mutationFn: marketplaceApi.adminDeleteAdBanner,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "ad-banners"] });
+      queryClient.invalidateQueries({ queryKey: ["home", "ad-banners"] });
     }
   });
 
@@ -414,7 +455,78 @@ export function AdminDashboard() {
 
       <section id="banners" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Content</p>
-        <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Homepage banners</h2>
+        <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Homepage banners and AdBanners</h2>
+        <div className="mt-4 rounded-lg border border-gray-200 p-4 sm:p-5">
+          <div>
+            <h3 className="text-lg font-bold">AdBanners</h3>
+            <p className="mt-1 text-sm text-gray-600">Choose one of the three homepage sections and one of its three banner slots. Replacing a slot keeps its previous image in history.</p>
+          </div>
+          <div className="mt-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950">
+            <strong>Image requirements:</strong> JPEG, PNG, or WebP; maximum 500 KB; recommended dimensions 1600 × 900 px. The full image is shown without cropping.
+          </div>
+          <form className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onSubmit={(event) => { event.preventDefault(); saveAdBanner.mutate(); }}>
+            <label className="text-sm font-semibold">Homepage section
+              <select value={adBannerSection} onChange={(event) => setAdBannerSection(Number(event.target.value))} className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-normal">
+                <option value={1}>Section 1 · First banner</option>
+                <option value={2}>Section 2 · Second banner</option>
+                <option value={3}>Section 3 · Third banner</option>
+              </select>
+            </label>
+            <label className="text-sm font-semibold">Banner slot
+              <select value={adBannerNumber} onChange={(event) => setAdBannerNumber(Number(event.target.value))} className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-normal">
+                <option value={1}>Banner 1</option>
+                <option value={2}>Banner 2</option>
+                <option value={3}>Banner 3</option>
+              </select>
+            </label>
+            <label className="text-sm font-semibold sm:col-span-2">Banner image
+              <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null;
+                if (file && file.size > 500 * 1024) {
+                  setAdBannerFile(null);
+                  setAdBannerFileError("This image is larger than 500 KB. Choose a smaller image.");
+                  event.currentTarget.value = "";
+                  return;
+                }
+                if (file && !["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+                  setAdBannerFile(null);
+                  setAdBannerFileError("Choose a JPEG, PNG, or WebP image.");
+                  event.currentTarget.value = "";
+                  return;
+                }
+                setAdBannerFile(file);
+                setAdBannerFileError(null);
+              }} className="mt-1 block w-full rounded border border-gray-300 px-3 py-2 font-normal" />
+            </label>
+            {adBannerPreview ? <img src={adBannerPreview} alt="Selected ad banner preview" className="max-h-36 w-full rounded border border-gray-200 bg-gray-50 object-contain sm:col-span-2 lg:col-span-4" /> : null}
+            {adBannerFileError || saveAdBanner.error ? <p role="alert" className="text-sm text-red-700 sm:col-span-2 lg:col-span-4">{adBannerFileError ?? saveAdBanner.error?.message}</p> : null}
+            <button type="submit" disabled={!adBannerFile || saveAdBanner.isPending} className="inline-flex w-fit items-center gap-2 rounded-md bg-etukas-red px-4 py-2 text-sm font-bold text-white disabled:opacity-50 sm:col-span-2 lg:col-span-4">
+              <ImagePlus size={16} /> {saveAdBanner.isPending ? "Uploading..." : "Upload AdBanner"}
+            </button>
+          </form>
+          {adBanners.error || deleteAdBanner.error ? <p role="alert" className="mt-3 text-sm text-red-700">{adBanners.error?.message ?? deleteAdBanner.error?.message}</p> : null}
+          {adBanners.isLoading ? <p className="mt-4 text-sm text-gray-500">Loading uploaded ad banners...</p> : null}
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {adBanners.data?.map((image) => (
+              <article key={image.id} className="overflow-hidden rounded-lg border border-gray-200">
+                <img src={image.imageUrl} alt={`Section ${image.section}, banner ${image.bannerNumber}`} className="h-36 w-full bg-gray-50 object-contain" />
+                <div className="flex items-center justify-between gap-2 p-3">
+                  <div>
+                    <p className="text-sm font-bold">Section {image.section} · Banner {image.bannerNumber}</p>
+                    <p className="mt-1 text-xs text-gray-500">{image.isCurrent ? "Current" : "Previous"} · {(image.sizeBytes / 1024).toFixed(0)} KB · {new Date(image.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <button type="button" disabled={deleteAdBanner.isPending} onClick={() => {
+                    if (window.confirm(`Delete this ${image.isCurrent ? "current" : "previous"} banner image?`)) deleteAdBanner.mutate(image.id);
+                  }} className="inline-flex shrink-0 items-center gap-1 rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">
+                    <Trash2 size={13} /> Delete
+                  </button>
+                </div>
+              </article>
+            ))}
+          </div>
+          {!adBanners.isLoading && adBanners.data?.length === 0 ? <p className="mt-4 text-sm text-gray-500">No ad banner images have been uploaded.</p> : null}
+        </div>
+        <h3 className="mt-6 text-lg font-bold">Homepage promotions</h3>
         <p className="mt-1 text-sm text-gray-600">Upload JPEG, PNG, or WebP images up to 5 MB. Active banners appear on the homepage.</p>
         <form
           className="mt-4 grid gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 md:grid-cols-2"

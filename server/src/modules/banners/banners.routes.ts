@@ -4,6 +4,18 @@ import { sendOk } from "../../utils/http.js";
 
 export const bannersRouter = Router();
 
+bannersRouter.get("/ad-banners", async (_req, res, next) => {
+  try {
+    const images = await prisma.adBannerImage.findMany({
+      where: { isCurrent: true },
+      orderBy: [{ section: "asc" }, { bannerNumber: "asc" }]
+    });
+    return sendOk(res, images);
+  } catch (error) {
+    next(error);
+  }
+});
+
 bannersRouter.get("/", async (_req, res, next) => {
   try {
     const banners = await prisma.homepageBanner.findMany({
