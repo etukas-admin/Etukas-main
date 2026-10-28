@@ -1,0 +1,3 @@
+ALTER TABLE "AdBannerImage"
+  ALTER COLUMN "imageUrl" DROP NOT NULL,
+  ADD COLUMN "imageData" BYTEA;

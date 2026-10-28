@@ -104,6 +104,6 @@ Create a **public** Vercel Blob store and connect it to the **backend Vercel pro
 
 Sign in as an admin, then use **Homepage banners** to upload JPEG, PNG, or WebP images up to 5 MB, add or edit headlines, set order, and activate or hide banners. Active banners are shown on mobile and desktop homepages; if no active banner exists, the built-in promotions remain visible. The upload token remains on the backend.
 
-Use the **AdBanners** controls in the same section to choose homepage section 1, 2, or 3 and banner slot 1, 2, or 3. AdBanner images must be JPEG, PNG, or WebP and no larger than 500 KB (1600 × 900 px recommended). Current image records and upload history are stored in the database; image files are stored in the connected Blob store, and deleting an image removes both its database record and Blob file.
+Use the **AdBanners** controls in the same section to choose homepage section 1, 2, or 3 and banner slot 1, 2, or 3. AdBanner images must be JPEG, PNG, or WebP and no larger than 500 KB (1600 × 900 px recommended). The image bytes and upload history are stored in PostgreSQL, so AdBanners do not require Blob storage. Deleting an image removes its database record and image bytes.
 
 Partner approval activates that partner's stores and existing product listings together. Rejecting or returning a partner to pending suspends the stores and listings from buyer-facing queries.

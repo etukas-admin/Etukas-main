@@ -473,7 +473,8 @@ model AdBannerImage {
   id           String   @id @default(cuid())
   section      Int
   bannerNumber Int
-  imageUrl     String
+  imageUrl     String?
+  imageData    Bytes?
   contentType  String
   sizeBytes    Int
   isCurrent    Boolean  @default(true)

@@ -64,7 +64,10 @@ adminRouter.get("/banners", async (_req, res, next) => {
 
 adminRouter.get("/ad-banners", async (_req, res, next) => {
   try {
-    const images = await prisma.adBannerImage.findMany({ orderBy: [{ section: "asc" }, { bannerNumber: "asc" }, { createdAt: "desc" }] });
+    const images = await prisma.adBannerImage.findMany({
+      select: { id: true, section: true, bannerNumber: true, imageUrl: true, contentType: true, sizeBytes: true, isCurrent: true, createdAt: true, updatedAt: true },
+      orderBy: [{ section: "asc" }, { bannerNumber: "asc" }, { createdAt: "desc" }]
+    });
     return sendOk(res, images);
   } catch (error) {
     next(error);
@@ -85,8 +88,6 @@ const adBannerImageTypes = {
 } as const;
 
 adminRouter.post("/ad-banners", async (req, res, next) => {
-  let uploadedUrl: string | undefined;
-  let databaseSaved = false;
   try {
     const { section, bannerNumber, contentType, imageData } = adBannerImageSchema.parse(req.body);
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(imageData)) {
@@ -97,29 +98,16 @@ adminRouter.post("/ad-banners", async (req, res, next) => {
     if (imageBuffer.length === 0 || imageBuffer.length > 500 * 1024 || !imageType.signature(imageBuffer)) {
       throw new HttpError(400, "INVALID_IMAGE", "The image is invalid or exceeds the 500 KB limit.");
     }
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (!token) throw new HttpError(503, "BLOB_STORAGE_NOT_CONFIGURED", "Image storage is not configured on the backend.");
-
-    const blob = await put(`ad-banners/section-${section}/banner-${bannerNumber}/${randomUUID()}${imageType.extension}`, imageBuffer, {
-      access: "public",
-      addRandomSuffix: false,
-      contentType,
-      token
-    });
-    uploadedUrl = blob.url;
     const image = await prisma.$transaction(async (tx) => {
       await tx.adBannerImage.updateMany({ where: { section, bannerNumber, isCurrent: true }, data: { isCurrent: false } });
       return tx.adBannerImage.create({
-        data: { section, bannerNumber, imageUrl: blob.url, contentType, sizeBytes: imageBuffer.length, isCurrent: true }
+        data: { section, bannerNumber, imageUrl: null, imageData: imageBuffer, contentType, sizeBytes: imageBuffer.length, isCurrent: true },
+        select: { id: true, section: true, bannerNumber: true, imageUrl: true, contentType: true, sizeBytes: true, isCurrent: true, createdAt: true, updatedAt: true }
       });
     });
-    databaseSaved = true;
     await prisma.auditLog.create({ data: { actorId: req.user!.id, action: "AD_BANNER_IMAGE_UPLOADED", target: image.id } });
     return sendOk(res, image, 201);
   } catch (error) {
-    if (uploadedUrl && !databaseSaved && process.env.BLOB_READ_WRITE_TOKEN) {
-      try { await del(uploadedUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }); } catch { /* Keep the original request error. */ }
-    }
     next(error);
   }
 });
@@ -128,10 +116,7 @@ adminRouter.delete("/ad-banners/:id", async (req, res, next) => {
   try {
     const image = await prisma.adBannerImage.findUnique({ where: { id: req.params.id } });
     if (!image) throw new HttpError(404, "AD_BANNER_NOT_FOUND", "Ad banner image not found.");
-    const token = process.env.BLOB_READ_WRITE_TOKEN;
-    if (!token) throw new HttpError(503, "BLOB_STORAGE_NOT_CONFIGURED", "Image storage is not configured on the backend.");
-
-    await del(image.imageUrl, { token });
+    if (image.imageUrl) await deleteHomepageBannerBlob(image.imageUrl);
     await prisma.adBannerImage.delete({ where: { id: image.id } });
     await prisma.auditLog.create({ data: { actorId: req.user!.id, action: "AD_BANNER_IMAGE_DELETED", target: image.id } });
     return sendOk(res, { id: image.id });

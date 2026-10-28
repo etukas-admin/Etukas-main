@@ -238,9 +238,15 @@ export const marketplaceApi = {
       body: JSON.stringify({ status, rejectionReason })
     }),
   publicBanners: () => api<HomepageBanner[]>("/banners"),
-  publicAdBanners: () => api<AdBannerImage[]>("/banners/ad-banners"),
+  publicAdBanners: async () => (await api<AdBannerImage[]>("/banners/ad-banners")).map((image) => ({
+    ...image,
+    imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
+  })),
   adminBanners: () => api<HomepageBanner[]>("/admin/banners"),
-  adminAdBanners: () => api<AdBannerImage[]>("/admin/ad-banners"),
+  adminAdBanners: async () => (await api<AdBannerImage[]>("/admin/ad-banners")).map((image) => ({
+    ...image,
+    imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
+  })),
   adminCreateAdBanner: (body: { section: number; bannerNumber: number; contentType: string; imageData: string }) =>
     api<AdBannerImage>("/admin/ad-banners", { method: "POST", body: JSON.stringify(body) }),
   adminDeleteAdBanner: (id: string) =>
