@@ -162,6 +162,19 @@ const bannerImageInputSchema = z.object({
   imageData: z.string().min(1)
 });
 
+async function deleteHomepageBannerBlob(imageUrl: string) {
+  let hostname: string;
+  try {
+    hostname = new URL(imageUrl).hostname;
+  } catch {
+    return;
+  }
+  if (!hostname.endsWith(".blob.vercel-storage.com")) return;
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new HttpError(503, "BLOB_STORAGE_NOT_CONFIGURED", "Image storage is not configured on the backend.");
+  await del(imageUrl, { token });
+}
+
 adminRouter.post("/banners/upload", async (req, res, next) => {
   try {
     const { contentType, imageData } = bannerImageInputSchema.parse(req.body);
@@ -211,7 +224,10 @@ adminRouter.post("/banners", async (req, res, next) => {
 adminRouter.patch("/banners/:id", async (req, res, next) => {
   try {
     const input = bannerInputSchema.partial().parse(req.body);
+    const existing = await prisma.homepageBanner.findUnique({ where: { id: req.params.id } });
+    if (!existing) throw new HttpError(404, "BANNER_NOT_FOUND", "Homepage banner not found.");
     const banner = await prisma.homepageBanner.update({ where: { id: req.params.id }, data: input });
+    if (input.imageUrl && input.imageUrl !== existing.imageUrl) await deleteHomepageBannerBlob(existing.imageUrl);
     await prisma.auditLog.create({
       data: { actorId: req.user!.id, action: "HOMEPAGE_BANNER_UPDATED", target: banner.id }
     });
@@ -223,7 +239,10 @@ adminRouter.patch("/banners/:id", async (req, res, next) => {
 
 adminRouter.delete("/banners/:id", async (req, res, next) => {
   try {
-    const banner = await prisma.homepageBanner.delete({ where: { id: req.params.id } });
+    const banner = await prisma.homepageBanner.findUnique({ where: { id: req.params.id } });
+    if (!banner) throw new HttpError(404, "BANNER_NOT_FOUND", "Homepage banner not found.");
+    await deleteHomepageBannerBlob(banner.imageUrl);
+    await prisma.homepageBanner.delete({ where: { id: banner.id } });
     await prisma.auditLog.create({
       data: { actorId: req.user!.id, action: "HOMEPAGE_BANNER_DELETED", target: banner.id }
     });

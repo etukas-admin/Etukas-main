@@ -26,7 +26,7 @@ export default function App() {
 
   return (
     <Routes>
-      <Route path="/admin-dashboard" element={<AdminDashboard />} />
+      <Route path="/admin-dashboard/:section?" element={<AdminDashboard />} />
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="products" element={<ProductsPage />} />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MessageSquareText, PanelsTopLeft, Search, Trash2 } from "lucide-react";
 import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type SellerEnquiry, type User } from "../../services/api";
@@ -15,6 +16,8 @@ const emptyBanner: HomepageBannerInput = {
   sortOrder: 0,
   isActive: true
 };
+
+const validSections = ["dashboard", "partners", "banners", "enquiries"];
 
 function coordinate(value: AdminSeller["stores"][number]["latitude"]) {
   return value === null || value === undefined ? null : String(value);
@@ -145,6 +148,9 @@ function SellerCard({ seller, onStatusChange, isPending }: {
 
 export function AdminDashboard() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { section: routeSection } = useParams<{ section?: string }>();
+  const activeSection = validSections.includes(routeSection ?? "") ? routeSection! : "dashboard";
   const [sessionUser, setSessionUser] = useState<User | null>(() => getStoredUser());
   const [draft, setDraft] = useState<HomepageBannerInput>(emptyBanner);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -156,7 +162,6 @@ export function AdminDashboard() {
   const [adBannerPreview, setAdBannerPreview] = useState<string | null>(null);
   const [partnerFilter, setPartnerFilter] = useState("");
   const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState("dashboard");
   const [enquiryTab, setEnquiryTab] = useState<"chat" | "leads">("chat");
   const [chatInitialSessionId, setChatInitialSessionId] = useState<string | null>(null);
 
@@ -188,7 +193,7 @@ export function AdminDashboard() {
   }, [adBannerFile]);
 
   const handleNotificationNavigate = (section: string, detailId?: string) => {
-    setActiveSection(section);
+    navigate(`/admin-dashboard/${section}`);
     if (section === "enquiries") {
       if (detailId) {
         const isEnquiry = enquiries.data?.some((e) => e.id === detailId);
@@ -211,6 +216,10 @@ export function AdminDashboard() {
       setSessionUser(null);
     }
   }, [me.isError]);
+  useEffect(() => {
+    if (!validSections.includes(routeSection ?? "")) navigate("/admin-dashboard/dashboard", { replace: true });
+    window.scrollTo({ top: 0 });
+  }, [navigate, routeSection]);
   useEffect(() => {
     if (me.data && !me.data.roles.includes("ADMIN")) {
       clearSession();
@@ -329,13 +338,13 @@ export function AdminDashboard() {
   return (
     <main className="min-h-screen bg-[#f7f7f8] text-etukas-black md:flex">
       <aside className="hidden w-64 shrink-0 border-r border-gray-200 bg-white md:flex md:flex-col">
-        <a href="#dashboard" onClick={() => setActiveSection("dashboard")} className="flex h-20 items-center gap-3 border-b border-gray-100 px-6">
+        <Link to="/admin-dashboard/dashboard" className="flex h-20 items-center gap-3 border-b border-gray-100 px-6">
           <img src="/etukas-logo.png" alt="" className="h-9 w-9 object-contain" />
           <span className="text-xl font-extrabold tracking-tight">Etukas <span className="text-etukas-red">Admin</span></span>
-        </a>
+        </Link>
         <nav aria-label="Admin navigation" className="space-y-1 px-3 py-5">
           {navigation.map(({ id, label, icon: Icon, badge }) => (
-            <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`flex items-center justify-between rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${activeSection === id ? "bg-etukas-red text-white shadow-sm" : "text-gray-600 hover:bg-etukas-pink hover:text-etukas-red"}`}>
+            <Link key={id} to={`/admin-dashboard/${id}`} className={`flex items-center justify-between rounded-lg px-3 py-3 text-sm font-semibold transition-colors ${activeSection === id ? "bg-etukas-red text-white shadow-sm" : "text-gray-600 hover:bg-etukas-pink hover:text-etukas-red"}`}>
               <span className="flex items-center gap-3">
                 <Icon size={18} /> {label}
               </span>
@@ -344,7 +353,7 @@ export function AdminDashboard() {
                   {badge}
                 </span>
               ) : null}
-            </a>
+            </Link>
           ))}
         </nav>
         <div className="mt-auto border-t border-gray-100 p-4">
@@ -359,10 +368,10 @@ export function AdminDashboard() {
       <div className="min-w-0 flex-1">
         <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/95 px-4 py-3 backdrop-blur md:px-8">
           <div className="flex items-center justify-between gap-3">
-            <a href="#dashboard" onClick={() => setActiveSection("dashboard")} className="flex min-w-0 items-center gap-2 md:hidden">
+            <Link to="/admin-dashboard/dashboard" className="flex min-w-0 items-center gap-2 md:hidden">
               <img src="/etukas-logo.png" alt="" className="h-8 w-8 object-contain" />
               <span className="truncate font-extrabold">Etukas <span className="text-etukas-red">Admin</span></span>
-            </a>
+            </Link>
             <h1 className="hidden text-xl font-extrabold md:block">Administration</h1>
 
             {/* Top Right: User info, Notification bell icon, and Sign out */}
@@ -379,29 +388,29 @@ export function AdminDashboard() {
           </div>
           <nav aria-label="Admin navigation" className="no-scrollbar -mx-1 mt-3 flex gap-2 overflow-x-auto pb-1 md:hidden">
             {navigation.map(({ id, label, icon: Icon, badge }) => (
-              <a key={id} href={`#${id}`} onClick={() => setActiveSection(id)} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${activeSection === id ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
+              <Link key={id} to={`/admin-dashboard/${id}`} className={`inline-flex shrink-0 items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold ${activeSection === id ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
                 <Icon size={15} />{label}
                 {badge !== undefined && badge > 0 ? (
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${activeSection === id ? "bg-white text-etukas-red" : "bg-rose-600 text-white"}`}>
                     {badge}
                   </span>
                 ) : null}
-              </a>
+              </Link>
             ))}
           </nav>
         </header>
 
         <div className="mx-auto max-w-[1500px] px-4 py-5 sm:px-6 md:px-8 md:py-8">
-          <section id="dashboard" className="scroll-mt-32">
+          {activeSection === "dashboard" ? <section id="dashboard" className="scroll-mt-32">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.16em] text-etukas-red">Overview</p>
                 <h2 className="mt-1 text-2xl font-extrabold sm:text-3xl">Welcome back, {me.data.name.split(" ")[0]}</h2>
                 <p className="mt-1 text-sm text-gray-600">Manage your Etukas partner network and homepage content.</p>
               </div>
-              <a href="#partners" onClick={() => setActiveSection("partners")} className="inline-flex items-center gap-2 rounded-lg bg-etukas-red px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-800">
+              <Link to="/admin-dashboard/partners" className="inline-flex items-center gap-2 rounded-lg bg-etukas-red px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-red-800">
                 <Handshake size={17} /> Manage partners
-              </a>
+              </Link>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
               {[
@@ -420,7 +429,7 @@ export function AdminDashboard() {
                 </article>
               ))}
             </div>
-          </section>
+          </section> : null}
 
       {sellerStatus.error || saveBanner.error || deleteBanner.error ? (
         <p role="alert" className="mt-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
@@ -428,7 +437,7 @@ export function AdminDashboard() {
         </p>
       ) : null}
 
-      <section id="partners" className="mt-8 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      {activeSection === "partners" ? <section id="partners" className="mt-8 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Partner network</p>
@@ -451,9 +460,9 @@ export function AdminDashboard() {
           ))}
         </div>
         {sellers.data?.length === 0 || filteredSellers?.length === 0 ? <p className="mt-3 text-sm text-gray-500">No partners match this filter.</p> : null}
-      </section>
+      </section> : null}
 
-      <section id="banners" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      {activeSection === "banners" ? <section id="banners" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Content</p>
         <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Homepage banners and AdBanners</h2>
         <div className="mt-4 rounded-lg border border-gray-200 p-4 sm:p-5">
@@ -576,17 +585,17 @@ export function AdminDashboard() {
                 <p className="mt-1 text-xs text-gray-500">Order {banner.sortOrder}</p>
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={() => startEditing(banner)} className="rounded border border-gray-300 px-3 py-1.5 text-xs font-semibold">Edit</button>
-                  <button type="button" disabled={deleteBanner.isPending} onClick={() => { if (window.confirm("Delete this homepage banner?")) deleteBanner.mutate(banner.id); }} className="inline-flex items-center gap-1 rounded border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">
-                    <Trash2 size={13} /> Delete
+                  <button type="button" disabled={deleteBanner.isPending} onClick={() => { if (window.confirm("Delete this homepage banner and its uploaded image?")) deleteBanner.mutate(banner.id); }} className="inline-flex items-center gap-1 rounded border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-50">
+                    <Trash2 size={13} /> Delete banner image
                   </button>
                 </div>
               </div>
             </article>
           ))}
         </div>
-      </section>
+      </section> : null}
 
-      <section id="enquiries" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      {activeSection === "enquiries" ? <section id="enquiries" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Inquiries & Communication</p>
@@ -655,7 +664,7 @@ export function AdminDashboard() {
             </aside>
           </div>
         )}
-      </section>
+      </section> : null}
         </div>
       </div>
     </main>
