@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { marketplaceApi, type ChatMessage, type ChatSession, getStoredUser } from "../../services/api";
-import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn, AlertCircle } from "lucide-react";
+import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn, AlertCircle, CheckCheck } from "lucide-react";
 
 export function UserChatWidget() {
   const storedUser = getStoredUser();
@@ -129,8 +129,13 @@ export function UserChatWidget() {
 
   const hasUnread = messages.data?.some((m) => m.senderRole === "ADMIN" && !m.readAt);
 
+  const getMessageStatusColor = (msg: ChatMessage) => {
+    if (msg.senderRole !== "USER") return "transparent";
+    return msg.readAt ? "#c7f9ff" : "rgba(255,255,255,0.7)";
+  };
+
   return (
-    <div style={{ position: "fixed", bottom: "24px", right: "24px", zIndex: 9999 }}>
+    <div style={{ position: "fixed", bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", right: "18px", zIndex: 9999 }}>
       {/* Floating Chat Bubble Button */}
       {(!isOpen || isMinimized) && (
         <button
@@ -333,8 +338,17 @@ export function UserChatWidget() {
                           </div>
                         )}
                         <div>{msg.content}</div>
-                        <div style={{ fontSize: "10px", marginTop: "4px", opacity: 0.65, textAlign: "right" }}>
-                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px", marginTop: "6px" }}>
+                          <span style={{ fontSize: "10px", opacity: 0.7 }}>
+                            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                          {isUser && (
+                            <CheckCheck
+                              size={12}
+                              strokeWidth={2.4}
+                              style={{ opacity: 1, color: getMessageStatusColor(msg) }}
+                            />
+                          )}
                         </div>
                       </div>
                     </div>
