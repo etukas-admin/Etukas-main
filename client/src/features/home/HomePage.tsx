@@ -126,8 +126,42 @@ const defaultPromoSlides = [
   }
 ] as const;
 
-function AdBannerDisplay({ images, section, className }: { images: AdBannerImage[]; section: number; className: string }) {
+function AdBannerDisplay({ images, section, className, autoSlide = false }: { images: AdBannerImage[]; section: number; className: string; autoSlide?: boolean }) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  useEffect(() => {
+    if (!autoSlide || images.length < 2) {
+      setActiveSlide(0);
+      return;
+    }
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % images.length), 4500);
+    return () => window.clearInterval(timer);
+  }, [autoSlide, images.length]);
+
   if (!images.length) return null;
+  if (autoSlide) {
+    return (
+      <div className={`mx-auto ${className}`} aria-label={`Homepage ad banners, section ${section}`}>
+        <div className="relative h-full overflow-hidden rounded-2xl bg-gray-100">
+          <div className="flex h-full transition-transform duration-700 ease-in-out motion-reduce:transition-none" style={{ width: `${images.length * 100}%`, transform: `translateX(-${activeSlide * (100 / images.length)}%)` }}>
+            {images.map((image) => (
+              <Link key={image.id} to="/products" style={{ width: `${100 / images.length}%` }} className="relative block h-full flex-none overflow-hidden rounded-2xl">
+                <img src={image.imageUrl} alt={`Sponsored banner ${image.bannerNumber}`} className="h-full w-full rounded-2xl object-contain" />
+                <span className="absolute right-3 top-3 rounded bg-black/55 px-2.5 py-1 text-[10px] font-bold tracking-wide text-white">AD</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+        {images.length > 1 ? (
+          <div className="mt-2 flex h-2 items-center justify-center gap-1.5" aria-label="Choose spotlight banner">
+            {images.map((image, index) => (
+              <button key={image.id} type="button" aria-label={`Show spotlight banner ${image.bannerNumber}`} aria-current={index === activeSlide} onClick={() => setActiveSlide(index)} className={`h-1.5 rounded-full transition-all ${index === activeSlide ? "w-8 bg-black" : "w-5 bg-gray-300"}`} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className={`flex snap-x snap-mandatory gap-3 overflow-x-auto ${className}`} aria-label={`Homepage ad banners, section ${section}`}>
       {images.map((image) => (
@@ -313,7 +347,7 @@ export function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6" aria-labelledby="spotlight-heading">
         <h2 id="spotlight-heading" className="mb-4 text-xl font-extrabold text-gray-900 sm:text-2xl">In the spotlight</h2>
         {sectionTwoAds.length ? (
-          <AdBannerDisplay images={sectionTwoAds} section={2} className="h-[190px] max-w-5xl mx-auto sm:h-[240px] lg:h-[280px]" />
+          <AdBannerDisplay images={sectionTwoAds} section={2} autoSlide className="h-[190px] max-w-5xl sm:h-[240px] lg:h-[280px]" />
         ) : (
           <Link to={promoLink} className="group relative mx-auto flex h-[190px] max-w-5xl items-center justify-center overflow-hidden rounded-2xl bg-yellow-300 shadow-sm sm:h-[240px] lg:h-[280px]" aria-label={`Sponsored: ${currentPromo.title}`}>
             <img
