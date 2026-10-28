@@ -135,7 +135,7 @@ export function UserChatWidget() {
   };
 
   return (
-    <div style={{ position: "fixed", bottom: "calc(96px + env(safe-area-inset-bottom, 0px))", right: "18px", zIndex: 9999 }}>
+    <div style={{ position: "fixed", bottom: "86px", right: "18px", zIndex: 9999 }}>
       {/* Floating Chat Bubble Button */}
       {(!isOpen || isMinimized) && (
         <button
