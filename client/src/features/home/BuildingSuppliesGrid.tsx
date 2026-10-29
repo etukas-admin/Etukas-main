@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Check, MapPin, Plus, Star, ShieldCheck, Sparkles, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
-import { StoreProduct } from "../../services/api";
+import { StoreProduct, getProductImageUrl } from "../../services/api";
 import { formatMoney } from "../../lib/utils";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useAddToCart } from "../../hooks/useAddToCart";
@@ -149,13 +149,18 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
                   {/* High-res Thumbnail & Overlay Tags */}
                   <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
                     <img
-                      src={
-                        item.product.images[0]?.url ||
+                      src={getProductImageUrl(
+                        item.product.images[0],
+                        item.product.id,
                         "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80"
-                      }
+                      )}
                       alt={item.product.images[0]?.altText || item.product.name}
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80";
+                      }}
                     />
 
                     {/* Discount Tag */}

@@ -96,7 +96,19 @@ sellerRouter.get("/products", async (req, res, next) => {
       include: { product: { include: { images: true, category: true } }, store: true },
       orderBy: { updatedAt: "desc" }
     });
-    return sendOk(res, listings);
+    const formattedListings = listings.map((listing) => ({
+      ...listing,
+      product: {
+        ...listing.product,
+        images: listing.product.images.map((img) => ({
+          ...img,
+          url: (img.url && img.url.trim() !== "")
+            ? img.url
+            : `/api/v1/products/${img.productId}/images/${img.id}`
+        }))
+      }
+    }));
+    return sendOk(res, formattedListings);
   } catch (error) {
     next(error);
   }
@@ -154,7 +166,7 @@ sellerRouter.post("/products", async (req, res, next) => {
       });
       // Create product image if provided
       if (imageDataBuffer && imageMimeType) {
-        await transaction.productImage.create({
+        const prodImg = await transaction.productImage.create({
           data: {
             productId: product.id,
             url: "",
@@ -166,6 +178,10 @@ sellerRouter.post("/products", async (req, res, next) => {
               sizeBytes: imageSizeBytes
             }
           }
+        });
+        await transaction.productImage.update({
+          where: { id: prodImg.id },
+          data: { url: `/api/v1/products/${product.id}/images/${prodImg.id}` }
         });
       }
       const newListing = await transaction.storeProduct.create({
@@ -294,9 +310,15 @@ sellerRouter.post("/products/:listingId/images", async (req, res, next) => {
         }
       }
     });
+    const publicUrl = `/api/v1/products/${listing.productId}/images/${image.id}`;
+    await prisma.productImage.update({
+      where: { id: image.id },
+      data: { url: publicUrl }
+    });
     return sendCreated(res, {
       id: image.id,
       productId: image.productId,
+      url: publicUrl,
       altText: image.altText,
       sortOrder: image.sortOrder,
       sizeBytes: imageBuffer.length,

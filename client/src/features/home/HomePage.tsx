@@ -10,7 +10,7 @@ import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 import { TechniciansGrid } from "./TechniciansGrid";
 import { MachineryGrid } from "./MachineryGrid";
-import { marketplaceApi } from "../../services/api";
+import { marketplaceApi, getProductImageUrl } from "../../services/api";
 import type { AdBannerImage } from "../../services/api";
 import {
   BricksBlocksIcon,
@@ -257,9 +257,20 @@ export function HomePage() {
             </Link>
           </div>
           <img
-            src={("imageUrl" in currentPromo ? currentPromo.mobileImageUrl || currentPromo.imageUrl : undefined) ?? products.data?.[activeIndex % (products.data.length || 1)]?.product.images[0]?.url ?? "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"}
+            src={
+              ("imageUrl" in currentPromo ? currentPromo.mobileImageUrl || currentPromo.imageUrl : undefined) ??
+              getProductImageUrl(
+                products.data?.[activeIndex % (products.data.length || 1)]?.product.images[0],
+                products.data?.[activeIndex % (products.data.length || 1)]?.product.id,
+                "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"
+              )
+            }
             alt={"imageUrl" in currentPromo ? currentPromo.title : ""}
             className="absolute inset-y-0 right-0 -z-0 h-full w-[48%] object-cover opacity-55 [mask-image:linear-gradient(to_right,transparent,black_45%)]"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
+            }}
           />
           <div className="absolute bottom-2 right-3 z-10 flex gap-1.5" aria-label="Choose promotion">
             {promoSlides.map((slide, index) => (

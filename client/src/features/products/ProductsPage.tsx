@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useProducts } from "../../hooks/useMarketplace";
 import { formatMoney } from "../../lib/utils";
+import { getProductImageUrl } from "../../services/api";
 
 const cementBrands = [
   {
@@ -96,8 +97,12 @@ export function ProductsPage() {
               <article key={item.id} className="rounded-md border border-gray-100">
                 <img
                   className="h-40 w-full rounded-t-md object-cover"
-                  src={item.product.images[0]?.url ?? "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"}
+                  src={getProductImageUrl(item.product.images[0], item.product.id)}
                   alt={item.product.images[0]?.altText || item.product.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
+                  }}
                 />
                 <div className="p-4">
                   <h2 className="font-bold">{item.product.name}</h2>
