@@ -64,25 +64,25 @@ export function MachineryGrid() {
       {/* Container with #c7c5c5 background */}
       <div className="overflow-hidden rounded-2xl bg-[#c7c5c5] p-3 shadow-sm sm:p-4 md:p-5">
         {/* Header bar */}
-        <div className="flex items-center justify-between px-2 py-1.5 sm:px-3 sm:py-2">
-          <div className="flex items-center gap-2.5">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/70 text-sm shadow-inner sm:h-9 sm:w-9">
-              <Tractor size={19} className="text-gray-900" />
+        <div className="flex items-center justify-between gap-2 px-2 py-1.5 sm:px-3 sm:py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-white/70 text-sm shadow-inner sm:h-8 sm:w-8">
+              <Tractor size={16} className="text-gray-900" />
             </span>
-            <div>
-              <h2 className="text-base font-extrabold tracking-tight text-gray-900 sm:text-lg">
-                Machinery / Vehicle Service
+            <div className="min-w-0">
+              <h2 className="text-sm font-extrabold tracking-tight text-gray-900 sm:text-base">
+                Machine Vehicles Service
               </h2>
-              <p className="text-[11px] font-medium text-gray-800 sm:text-xs leading-tight">
+              <p className="line-clamp-1 text-[10px] font-medium text-gray-800 sm:text-[11px] leading-tight">
                 Hire heavy equipment & construction vehicles for your site
               </p>
             </div>
           </div>
           <Link
             to="/products?category=machinery"
-            className="inline-flex items-center gap-1 rounded-full bg-white px-3.5 py-1.5 text-xs font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-sm"
+            className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-xs"
           >
-            View All <ArrowRight size={14} />
+            View All <ArrowRight size={13} />
           </Link>
         </div>
 
@@ -92,10 +92,10 @@ export function MachineryGrid() {
             <Link
               key={item.slug}
               to={`/products?category=${item.slug}`}
-              className="group flex min-w-[150px] max-w-[185px] flex-1 flex-col items-center justify-between rounded-xl bg-white p-3 text-center shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3.5"
+              className="group flex min-w-[150px] max-w-[185px] flex-1 flex-col items-center justify-between rounded-2xl bg-white p-3 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3.5"
             >
               {/* Image container: increased size, clean aspect ratio */}
-              <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg bg-white p-1.5 transition-transform duration-200 group-hover:scale-105">
+              <div className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl bg-white p-1.5 transition-transform duration-200 group-hover:scale-105">
                 <img
                   src={item.image}
                   alt={item.name}

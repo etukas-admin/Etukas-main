@@ -80,7 +80,7 @@ export function TechniciansGrid() {
           </div>
           <Link
             to="/products?category=professionals"
-            className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-xs"
+            className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-xs"
           >
             View All <ArrowRight size={13} />
           </Link>
@@ -92,10 +92,10 @@ export function TechniciansGrid() {
             <Link
               key={pro.slug}
               to={`/products?category=${pro.slug}`}
-              className="group flex min-w-[96px] max-w-[108px] flex-1 flex-col items-center justify-between rounded-xl bg-white p-2 text-center shadow-xs transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-2.5"
+              className="group flex min-w-[124px] max-w-[140px] flex-1 flex-col items-center justify-between rounded-2xl bg-white p-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3"
             >
               {/* Image container: clean white, large character */}
-              <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg bg-gray-50/50 p-1 transition-transform duration-200 group-hover:scale-105">
+              <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gray-50/50 p-1 transition-transform duration-200 group-hover:scale-105">
                 <img
                   src={pro.image}
                   alt={pro.name}

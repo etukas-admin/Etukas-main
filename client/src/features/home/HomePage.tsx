@@ -325,6 +325,9 @@ export function HomePage() {
       {/* 2. Technicians & Professionals Grid (Flipkart-style) */}
       <TechniciansGrid />
 
+      {/* Machine Vehicles Service Grid */}
+      <MachineryGrid />
+
       {/* Nearby Stores Section */}
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6">
         <div className="mb-4 flex items-center justify-between">
@@ -347,9 +350,6 @@ export function HomePage() {
           ))}
         </div>
       </section>
-
-      {/* Machinery / Vehicle Service Grid */}
-      <MachineryGrid />
 
       {/* In the Spotlight sponsored banner */}
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6" aria-labelledby="spotlight-heading">
