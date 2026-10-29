@@ -8,6 +8,7 @@ import { useProducts, useStores } from "../../hooks/useMarketplace";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
+import { TechniciansGrid } from "./TechniciansGrid";
 import { marketplaceApi } from "../../services/api";
 import {
   BricksBlocksIcon,
@@ -264,6 +265,9 @@ export function HomePage() {
       {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
       <FlashDealsCarousel products={products.data} isLoading={products.isLoading} />
 
+      {/* 2. Technicians & Professionals Grid (Flipkart-style) */}
+      <TechniciansGrid />
+
       {/* Nearby Stores Section */}
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6">
         <div className="mb-4 flex items-center justify-between">
@@ -287,7 +291,7 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* 2. Vertical Blocks Grid (Multi-Column Grid) */}
+      {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
       <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} />
 
       <section className="border-y border-gray-100 bg-gray-50 px-4 py-10">
