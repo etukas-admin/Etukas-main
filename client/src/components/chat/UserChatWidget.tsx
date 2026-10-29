@@ -21,10 +21,22 @@ export function UserChatWidget() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+  const [popIn, setPopIn] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const queryClient = useQueryClient();
+
+  // Show chat bubble after app load with a pop animation
+  useEffect(() => {
+    const showTimer = setTimeout(() => {
+      setIsVisible(true);
+      // Trigger pop animation shortly after becoming visible
+      setTimeout(() => setPopIn(true), 30);
+    }, 2000);
+    return () => clearTimeout(showTimer);
+  }, []);
   const pollInterval = isOpen && sessionId ? 4000 : undefined;
 
   // Query existing messages
@@ -137,7 +149,7 @@ export function UserChatWidget() {
   return (
     <div style={{ position: "fixed", bottom: "86px", right: "18px", zIndex: 9999 }}>
       {/* Floating Chat Bubble Button */}
-      {(!isOpen || isMinimized) && (
+      {isVisible && (!isOpen || isMinimized) && (
         <button
           id="user-chat-open-btn"
           type="button"
@@ -154,7 +166,9 @@ export function UserChatWidget() {
             alignItems: "center",
             justifyContent: "center",
             position: "relative",
-            transition: "transform 0.2s, box-shadow 0.2s"
+            animation: popIn ? "chatPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" : "none",
+            transform: popIn ? undefined : "scale(0)",
+            transition: "box-shadow 0.2s"
           }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
@@ -436,6 +450,12 @@ export function UserChatWidget() {
       <style>{`
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes chatPopIn {
+          0%   { transform: scale(0) rotate(-10deg); opacity: 0; }
+          60%  { transform: scale(1.15) rotate(4deg); opacity: 1; }
+          80%  { transform: scale(0.92) rotate(-2deg); }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
       `}</style>
     </div>
   );
