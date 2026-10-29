@@ -9,6 +9,7 @@ import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 import { TechniciansGrid } from "./TechniciansGrid";
+import { MachineryGrid } from "./MachineryGrid";
 import { marketplaceApi } from "../../services/api";
 import type { AdBannerImage } from "../../services/api";
 import {
@@ -346,6 +347,9 @@ export function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* Machinery / Vehicle Service Grid */}
+      <MachineryGrid />
 
       {/* In the Spotlight sponsored banner */}
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6" aria-labelledby="spotlight-heading">
