@@ -84,7 +84,7 @@ The admin UI is available at `https://<your-frontend-domain>/admin-dashboard` (t
 
 ### Provisioning separate admin accounts
 
-After deploying the backend code, apply the new homepage-banner migration to the production database from the repository root:
+After deploying the backend code, apply pending homepage-banner and AdBanner migrations to the production database from the repository root:
 
 ```powershell
 npx prisma migrate deploy --schema .\prisma\schema.prisma
@@ -103,5 +103,7 @@ The command prompts for the employee's name, email, and mobile number and accept
 Create a **public** Vercel Blob store and connect it to the **backend Vercel project** for the Production environment. This adds `BLOB_READ_WRITE_TOKEN` to the backend environment. Redeploy the backend after configuring it. Never add the Blob token to the frontend project or a `VITE_` variable.
 
 Sign in as an admin, then use **Homepage banners** to upload JPEG, PNG, or WebP images up to 5 MB, add or edit headlines, set order, and activate or hide banners. Active banners are shown on mobile and desktop homepages; if no active banner exists, the built-in promotions remain visible. The upload token remains on the backend.
+
+Use the **AdBanners** controls in the same section to choose homepage section 1, 2, or 3 and banner slot 1, 2, or 3. AdBanner images must be JPEG, PNG, or WebP and no larger than 500 KB (1600 × 900 px recommended). The image bytes and upload history are stored in PostgreSQL, so AdBanners do not require Blob storage. Deleting an image removes its database record and image bytes.
 
 Partner approval activates that partner's stores and existing product listings together. Rejecting or returning a partner to pending suspends the stores and listings from buyer-facing queries.

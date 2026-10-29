@@ -238,7 +238,19 @@ export const marketplaceApi = {
       body: JSON.stringify({ status, rejectionReason })
     }),
   publicBanners: () => api<HomepageBanner[]>("/banners"),
+  publicAdBanners: async () => (await api<AdBannerImage[]>("/banners/ad-banners")).map((image) => ({
+    ...image,
+    imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
+  })),
   adminBanners: () => api<HomepageBanner[]>("/admin/banners"),
+  adminAdBanners: async () => (await api<AdBannerImage[]>("/admin/ad-banners")).map((image) => ({
+    ...image,
+    imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
+  })),
+  adminCreateAdBanner: (body: { section: number; bannerNumber: number; contentType: string; imageData: string }) =>
+    api<AdBannerImage>("/admin/ad-banners", { method: "POST", body: JSON.stringify(body) }),
+  adminDeleteAdBanner: (id: string) =>
+    api<{ id: string }>(`/admin/ad-banners/${encodeURIComponent(id)}`, { method: "DELETE" }),
   adminUploadBannerImage: (body: { contentType: string; imageData: string }) =>
     api<{ url: string }>("/admin/banners/upload", { method: "POST", body: JSON.stringify(body) }),
   adminCreateBanner: (body: HomepageBannerInput) =>
@@ -393,6 +405,18 @@ export type HomepageBanner = {
 };
 
 export type HomepageBannerInput = Omit<HomepageBanner, "id" | "createdAt" | "updatedAt">;
+
+export type AdBannerImage = {
+  id: string;
+  section: number;
+  bannerNumber: number;
+  imageUrl: string;
+  contentType: string;
+  sizeBytes: number;
+  isCurrent: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type Cart = {
   id: string;

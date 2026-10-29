@@ -10,6 +10,7 @@ import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 import { TechniciansGrid } from "./TechniciansGrid";
 import { marketplaceApi } from "../../services/api";
+import type { AdBannerImage } from "../../services/api";
 import {
   BricksBlocksIcon,
   CementIcon,
@@ -126,12 +127,64 @@ const defaultPromoSlides = [
   }
 ] as const;
 
+function AdBannerDisplay({ images, section, className, autoSlide = false }: { images: AdBannerImage[]; section: number; className: string; autoSlide?: boolean }) {
+  const [activeSlide, setActiveSlide] = useState(0);
+  useEffect(() => {
+    if (!autoSlide || images.length < 2) {
+      setActiveSlide(0);
+      return;
+    }
+    const timer = window.setInterval(() => setActiveSlide((current) => (current + 1) % images.length), 4500);
+    return () => window.clearInterval(timer);
+  }, [autoSlide, images.length]);
+
+  if (!images.length) return null;
+  if (autoSlide) {
+    return (
+      <div className={`mx-auto ${className}`} aria-label={`Homepage ad banners, section ${section}`}>
+        <div className="relative h-full overflow-hidden rounded-2xl bg-gray-100">
+          <div className="flex h-full transition-transform duration-700 ease-in-out motion-reduce:transition-none" style={{ width: `${images.length * 100}%`, transform: `translateX(-${activeSlide * (100 / images.length)}%)` }}>
+            {images.map((image) => (
+              <Link key={image.id} to="/products" style={{ width: `${100 / images.length}%` }} className="relative block h-full flex-none overflow-hidden rounded-2xl">
+                <img src={image.imageUrl} alt={`Sponsored banner ${image.bannerNumber}`} className="h-full w-full rounded-2xl object-contain" />
+                <span className="absolute right-3 top-3 rounded bg-black/55 px-2.5 py-1 text-[10px] font-bold tracking-wide text-white">AD</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+        {images.length > 1 ? (
+          <div className="mt-2 flex h-2 items-center justify-center gap-1.5" aria-label="Choose spotlight banner">
+            {images.map((image, index) => (
+              <button key={image.id} type="button" aria-label={`Show spotlight banner ${image.bannerNumber}`} aria-current={index === activeSlide} onClick={() => setActiveSlide(index)} className={`h-1.5 rounded-full transition-all ${index === activeSlide ? "w-8 bg-black" : "w-5 bg-gray-300"}`} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex snap-x snap-mandatory gap-3 overflow-x-auto ${className}`} aria-label={`Homepage ad banners, section ${section}`}>
+      {images.map((image) => (
+        <Link key={image.id} to="/products" className="relative flex h-full w-full flex-none snap-center items-center justify-center overflow-hidden rounded-2xl bg-gray-50">
+          <img src={image.imageUrl} alt={`Sponsored banner ${image.bannerNumber}`} className="h-full w-full object-contain" />
+          <span className="absolute right-3 top-3 rounded bg-black/55 px-2.5 py-1 text-[10px] font-bold tracking-wide text-white">AD</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
   const products = useProducts({ pageSize: 24 });
   const stores = useStores();
   const banners = useQuery({ queryKey: ["home", "banners"], queryFn: marketplaceApi.publicBanners });
+  const adBanners = useQuery({ queryKey: ["home", "ad-banners"], queryFn: marketplaceApi.publicAdBanners });
+  const sectionOneAds = adBanners.data?.filter((banner) => banner.section === 1) ?? [];
+  const sectionTwoAds = adBanners.data?.filter((banner) => banner.section === 2) ?? [];
+  const sectionThreeAds = adBanners.data?.filter((banner) => banner.section === 3) ?? [];
   const promoSlides = banners.data?.length ? banners.data : defaultPromoSlides;
   const slideCount = promoSlides.length;
   const activeIndex = activePromo % slideCount;
@@ -192,7 +245,7 @@ export function HomePage() {
 
       {banners.isError ? <p className="sr-only" role="status">Homepage promotions could not be refreshed; default promotions are shown.</p> : null}
 
-      <section className="mx-auto max-w-7xl space-y-3 px-4 py-3 md:hidden">
+      <section className={`mx-auto max-w-7xl space-y-3 px-4 py-3 md:hidden ${sectionOneAds.length ? "hidden" : ""}`}>
         <div className={`relative isolate flex h-36 overflow-hidden rounded-xl bg-gradient-to-r ${"className" in currentPromo ? currentPromo.className : "from-[#a90018] via-[#d51d32] to-[#f27a36]"} p-4 text-white shadow-sm`}>
           <div className="relative z-10 flex w-[62%] flex-col justify-center">
             <span className="text-[9px] font-bold tracking-[0.16em] text-white/80">{currentPromo.eyebrow}</span>
@@ -223,6 +276,8 @@ export function HomePage() {
         </Link>
       </section>
 
+      {sectionOneAds.length ? <section className="mx-auto max-w-7xl px-4 py-3 md:hidden"><AdBannerDisplay images={sectionOneAds} section={1} className="h-36" /></section> : null}
+
       <section className="hidden bg-etukas-black px-4 py-2 text-xs font-semibold text-white md:block">
         <div className="mx-auto flex max-w-7xl items-center gap-3 overflow-hidden">
           <span className="h-2 w-2 rounded-full bg-etukas-red" />
@@ -240,7 +295,7 @@ export function HomePage() {
           ))}
         </aside>
 
-        <div className="overflow-hidden rounded-md bg-etukas-red text-white">
+        <div className={`${sectionOneAds.length ? "hidden" : ""} overflow-hidden rounded-md bg-etukas-red text-white`}>
           <div className="grid min-h-[300px] gap-6 p-6 md:grid-cols-[1fr_0.9fr] md:p-10">
             <div className="flex flex-col justify-center">
               <p className="text-xs font-bold uppercase tracking-normal">{banners.data?.length ? currentPromo.eyebrow : "Building materials marketplace"}</p>
@@ -260,6 +315,7 @@ export function HomePage() {
             </div>
           </div>
         </div>
+        {sectionOneAds.length ? <AdBannerDisplay images={sectionOneAds} section={1} className="h-[300px] w-full" /> : null}
       </section>
 
       {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
@@ -291,8 +347,37 @@ export function HomePage() {
         </div>
       </section>
 
+<<<<<<< HEAD
       {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
+=======
+      {/* In the Spotlight sponsored banner */}
+      <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6" aria-labelledby="spotlight-heading">
+        <h2 id="spotlight-heading" className="mb-4 text-xl font-extrabold text-gray-900 sm:text-2xl">In the spotlight</h2>
+        {sectionTwoAds.length ? (
+          <AdBannerDisplay images={sectionTwoAds} section={2} autoSlide className="h-[190px] max-w-5xl sm:h-[240px] lg:h-[280px]" />
+        ) : (
+          <Link to={promoLink} className="group relative mx-auto flex h-[190px] max-w-5xl items-center justify-center overflow-hidden rounded-2xl bg-yellow-300 shadow-sm sm:h-[240px] lg:h-[280px]" aria-label={`Sponsored: ${currentPromo.title}`}>
+            <img
+              src="/images/AdBannerImages/ultratech-banner.png"
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = "imageUrl" in currentPromo
+                  ? currentPromo.imageUrl
+                  : "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1600&q=85";
+              }}
+              alt="UltraTech Cement: Strong foundations for a better tomorrow"
+              className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-[1.01]"
+            />
+            <span className="absolute right-3 top-3 rounded bg-black/55 px-2.5 py-1 text-[10px] font-bold tracking-wide text-white">AD</span>
+          </Link>
+        )}
+      </section>
+
+      {/* 2. Vertical Blocks Grid (Multi-Column Grid) */}
+>>>>>>> 47ff9c9f71f771cdeb63ac1aea75dc580d6f2a95
       <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} />
+
+      {sectionThreeAds.length ? <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6"><AdBannerDisplay images={sectionThreeAds} section={3} className="h-[190px] sm:h-[240px] lg:h-[280px]" /></section> : null}
 
       <section className="border-y border-gray-100 bg-gray-50 px-4 py-10">
         <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">

@@ -469,6 +469,21 @@ model HomepageBanner {
   @@index([isActive, sortOrder])
 }
 
+model AdBannerImage {
+  id           String   @id @default(cuid())
+  section      Int
+  bannerNumber Int
+  imageUrl     String?
+  imageData    Bytes?
+  contentType  String
+  sizeBytes    Int
+  isCurrent    Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([section, bannerNumber, isCurrent, createdAt])
+}
+
 model AuditLog {
   id        String   @id @default(cuid())
   actorId   String?
