@@ -9,6 +9,9 @@ import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
 export const sellerRouter = Router();
 sellerRouter.use(requireAuth, requireRole(Role.SELLER, Role.MANUFACTURER));
 
+const MAX_IMAGE_SIZE_BYTES = 512 * 1024; // 500 KB
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+
 const newMaterialSchema = z.object({
   name: z.string().trim().min(2).max(160),
   category: z.enum([
@@ -23,7 +26,8 @@ const newMaterialSchema = z.object({
   ]),
   unit: z.string().trim().min(1).max(40),
   priceMinor: z.coerce.number().int().positive().max(100_000_000),
-  stockQuantity: z.coerce.number().int().min(0).max(10_000_000)
+  stockQuantity: z.coerce.number().int().min(0).max(10_000_000),
+  imageBase64: z.string().optional()
 });
 
 const categoryInfo: Record<z.infer<typeof newMaterialSchema>["category"], { name: string; slug: string; icon: string }> = {
@@ -113,6 +117,25 @@ sellerRouter.post("/products", async (req, res, next) => {
       throw new HttpError(409, "STORE_INACTIVE", "Your partner account is approved, but the store is inactive. Contact Etukas support.");
     }
 
+    // Validate image if provided
+    let imageDataBuffer: Buffer | undefined;
+    let imageMimeType: string | undefined;
+    let imageSizeBytes: number | undefined;
+    if (input.imageBase64) {
+      const match = input.imageBase64.match(/^data:([a-zA-Z0-9+/]+\/[a-zA-Z0-9+/]+);base64,(.+)$/);
+      if (!match) throw new HttpError(400, "INVALID_IMAGE", "Invalid image data format");
+      const [, mimeType, b64data] = match;
+      if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+        throw new HttpError(400, "INVALID_IMAGE_TYPE", `Image must be one of: ${ALLOWED_IMAGE_TYPES.join(", ")}`);
+      }
+      imageDataBuffer = Buffer.from(b64data, "base64");
+      if (imageDataBuffer.length > MAX_IMAGE_SIZE_BYTES) {
+        throw new HttpError(400, "IMAGE_TOO_LARGE", "Image must be under 500 KB");
+      }
+      imageMimeType = mimeType;
+      imageSizeBytes = imageDataBuffer.length;
+    }
+
     const listing = await prisma.$transaction(async (transaction) => {
       const category = categoryInfo[input.category];
       const dbCategory = await transaction.category.upsert({
@@ -129,6 +152,22 @@ sellerRouter.post("/products", async (req, res, next) => {
           unit: input.unit
         }
       });
+      // Create product image if provided
+      if (imageDataBuffer && imageMimeType) {
+        await transaction.productImage.create({
+          data: {
+            productId: product.id,
+            url: "",
+            altText: input.name,
+            sortOrder: 0,
+            metadata: {
+              imageData: imageDataBuffer.toString("base64"),
+              mimeType: imageMimeType,
+              sizeBytes: imageSizeBytes
+            }
+          }
+        });
+      }
       const newListing = await transaction.storeProduct.create({
         data: {
           productId: product.id,
@@ -192,6 +231,96 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
       }
     });
     return sendOk(res, updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Serve product image binary from DB metadata
+sellerRouter.get("/products/:listingId/images/:imageId/data", async (req, res, next) => {
+  try {
+    const profile = await sellerProfile(req.user!.id);
+    const listing = await prisma.storeProduct.findFirst({
+      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+      include: { product: true }
+    });
+    if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
+    const image = await prisma.productImage.findFirst({
+      where: { id: req.params.imageId, productId: listing.productId }
+    });
+    if (!image) throw new HttpError(404, "IMAGE_NOT_FOUND", "Image not found");
+    const meta = image.metadata as { imageData?: string; mimeType?: string } | null;
+    if (!meta?.imageData || !meta.mimeType) throw new HttpError(404, "IMAGE_DATA_NOT_FOUND", "Image data not found");
+    res.setHeader("Content-Type", meta.mimeType);
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    return res.send(Buffer.from(meta.imageData, "base64"));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Upload a new image for an existing product listing
+sellerRouter.post("/products/:listingId/images", async (req, res, next) => {
+  try {
+    const profile = await sellerProfile(req.user!.id);
+    const listing = await prisma.storeProduct.findFirst({
+      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+      include: { product: { include: { images: true } } }
+    });
+    if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
+
+    const { imageBase64 } = z.object({ imageBase64: z.string() }).parse(req.body);
+    const match = imageBase64.match(/^data:([a-zA-Z0-9+/]+\/[a-zA-Z0-9+/]+);base64,(.+)$/);
+    if (!match) throw new HttpError(400, "INVALID_IMAGE", "Invalid image data format");
+    const [, mimeType, b64data] = match;
+    if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+      throw new HttpError(400, "INVALID_IMAGE_TYPE", `Image must be one of: ${ALLOWED_IMAGE_TYPES.join(", ")}`);
+    }
+    const imageBuffer = Buffer.from(b64data, "base64");
+    if (imageBuffer.length > MAX_IMAGE_SIZE_BYTES) {
+      throw new HttpError(400, "IMAGE_TOO_LARGE", "Image must be under 500 KB");
+    }
+
+    const image = await prisma.productImage.create({
+      data: {
+        productId: listing.productId,
+        url: "",
+        altText: listing.product.name,
+        sortOrder: listing.product.images.length,
+        metadata: {
+          imageData: imageBuffer.toString("base64"),
+          mimeType,
+          sizeBytes: imageBuffer.length
+        }
+      }
+    });
+    return sendCreated(res, {
+      id: image.id,
+      productId: image.productId,
+      altText: image.altText,
+      sortOrder: image.sortOrder,
+      sizeBytes: imageBuffer.length,
+      mimeType
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete a product image
+sellerRouter.delete("/products/:listingId/images/:imageId", async (req, res, next) => {
+  try {
+    const profile = await sellerProfile(req.user!.id);
+    const listing = await prisma.storeProduct.findFirst({
+      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } }
+    });
+    if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
+    const image = await prisma.productImage.findFirst({
+      where: { id: req.params.imageId, productId: listing.productId }
+    });
+    if (!image) throw new HttpError(404, "IMAGE_NOT_FOUND", "Image not found");
+    await prisma.productImage.delete({ where: { id: image.id } });
+    return sendOk(res, { id: image.id });
   } catch (error) {
     next(error);
   }

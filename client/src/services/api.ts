@@ -268,10 +268,16 @@ export const marketplaceApi = {
   sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
   sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
-  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number }) =>
+  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
   sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  sellerAddProductImage: (listingId: string, imageBase64: string) =>
+    api<{ id: string; productId: string; altText: string; sortOrder: number; sizeBytes: number; mimeType: string }>(`/seller/products/${encodeURIComponent(listingId)}/images`, { method: "POST", body: JSON.stringify({ imageBase64 }) }),
+  sellerDeleteProductImage: (listingId: string, imageId: string) =>
+    api<{ id: string }>(`/seller/products/${encodeURIComponent(listingId)}/images/${encodeURIComponent(imageId)}`, { method: "DELETE" }),
+  sellerProductImageUrl: (listingId: string, imageId: string) =>
+    `${API_BASE}/seller/products/${encodeURIComponent(listingId)}/images/${encodeURIComponent(imageId)}/data`,
   sellerOrders: () => api<SellerOrder[]>("/seller/orders"),
 
   // ─── Chat (User) ───────────────────────────────────────────────────────────
@@ -489,7 +495,7 @@ export type SellerProductListing = {
     name: string;
     description: string;
     unit: string;
-    images: { url: string; altText: string }[];
+    images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[];
     category: Category;
   };
   store: Store;

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Eye,
+  ImagePlus,
   IndianRupee,
   Layers,
   MapPin,
@@ -21,16 +22,19 @@ import {
   ShoppingBag,
   SlidersHorizontal,
   Store as StoreIcon,
+  Trash2,
   Truck,
   Upload,
   UserCheck,
-  LogOut
+  LogOut,
+  X,
+  ZoomIn
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
-import { marketplaceApi } from "../../services/api";
+import { marketplaceApi, API_BASE } from "../../services/api";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
 const MATERIAL_CATEGORIES = [
@@ -85,6 +89,17 @@ export function SellerDashboard() {
   const [newProdUnit, setNewProdUnit] = useState("Bag");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdStock, setNewProdStock] = useState("");
+  const [newProdImageBase64, setNewProdImageBase64] = useState<string | undefined>(undefined);
+  const [newProdImagePreview, setNewProdImagePreview] = useState<string | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Manage images on existing product
+  const [managingImagesFor, setManagingImagesFor] = useState<{ id: string; name: string; images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[] } | null>(null);
+  const [manageImageBase64, setManageImageBase64] = useState<string | null>(null);
+  const [manageImagePreview, setManageImagePreview] = useState<string | null>(null);
+  const [manageImageError, setManageImageError] = useState<string | null>(null);
+  const manageImageInputRef = useRef<HTMLInputElement>(null);
 
   const queryClient = useQueryClient();
 
@@ -110,16 +125,55 @@ export function SellerDashboard() {
       category: newProdCategory,
       unit: newProdUnit.trim(),
       priceMinor: Math.round(Number(newProdPrice) * 100),
-      stockQuantity: Number(newProdStock)
+      stockQuantity: Number(newProdStock),
+      imageBase64: newProdImageBase64
     }),
     onSuccess: () => {
       setNewProdName("");
       setNewProdPrice("");
       setNewProdStock("");
+      setNewProdImageBase64(undefined);
+      setNewProdImagePreview(null);
+      setImageError(null);
       setShowAddModal(false);
       void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
       void queryClient.invalidateQueries({ queryKey: ["seller-dashboard"] });
       void queryClient.invalidateQueries({ queryKey: ["products"] });
+    }
+  });
+
+  const addProductImageMutation = useMutation({
+    mutationFn: ({ listingId, imageBase64 }: { listingId: string; imageBase64: string }) =>
+      marketplaceApi.sellerAddProductImage(listingId, imageBase64),
+    onSuccess: () => {
+      setManageImageBase64(null);
+      setManageImagePreview(null);
+      setManageImageError(null);
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      // Re-fetch to refresh managing panel images
+      void sellerProductsQuery.refetch().then((result) => {
+        if (managingImagesFor && result.data) {
+          const updated = result.data.find((l) => l.id === managingImagesFor.id);
+          if (updated) setManagingImagesFor({ id: updated.id, name: updated.product.name, images: updated.product.images });
+        }
+      });
+    },
+    onError: (err: Error) => {
+      setManageImageError(err.message);
+    }
+  });
+
+  const deleteProductImageMutation = useMutation({
+    mutationFn: ({ listingId, imageId }: { listingId: string; imageId: string }) =>
+      marketplaceApi.sellerDeleteProductImage(listingId, imageId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void sellerProductsQuery.refetch().then((result) => {
+        if (managingImagesFor && result.data) {
+          const updated = result.data.find((l) => l.id === managingImagesFor.id);
+          if (updated) setManagingImagesFor({ id: updated.id, name: updated.product.name, images: updated.product.images });
+        }
+      });
     }
   });
 
@@ -159,6 +213,60 @@ export function SellerDashboard() {
     const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sku.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCat && matchSearch;
   });
+
+  // Helper: pick image URL for a listing
+  const getProductImageUrl = (listing: NonNullable<typeof sellerProductsQuery.data>[number]) => {
+    const imgs = listing.product.images;
+    if (!imgs || imgs.length === 0) return null;
+    const img = imgs[0];
+    if (img.url && img.url !== "") return img.url;
+    // Served from backend
+    return `${API_BASE}/seller/products/${encodeURIComponent(listing.id)}/images/${encodeURIComponent(img.id)}/data`;
+  };
+
+  const handleNewImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setImageError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+    if (!ALLOWED.includes(file.type)) {
+      setImageError("Only JPG, PNG, or WebP images are allowed.");
+      return;
+    }
+    if (file.size > 512 * 1024) {
+      setImageError(`File too large (${(file.size / 1024).toFixed(0)} KB). Max 500 KB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setNewProdImageBase64(b64);
+      setNewProdImagePreview(b64);
+    };
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleManageImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setManageImageError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ALLOWED = ["image/jpeg", "image/png", "image/webp"];
+    if (!ALLOWED.includes(file.type)) {
+      setManageImageError("Only JPG, PNG, or WebP images are allowed.");
+      return;
+    }
+    if (file.size > 512 * 1024) {
+      setManageImageError(`File too large (${(file.size / 1024).toFixed(0)} KB). Max 500 KB.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const b64 = reader.result as string;
+      setManageImageBase64(b64);
+      setManageImagePreview(b64);
+    };
+    reader.readAsDataURL(file);
+  }, []);
 
   return (
     <main className="min-h-screen bg-gray-50 pb-16">
@@ -401,6 +509,7 @@ export function SellerDashboard() {
               <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
                 <thead className="bg-gray-50 font-bold text-gray-700">
                   <tr>
+                    <th className="px-6 py-3.5">Photo</th>
                     <th className="px-6 py-3.5">Material Name & SKU</th>
                     <th className="px-6 py-3.5">Category</th>
                     <th className="px-6 py-3.5">Selling Unit</th>
@@ -417,8 +526,37 @@ export function SellerDashboard() {
                   {sellerProductsQuery.error ? (
                     <tr><td colSpan={7} role="alert" className="px-6 py-12 text-center text-red-700">{sellerProductsQuery.error.message}</td></tr>
                   ) : null}
-                  {filteredProducts.map((p) => (
+                  {filteredProducts.map((p) => {
+                    const fullListing = (sellerProductsQuery.data ?? []).find((l) => l.id === p.id);
+                    const imgUrl = fullListing ? getProductImageUrl(fullListing) : null;
+                    return (
                     <tr key={p.id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-4 py-3">
+                        {imgUrl ? (
+                          <div className="relative group">
+                            <img
+                              src={imgUrl}
+                              alt={p.name}
+                              className="h-14 w-14 rounded-xl object-cover shadow border border-gray-200"
+                            />
+                            <button
+                              onClick={() => fullListing && setManagingImagesFor({ id: fullListing.id, name: fullListing.product.name, images: fullListing.product.images })}
+                              className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Manage photos"
+                            >
+                              <ZoomIn size={18} className="text-white" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => fullListing && setManagingImagesFor({ id: fullListing.id, name: fullListing.product.name, images: fullListing.product.images })}
+                            className="h-14 w-14 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center text-gray-400 hover:border-orange-400 hover:bg-orange-50 hover:text-orange-500 transition-all"
+                            title="Add photo"
+                          >
+                            <ImagePlus size={20} />
+                          </button>
+                        )}
+                      </td>
                       <td className="px-6 py-4">
                         <div className="font-bold text-gray-900">{p.name}</div>
                         <div className="font-mono text-xs text-gray-400">SKU: {p.sku}</div>
@@ -452,16 +590,26 @@ export function SellerDashboard() {
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <button
-                          disabled={toggleProductMutation.isPending}
-                          onClick={() => toggleProductMutation.mutate({ id: p.id, isActive: !p.isActive })}
-                          className="text-xs font-bold text-orange-600 hover:text-orange-700"
-                        >
-                          {p.isActive ? "Disable" : "Enable"}
-                        </button>
+                        <div className="flex items-center justify-end gap-2">
+                          <button
+                            onClick={() => fullListing && setManagingImagesFor({ id: fullListing.id, name: fullListing.product.name, images: fullListing.product.images })}
+                            className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                            title="Manage photos"
+                          >
+                            <ImagePlus size={14} /> Photos
+                          </button>
+                          <button
+                            disabled={toggleProductMutation.isPending}
+                            onClick={() => toggleProductMutation.mutate({ id: p.id, isActive: !p.isActive })}
+                            className="text-xs font-bold text-orange-600 hover:text-orange-700"
+                          >
+                            {p.isActive ? "Disable" : "Enable"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {!sellerProductsQuery.isLoading && !sellerProductsQuery.error && filteredProducts.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
@@ -477,11 +625,17 @@ export function SellerDashboard() {
             {/* Modal for adding product */}
             {showAddModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+                <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
                   <div className="flex items-center justify-between border-b pb-3">
                     <h3 className="text-lg font-bold text-gray-900">Add Material to Store Catalog</h3>
                     <button
-                      onClick={() => setShowAddModal(false)}
+                      onClick={() => {
+                        setShowAddModal(false);
+                        setNewProdImageBase64(undefined);
+                        setNewProdImagePreview(null);
+                        setImageError(null);
+                        if (imageInputRef.current) imageInputRef.current.value = "";
+                      }}
                       className="text-gray-400 hover:text-gray-600 text-xl font-bold"
                     >
                       ✕
@@ -562,6 +716,69 @@ export function SellerDashboard() {
                       />
                     </div>
 
+                    {/* ── Product Photo Upload ── */}
+                    <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+                      <label className="block text-xs font-bold uppercase text-blue-800 mb-2">Product / Service Photo <span className="text-gray-400 normal-case font-normal">(optional)</span></label>
+
+                      {/* Constraints info */}
+                      <div className="mb-3 grid grid-cols-3 gap-2">
+                        <div className="flex flex-col items-center rounded-lg bg-white border border-blue-100 p-2 text-center">
+                          <span className="text-[10px] font-bold uppercase text-gray-500">Max Size</span>
+                          <span className="mt-0.5 text-sm font-black text-orange-600">500 KB</span>
+                        </div>
+                        <div className="flex flex-col items-center rounded-lg bg-white border border-blue-100 p-2 text-center">
+                          <span className="text-[10px] font-bold uppercase text-gray-500">Aspect Ratio</span>
+                          <span className="mt-0.5 text-sm font-black text-orange-600">1:1 or 4:3</span>
+                        </div>
+                        <div className="flex flex-col items-center rounded-lg bg-white border border-blue-100 p-2 text-center">
+                          <span className="text-[10px] font-bold uppercase text-gray-500">Formats</span>
+                          <span className="mt-0.5 text-sm font-black text-orange-600">JPG/PNG/WebP</span>
+                        </div>
+                      </div>
+
+                      <p className="mb-3 text-[11px] text-blue-700 leading-relaxed">
+                        📸 Upload a clear photo of your product or service. Use a well-lit, product-only image with a clean background. <strong>Images must be product/service related</strong> — branding, invoices, or unrelated photos will be rejected.
+                      </p>
+
+                      {newProdImagePreview ? (
+                        <div className="relative inline-block">
+                          <img
+                            src={newProdImagePreview}
+                            alt="Product preview"
+                            className="h-36 w-36 rounded-xl object-cover shadow-md border-2 border-orange-300"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => { setNewProdImageBase64(undefined); setNewProdImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ""; }}
+                            className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:bg-red-600 transition-colors"
+                          >
+                            <X size={14} />
+                          </button>
+                          <div className="mt-1 text-[10px] text-gray-500 text-center">Tap ✕ to remove</div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => imageInputRef.current?.click()}
+                          className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-blue-300 bg-white/80 py-6 text-blue-500 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-600 transition-all"
+                        >
+                          <Upload size={28} />
+                          <span className="text-sm font-bold">Click to upload product photo</span>
+                          <span className="text-[11px] text-gray-400">Max 500 KB · JPG, PNG, WebP · 1:1 or 4:3 ratio</span>
+                        </button>
+                      )}
+                      <input
+                        ref={imageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={handleNewImageSelect}
+                      />
+                      {imageError && (
+                        <p className="mt-2 text-xs font-semibold text-red-600">{imageError}</p>
+                      )}
+                    </div>
+
                     {addProductMutation.error ? (
                       <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{addProductMutation.error.message}</p>
                     ) : null}
@@ -570,15 +787,156 @@ export function SellerDashboard() {
                       <Button
                         type="button"
                         variant="secondary"
-                        onClick={() => setShowAddModal(false)}
+                        onClick={() => {
+                          setShowAddModal(false);
+                          setNewProdImageBase64(undefined);
+                          setNewProdImagePreview(null);
+                          setImageError(null);
+                          if (imageInputRef.current) imageInputRef.current.value = "";
+                        }}
                       >
                         Cancel
                       </Button>
-                      <Button type="submit" disabled={addProductMutation.isPending} className="bg-orange-500 hover:bg-orange-600">
+                      <Button type="submit" disabled={addProductMutation.isPending || !!imageError} className="bg-orange-500 hover:bg-orange-600">
                         {addProductMutation.isPending ? "Saving..." : "Add to Store"}
                       </Button>
                     </div>
                   </form>
+                </div>
+              </div>
+            )}
+
+            {/* Manage Photos Modal for existing product */}
+            {managingImagesFor && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+                  <div className="flex items-center justify-between border-b p-5">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Manage Product Photos</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">{managingImagesFor.name}</p>
+                    </div>
+                    <button
+                      onClick={() => { setManagingImagesFor(null); setManageImageBase64(null); setManageImagePreview(null); setManageImageError(null); }}
+                      className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                    {/* Upload constraints info */}
+                    <div className="rounded-xl border border-orange-100 bg-orange-50/60 p-3">
+                      <p className="text-[11px] font-bold text-orange-800 mb-1.5">📋 Upload Guidelines</p>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <div className="text-center rounded-lg bg-white border border-orange-100 py-1.5 px-1">
+                          <div className="text-[10px] uppercase font-bold text-gray-500">Max Size</div>
+                          <div className="text-sm font-black text-orange-600">500 KB</div>
+                        </div>
+                        <div className="text-center rounded-lg bg-white border border-orange-100 py-1.5 px-1">
+                          <div className="text-[10px] uppercase font-bold text-gray-500">Ratio</div>
+                          <div className="text-sm font-black text-orange-600">1:1 or 4:3</div>
+                        </div>
+                        <div className="text-center rounded-lg bg-white border border-orange-100 py-1.5 px-1">
+                          <div className="text-[10px] uppercase font-bold text-gray-500">Type</div>
+                          <div className="text-sm font-black text-orange-600">JPG/PNG/WebP</div>
+                        </div>
+                      </div>
+                      <p className="text-[10px] text-orange-700">Only product/service related images allowed. Branding or unrelated content will be rejected.</p>
+                    </div>
+
+                    {/* Existing images grid */}
+                    {managingImagesFor.images.length > 0 ? (
+                      <div>
+                        <p className="text-xs font-bold uppercase text-gray-600 mb-2">Uploaded Photos ({managingImagesFor.images.length})</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          {managingImagesFor.images.map((img) => {
+                            const imgSrc = img.url && img.url !== ""
+                              ? img.url
+                              : `${API_BASE}/seller/products/${encodeURIComponent(managingImagesFor.id)}/images/${encodeURIComponent(img.id)}/data`;
+                            const sizeMeta = img.metadata?.sizeBytes;
+                            return (
+                              <div key={img.id} className="relative group rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                                <img src={imgSrc} alt={img.altText} className="h-24 w-full object-cover" />
+                                {sizeMeta && (
+                                  <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-[10px] text-center py-0.5 font-mono">
+                                    {(sizeMeta / 1024).toFixed(0)} KB
+                                  </div>
+                                )}
+                                <button
+                                  disabled={deleteProductImageMutation.isPending}
+                                  onClick={() => deleteProductImageMutation.mutate({ listingId: managingImagesFor.id, imageId: img.id })}
+                                  className="absolute top-1 right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500/90 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow"
+                                  title="Delete photo"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-6 text-gray-400">
+                        <ImagePlus size={40} className="text-gray-300 mb-2" />
+                        <p className="text-sm font-semibold">No photos uploaded yet</p>
+                        <p className="text-xs text-gray-400">Add a photo below</p>
+                      </div>
+                    )}
+
+                    {/* Add new photo */}
+                    <div className="border-t pt-4">
+                      <p className="text-xs font-bold uppercase text-gray-600 mb-2">Add New Photo</p>
+                      {manageImagePreview ? (
+                        <div className="flex items-start gap-4">
+                          <div className="relative">
+                            <img
+                              src={manageImagePreview}
+                              alt="Preview"
+                              className="h-24 w-24 rounded-xl object-cover border-2 border-orange-300 shadow"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => { setManageImageBase64(null); setManageImagePreview(null); if (manageImageInputRef.current) manageImageInputRef.current.value = ""; }}
+                              className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                          <div className="flex-1">
+                            <p className="text-xs text-gray-600 mb-2">Preview looks good? Click upload to save.</p>
+                            <Button
+                              type="button"
+                              className="bg-orange-500 hover:bg-orange-600 w-full"
+                              disabled={addProductImageMutation.isPending}
+                              onClick={() => manageImageBase64 && addProductImageMutation.mutate({ listingId: managingImagesFor.id, imageBase64: manageImageBase64 })}
+                            >
+                              {addProductImageMutation.isPending ? "Uploading..." : "Upload Photo"}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => manageImageInputRef.current?.click()}
+                          className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 text-gray-400 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-500 transition-all"
+                        >
+                          <Upload size={24} />
+                          <span className="text-sm font-bold">Click to upload</span>
+                          <span className="text-[11px]">Max 500 KB · JPG, PNG, WebP</span>
+                        </button>
+                      )}
+                      <input
+                        ref={manageImageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={handleManageImageSelect}
+                      />
+                      {manageImageError && (
+                        <p className="mt-2 text-xs font-semibold text-red-600">{manageImageError}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
