@@ -347,9 +347,6 @@ export function HomePage() {
         </div>
       </section>
 
-<<<<<<< HEAD
-      {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
-=======
       {/* In the Spotlight sponsored banner */}
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6" aria-labelledby="spotlight-heading">
         <h2 id="spotlight-heading" className="mb-4 text-xl font-extrabold text-gray-900 sm:text-2xl">In the spotlight</h2>
@@ -373,8 +370,7 @@ export function HomePage() {
         )}
       </section>
 
-      {/* 2. Vertical Blocks Grid (Multi-Column Grid) */}
->>>>>>> 47ff9c9f71f771cdeb63ac1aea75dc580d6f2a95
+      {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
       <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} />
 
       {sectionThreeAds.length ? <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6"><AdBannerDisplay images={sectionThreeAds} section={3} className="h-[190px] sm:h-[240px] lg:h-[280px]" /></section> : null}
