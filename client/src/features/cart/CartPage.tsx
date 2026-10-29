@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ShoppingBag } from "lucide-react";
 import { Button } from "../../components/ui/Button";
-import { marketplaceApi } from "../../services/api";
+import { marketplaceApi, getProductImageUrl } from "../../services/api";
 import { formatMoney } from "../../lib/utils";
 
 export function CartPage() {
@@ -20,7 +20,15 @@ export function CartPage() {
             {cart.data?.items.length === 0 ? <p className="rounded-md border border-gray-100 p-6 text-gray-600">Your cart is empty.</p> : null}
             {cart.data?.items.map((item) => (
               <article key={item.id} className="flex gap-4 rounded-md border border-gray-100 p-4">
-                <img className="h-20 w-20 rounded-md object-cover" src={item.storeProduct.product.images[0]?.url} alt={item.storeProduct.product.name} />
+                <img
+                  className="h-20 w-20 rounded-md object-cover"
+                  src={getProductImageUrl(item.storeProduct.product.images[0], item.storeProduct.product.id)}
+                  alt={item.storeProduct.product.name}
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
+                  }}
+                />
                 <div className="flex-1">
                   <h2 className="font-bold">{item.storeProduct.product.name}</h2>
                   <p className="text-sm text-gray-500">{item.storeProduct.store.name}</p>

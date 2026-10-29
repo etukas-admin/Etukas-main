@@ -158,7 +158,9 @@ export function setSession(nextAccessToken: string | null, nextCsrfToken?: strin
 export function clearSession() {
   setSession(null, null, null);
   removeStorageItem("etukas_access_token");
+  removeStorageItem("etukas_csrf_token");
   removeStorageItem("etukas_user");
+  csrfToken = null;
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("etukas_auth_change"));
   }
@@ -167,12 +169,26 @@ export function clearSession() {
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const requiresCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
-  if (requiresCsrf && !csrfToken) await refreshCsrfToken();
+  const isAuthOrPublic =
+    path.startsWith("/auth/login") ||
+    path.startsWith("/auth/register") ||
+    path.startsWith("/auth/reset-password") ||
+    path.startsWith("/auth/csrf") ||
+    path.startsWith("/seller-enquiries") ||
+    path.startsWith("/seller-registration");
+
+  if (requiresCsrf && !isAuthOrPublic && !csrfToken) {
+    try {
+      await refreshCsrfToken();
+    } catch {
+      // Non-blocking prefetch
+    }
+  }
 
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  if (csrfToken && init.method && init.method !== "GET") headers.set("x-csrf-token", csrfToken);
+  if (csrfToken && method !== "GET") headers.set("x-csrf-token", csrfToken);
 
   const url = `${API_BASE}${path}`;
   let response = await fetch(url, {
@@ -183,13 +199,18 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   let payload = await parseJsonResponse<T>(response, url);
 
   if (requiresCsrf && !payload.ok && payload.error?.code === "CSRF_FAILED") {
-    headers.set("x-csrf-token", await refreshCsrfToken());
-    response = await fetch(url, {
-      ...init,
-      headers,
-      credentials: "include"
-    });
-    payload = await parseJsonResponse<T>(response, url);
+    try {
+      const freshToken = await refreshCsrfToken();
+      headers.set("x-csrf-token", freshToken);
+      response = await fetch(url, {
+        ...init,
+        headers,
+        credentials: "include"
+      });
+      payload = await parseJsonResponse<T>(response, url);
+    } catch {
+      // Fall through to error handler
+    }
   }
 
   if (!payload.ok) {
@@ -278,6 +299,8 @@ export const marketplaceApi = {
     api<{ id: string }>(`/seller/products/${encodeURIComponent(listingId)}/images/${encodeURIComponent(imageId)}`, { method: "DELETE" }),
   sellerProductImageUrl: (listingId: string, imageId: string) =>
     `${API_BASE}/seller/products/${encodeURIComponent(listingId)}/images/${encodeURIComponent(imageId)}/data`,
+  publicProductImageUrl: (productId: string, imageId: string) =>
+    `${API_BASE}/products/${encodeURIComponent(productId)}/images/${encodeURIComponent(imageId)}`,
   sellerOrders: () => api<SellerOrder[]>("/seller/orders"),
 
   // ─── Chat (User) ───────────────────────────────────────────────────────────
@@ -357,10 +380,39 @@ export type StoreProduct = {
     name: string;
     description: string;
     unit: string;
-    images: { url: string; altText: string }[];
+    images: { id?: string; productId?: string; url: string; altText: string }[];
     category: Category;
   };
 };
+
+export function getProductImageUrl(
+  image?: { id?: string; productId?: string; url?: string } | null,
+  productId?: string,
+  fallback = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80"
+): string {
+  if (!image) return fallback;
+  const rawUrl = image.url?.trim();
+  if (rawUrl) {
+    if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://") || rawUrl.startsWith("data:")) {
+      return rawUrl;
+    }
+    if (rawUrl.startsWith("/api/v1")) {
+      return `${API_BASE}${rawUrl.slice("/api/v1".length)}`;
+    }
+    if (rawUrl.startsWith("/api")) {
+      return `${API_BASE}${rawUrl.slice("/api".length)}`;
+    }
+    return rawUrl;
+  }
+  const pid = productId || image.productId;
+  if (image.id && pid) {
+    return `${API_BASE}/products/${encodeURIComponent(pid)}/images/${encodeURIComponent(image.id)}`;
+  }
+  if (image.id) {
+    return `${API_BASE}/products/images/${encodeURIComponent(image.id)}`;
+  }
+  return fallback;
+}
 
 export type SellerEnquiry = Omit<SellerEnquiryInput, "latitude" | "longitude"> & {
   id: string;

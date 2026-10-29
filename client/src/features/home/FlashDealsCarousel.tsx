@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { ChevronLeft, ChevronRight, Check, Plus, Sparkles, MapPin, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
-import { StoreProduct } from "../../services/api";
+import { StoreProduct, getProductImageUrl } from "../../services/api";
 import { formatMoney } from "../../lib/utils";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useAddToCart } from "../../hooks/useAddToCart";
@@ -131,13 +131,18 @@ export function FlashDealsCarousel({ products, isLoading }: FlashDealsCarouselPr
                   {/* Top Image & Floating Badges */}
                   <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg bg-gray-50">
                     <img
-                      src={
-                        item.product.images[0]?.url ||
+                      src={getProductImageUrl(
+                        item.product.images[0],
+                        item.product.id,
                         "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80"
-                      }
+                      )}
                       alt={item.product.images[0]?.altText || item.product.name}
                       className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                       loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
+                      }}
                     />
 
                     {/* Discount Badge */}

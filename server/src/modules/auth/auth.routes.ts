@@ -30,7 +30,8 @@ authRouter.post("/register", async (req, res, next) => {
       },
       select: { id: true, name: true, email: true, mobile: true, roles: true }
     });
-    return sendCreated(res, user);
+    const csrfToken = issueCsrf(res);
+    return sendCreated(res, { ...user, csrfToken });
   } catch (error) {
     next(error);
   }

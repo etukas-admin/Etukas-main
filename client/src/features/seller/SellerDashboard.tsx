@@ -28,13 +28,15 @@ import {
   UserCheck,
   LogOut,
   X,
-  ZoomIn
+  ZoomIn,
+  Crop
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { marketplaceApi, API_BASE } from "../../services/api";
+import { ImageCropModal } from "./ImageCropModal";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
 const MATERIAL_CATEGORIES = [
@@ -91,6 +93,8 @@ export function SellerDashboard() {
   const [newProdStock, setNewProdStock] = useState("");
   const [newProdImageBase64, setNewProdImageBase64] = useState<string | undefined>(undefined);
   const [newProdImagePreview, setNewProdImagePreview] = useState<string | null>(null);
+  const [rawNewProdImage, setRawNewProdImage] = useState<string | null>(null);
+  const [showNewCropModal, setShowNewCropModal] = useState<boolean>(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
@@ -98,6 +102,8 @@ export function SellerDashboard() {
   const [managingImagesFor, setManagingImagesFor] = useState<{ id: string; name: string; images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[] } | null>(null);
   const [manageImageBase64, setManageImageBase64] = useState<string | null>(null);
   const [manageImagePreview, setManageImagePreview] = useState<string | null>(null);
+  const [rawManageImage, setRawManageImage] = useState<string | null>(null);
+  const [showManageCropModal, setShowManageCropModal] = useState<boolean>(false);
   const [manageImageError, setManageImageError] = useState<string | null>(null);
   const manageImageInputRef = useRef<HTMLInputElement>(null);
 
@@ -233,17 +239,18 @@ export function SellerDashboard() {
       setImageError("Only JPG, PNG, or WebP images are allowed.");
       return;
     }
-    if (file.size > 512 * 1024) {
-      setImageError(`File too large (${(file.size / 1024).toFixed(0)} KB). Max 500 KB.`);
+    if (file.size > 10 * 1024 * 1024) {
+      setImageError(`File too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max 10 MB.`);
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const b64 = reader.result as string;
-      setNewProdImageBase64(b64);
-      setNewProdImagePreview(b64);
+      setRawNewProdImage(b64);
+      setShowNewCropModal(true);
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   }, []);
 
   const handleManageImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -255,17 +262,18 @@ export function SellerDashboard() {
       setManageImageError("Only JPG, PNG, or WebP images are allowed.");
       return;
     }
-    if (file.size > 512 * 1024) {
-      setManageImageError(`File too large (${(file.size / 1024).toFixed(0)} KB). Max 500 KB.`);
+    if (file.size > 10 * 1024 * 1024) {
+      setManageImageError(`File too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max 10 MB.`);
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const b64 = reader.result as string;
-      setManageImageBase64(b64);
-      setManageImagePreview(b64);
+      setRawManageImage(b64);
+      setShowManageCropModal(true);
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   }, []);
 
   return (
@@ -741,20 +749,55 @@ export function SellerDashboard() {
                       </p>
 
                       {newProdImagePreview ? (
-                        <div className="relative inline-block">
-                          <img
-                            src={newProdImagePreview}
-                            alt="Product preview"
-                            className="h-36 w-36 rounded-xl object-cover shadow-md border-2 border-orange-300"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => { setNewProdImageBase64(undefined); setNewProdImagePreview(null); if (imageInputRef.current) imageInputRef.current.value = ""; }}
-                            className="absolute -top-2 -right-2 flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow-md hover:bg-red-600 transition-colors"
-                          >
-                            <X size={14} />
-                          </button>
-                          <div className="mt-1 text-[10px] text-gray-500 text-center">Tap ✕ to remove</div>
+                        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 p-3 rounded-xl bg-orange-50/70 border border-orange-200">
+                          <div className="relative group">
+                            <img
+                              src={newProdImagePreview}
+                              alt="Product preview"
+                              className="h-32 w-32 rounded-xl object-cover shadow-md border-2 border-orange-400 bg-white"
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-xl transition-opacity flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => setShowNewCropModal(true)}
+                                className="p-2 rounded-full bg-white text-gray-800 hover:bg-orange-500 hover:text-white shadow transition-colors"
+                                title="Adjust 1:1 crop"
+                              >
+                                <Crop size={16} />
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-center sm:items-start gap-2 flex-1">
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-800">
+                              ✓ 1:1 Square Frame (Card Fit)
+                            </span>
+                            <p className="text-xs text-gray-600 text-center sm:text-left">
+                              Cropped to fixed 1:1 ratio. This exact framing will appear on buyer product cards.
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <button
+                                type="button"
+                                onClick={() => setShowNewCropModal(true)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-white px-3 py-1.5 text-xs font-bold text-orange-700 shadow-sm hover:bg-orange-50 transition-colors"
+                              >
+                                <Crop size={13} className="text-orange-500" />
+                                Crop / Adjust
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setNewProdImageBase64(undefined);
+                                  setNewProdImagePreview(null);
+                                  setRawNewProdImage(null);
+                                  if (imageInputRef.current) imageInputRef.current.value = "";
+                                }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-50 transition-colors"
+                              >
+                                <X size={13} />
+                                Remove
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <button
@@ -764,7 +807,7 @@ export function SellerDashboard() {
                         >
                           <Upload size={28} />
                           <span className="text-sm font-bold">Click to upload product photo</span>
-                          <span className="text-[11px] text-gray-400">Max 500 KB · JPG, PNG, WebP · 1:1 or 4:3 ratio</span>
+                          <span className="text-[11px] text-gray-400">JPG, PNG, WebP · Interactive 1:1 crop frame included</span>
                         </button>
                       )}
                       <input
@@ -887,23 +930,51 @@ export function SellerDashboard() {
                     <div className="border-t pt-4">
                       <p className="text-xs font-bold uppercase text-gray-600 mb-2">Add New Photo</p>
                       {manageImagePreview ? (
-                        <div className="flex items-start gap-4">
-                          <div className="relative">
+                        <div className="flex items-start gap-4 p-3 rounded-xl bg-orange-50/70 border border-orange-200">
+                          <div className="relative group">
                             <img
                               src={manageImagePreview}
                               alt="Preview"
-                              className="h-24 w-24 rounded-xl object-cover border-2 border-orange-300 shadow"
+                              className="h-24 w-24 rounded-xl object-cover border-2 border-orange-400 shadow bg-white"
                             />
-                            <button
-                              type="button"
-                              onClick={() => { setManageImageBase64(null); setManageImagePreview(null); if (manageImageInputRef.current) manageImageInputRef.current.value = ""; }}
-                              className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow hover:bg-red-600"
-                            >
-                              <X size={12} />
-                            </button>
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 rounded-xl transition-opacity flex items-center justify-center">
+                              <button
+                                type="button"
+                                onClick={() => setShowManageCropModal(true)}
+                                className="p-1.5 rounded-full bg-white text-gray-800 hover:bg-orange-500 hover:text-white shadow transition-colors"
+                                title="Adjust crop"
+                              >
+                                <Crop size={14} />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <p className="text-xs text-gray-600 mb-2">Preview looks good? Click upload to save.</p>
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                                ✓ 1:1 Cropped
+                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowManageCropModal(true)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-orange-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-orange-700 hover:bg-orange-50"
+                                >
+                                  <Crop size={11} /> Re-crop
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setManageImageBase64(null);
+                                    setManageImagePreview(null);
+                                    setRawManageImage(null);
+                                    if (manageImageInputRef.current) manageImageInputRef.current.value = "";
+                                  }}
+                                  className="inline-flex items-center rounded-md border border-red-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+                                >
+                                  <X size={11} />
+                                </button>
+                              </div>
+                            </div>
                             <Button
                               type="button"
                               className="bg-orange-500 hover:bg-orange-600 w-full"
@@ -921,8 +992,8 @@ export function SellerDashboard() {
                           className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 py-5 text-gray-400 hover:border-orange-400 hover:bg-orange-50/50 hover:text-orange-500 transition-all"
                         >
                           <Upload size={24} />
-                          <span className="text-sm font-bold">Click to upload</span>
-                          <span className="text-[11px]">Max 500 KB · JPG, PNG, WebP</span>
+                          <span className="text-sm font-bold">Click to upload photo</span>
+                          <span className="text-[11px]">JPG, PNG, WebP · Interactive 1:1 crop frame</span>
                         </button>
                       )}
                       <input
@@ -1081,6 +1152,39 @@ export function SellerDashboard() {
           </div>
         )}
       </div>
+
+      {/* 1:1 Image Crop Modals */}
+      <ImageCropModal
+        isOpen={showNewCropModal}
+        imageSrc={rawNewProdImage}
+        onCropComplete={(croppedBase64) => {
+          setNewProdImageBase64(croppedBase64);
+          setNewProdImagePreview(croppedBase64);
+          setShowNewCropModal(false);
+        }}
+        onCancel={() => {
+          setShowNewCropModal(false);
+          if (!newProdImageBase64) {
+            setRawNewProdImage(null);
+          }
+        }}
+      />
+
+      <ImageCropModal
+        isOpen={showManageCropModal}
+        imageSrc={rawManageImage}
+        onCropComplete={(croppedBase64) => {
+          setManageImageBase64(croppedBase64);
+          setManageImagePreview(croppedBase64);
+          setShowManageCropModal(false);
+        }}
+        onCancel={() => {
+          setShowManageCropModal(false);
+          if (!manageImageBase64) {
+            setRawManageImage(null);
+          }
+        }}
+      />
     </main>
   );
 }

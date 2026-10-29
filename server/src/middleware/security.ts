@@ -34,8 +34,35 @@ export function issueCsrf(res: Response) {
   return token;
 }
 
+const CSRF_EXEMPT_PATHS = [
+  "/auth/login",
+  "/auth/register",
+  "/auth/reset-password",
+  "/auth/csrf",
+  "/auth/refresh",
+  "/auth/logout",
+  "/seller-enquiries",
+  "/seller-registration"
+];
+
 export function requireCsrf(req: Request, _res: Response, next: NextFunction) {
+  // Safe HTTP methods never mutate state
   if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+
+  // Normalize path to check exemptions for public auth & enquiry endpoints
+  const requestPath = (req.originalUrl || req.path || "").split("?")[0].toLowerCase();
+  const isExempt = CSRF_EXEMPT_PATHS.some(
+    (exempt) => requestPath.endsWith(exempt) || requestPath.includes(exempt)
+  );
+  if (isExempt) return next();
+
+  // Requests authenticated via explicit Authorization: Bearer token cannot be forged by CSRF
+  const authHeader = req.header("authorization");
+  if (authHeader && authHeader.startsWith("Bearer ") && authHeader.length > 15) {
+    return next();
+  }
+
+  // Double-submit cookie verification for cookie-authenticated requests
   const cookieToken = req.cookies?.etukas_csrf;
   const headerToken = req.header("x-csrf-token");
   if (!cookieToken || cookieToken !== headerToken) {
