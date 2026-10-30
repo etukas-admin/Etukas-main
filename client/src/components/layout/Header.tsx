@@ -7,6 +7,7 @@ import { Logo } from "../common/Logo";
 import { Input } from "../ui/Input";
 import { MobileNav } from "./MobileNav";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
+import { ADDRESS_CHANGE_EVENT, getDeliveryLabel } from "../../features/location/locationStore";
 
 const nav = [
   ["Home", "/"],
@@ -21,6 +22,7 @@ export function Header() {
   const isMobileScrolled = useMobileScrollState();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [deliveryLabel, setDeliveryLabel] = useState(getDeliveryLabel);
 
   const cartQuery = useQuery({
     queryKey: ["cart"],
@@ -36,6 +38,12 @@ export function Header() {
     };
     window.addEventListener("etukas_auth_change", handleAuthChange);
     return () => window.removeEventListener("etukas_auth_change", handleAuthChange);
+  }, []);
+
+  useEffect(() => {
+    const updateDeliveryLabel = () => setDeliveryLabel(getDeliveryLabel());
+    window.addEventListener(ADDRESS_CHANGE_EVENT, updateDeliveryLabel);
+    return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, updateDeliveryLabel);
   }, []);
 
   const handleLogout = async () => {
@@ -72,11 +80,11 @@ export function Header() {
               </label>
             </>
           ) : null}
-          <button className="focus-ring hidden items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-left text-xs md:flex">
+          <button onClick={() => navigate("/location")} className="focus-ring hidden items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-left text-xs md:flex">
             <MapPin size={16} className="text-etukas-red" />
             <span>
               Delivering to
-              <strong className="block text-etukas-black">Hyderabad</strong>
+              <strong className="block max-w-32 truncate text-etukas-black">{deliveryLabel}</strong>
             </span>
           </button>
           <label className="relative hidden flex-1 md:block">
@@ -133,9 +141,9 @@ export function Header() {
           </Link>
         </div>
         <div className={`border-t border-gray-100 px-4 py-2 md:hidden ${isMobileScrolled ? "hidden" : "block"}`}>
-          <div className="mb-2 flex items-center gap-1 text-xs font-semibold text-gray-700">
-            <MapPin size={14} className="text-etukas-red" /> Delivering to Hyderabad
-          </div>
+          <button onClick={() => navigate("/location")} className="mb-2 flex items-center gap-1 text-xs font-semibold text-gray-700">
+            <MapPin size={14} className="text-etukas-red" /> Delivering to <span className="text-etukas-black">{deliveryLabel}</span>
+          </button>
           <label className="relative block">
             <span className="sr-only">Search products</span>
             <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />

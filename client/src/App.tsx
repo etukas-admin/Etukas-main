@@ -9,6 +9,7 @@ import { CartPage } from "./features/cart/CartPage";
 import { CategoriesPage } from "./features/categories/CategoriesPage";
 import { PlannedModulePage } from "./features/common/PlannedModulePage";
 import { HomePage } from "./features/home/HomePage";
+import { LocationPage } from "./features/location/LocationPage";
 import { ProductsPage } from "./features/products/ProductsPage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
@@ -29,6 +30,7 @@ export default function App() {
       <Route path="/admin-dashboard/:section?" element={<AdminDashboard />} />
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
+        <Route path="location" element={<LocationPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="stores" element={<StoresPage />} />
         <Route path="categories" element={<CategoriesPage />} />
