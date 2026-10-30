@@ -3,13 +3,19 @@ import { Link } from "react-router-dom";
 import { CheckCircle2, MapPin, Store as StoreIcon, Truck } from "lucide-react";
 import { useStores } from "../../hooks/useMarketplace";
 import { ADDRESS_CHANGE_EVENT, getSelectedAddress } from "../location/locationStore";
+import { LocationRefreshingOverlay } from "../location/LocationRefreshingOverlay";
 
 export function StoresPage() {
   const [address, setAddress] = useState(getSelectedAddress);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const stores = useStores({ city: address.city || address.district });
 
   useEffect(() => {
-    const handleAddressChange = () => setAddress(getSelectedAddress());
+    const handleAddressChange = () => {
+      setAddress(getSelectedAddress());
+      setIsRefreshing(true);
+      setTimeout(() => setIsRefreshing(false), 1000);
+    };
     window.addEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
     return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
   }, []);
@@ -93,6 +99,15 @@ export function StoresPage() {
           </article>
         ))}
       </div>
+
+      {/* 1-sec Material Icons Refresh Transition */}
+      <LocationRefreshingOverlay
+        isOpen={isRefreshing}
+        locationName={address.city || "Your Location"}
+        scopeText={scopeLabel}
+        durationMs={1000}
+        onFinish={() => setIsRefreshing(false)}
+      />
     </main>
   );
 }

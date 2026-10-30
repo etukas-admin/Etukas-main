@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -29,11 +30,16 @@ import {
   type PricingScope
 } from "./locationStore";
 import { LocationMap } from "./LocationMap";
+import { LocationRefreshingOverlay } from "./LocationRefreshingOverlay";
 
 export function LocationPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [addresses, setAddresses] = useState<DeliveryAddress[]>(getDeliveryAddresses);
   const [selectedId, setSelectedId] = useState<string | null>(getSelectedAddressId);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshTarget, setRefreshTarget] = useState<{ name: string; scopeText: string } | null>(null);
+  const [pendingConfirmAction, setPendingConfirmAction] = useState<(() => void) | null>(null);
 
   // Active address being edited or selected
   const initialAddress = useMemo(() => {
@@ -196,7 +202,7 @@ export function LocationPage() {
     );
   };
 
-  // Final confirmation: save location and refresh store with nearby listings
+  // Final confirmation: save location and refresh store with nearby listings after 1s animation
   const handleConfirmAndApply = () => {
     const existingIndex = addresses.findIndex((a) => a.id === draftLocation.id);
     let updatedList: DeliveryAddress[];
@@ -212,19 +218,39 @@ export function LocationPage() {
       updatedList = [finalAddress, ...addresses];
     }
 
-    setAddresses(updatedList);
-    setSelectedId(finalAddress.id);
-    saveDeliveryAddresses(updatedList, finalAddress.id);
+    setRefreshTarget({
+      name: `${finalAddress.city}${finalAddress.district && finalAddress.district !== finalAddress.city ? `, ${finalAddress.district}` : ""}`,
+      scopeText: finalAddress.pricingScope === "district" ? "District Wholesale Mode" : "Village 25 km Surroundings"
+    });
 
-    // Redirect to products/store page which refreshes with nearby listings
-    navigate("/products");
+    setPendingConfirmAction(() => () => {
+      setAddresses(updatedList);
+      setSelectedId(finalAddress.id);
+      saveDeliveryAddresses(updatedList, finalAddress.id);
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      navigate("/products");
+    });
+
+    setIsRefreshing(true);
   };
 
-  // Choose from saved address
+  // Choose from saved address with 1s refresh animation
   const handleSelectSaved = (addr: DeliveryAddress) => {
-    setSelectedId(addr.id);
-    saveDeliveryAddresses(addresses, addr.id);
-    navigate("/products");
+    setRefreshTarget({
+      name: `${addr.city}${addr.district && addr.district !== addr.city ? `, ${addr.district}` : ""}`,
+      scopeText: addr.pricingScope === "district" ? "District Wholesale Mode" : "Village 25 km Surroundings"
+    });
+
+    setPendingConfirmAction(() => () => {
+      setSelectedId(addr.id);
+      saveDeliveryAddresses(addresses, addr.id);
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["stores"] });
+      navigate("/products");
+    });
+
+    setIsRefreshing(true);
   };
 
   return (
@@ -662,6 +688,18 @@ export function LocationPage() {
           </div>
         </div>
       </div>
+
+      {/* 1-sec Material Icons Moving Animation on Location Confirm */}
+      <LocationRefreshingOverlay
+        isOpen={isRefreshing}
+        locationName={refreshTarget?.name || draftLocation.city}
+        scopeText={refreshTarget?.scopeText || "Refreshing Surroundings"}
+        durationMs={1000}
+        onFinish={() => {
+          setIsRefreshing(false);
+          if (pendingConfirmAction) pendingConfirmAction();
+        }}
+      />
     </main>
   );
 }

@@ -7,6 +7,7 @@ import { useProducts } from "../../hooks/useMarketplace";
 import { formatMoney } from "../../lib/utils";
 import { getProductImageUrl } from "../../services/api";
 import { ADDRESS_CHANGE_EVENT, getDeliveryLabel, getSelectedAddress } from "../location/locationStore";
+import { LocationRefreshingOverlay } from "../location/LocationRefreshingOverlay";
 
 const cementBrands = [
   {
@@ -78,6 +79,7 @@ export function ProductsPage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category");
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const products = useProducts({
     category: category ?? undefined,
     pageSize: 24,
@@ -86,7 +88,11 @@ export function ProductsPage() {
   });
 
   useEffect(() => {
-    const handleAddressChange = () => setActiveAddress(getSelectedAddress());
+    const handleAddressChange = () => {
+      setActiveAddress(getSelectedAddress());
+      setIsRefreshing(true);
+      setTimeout(() => setIsRefreshing(false), 1000);
+    };
     window.addEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
     return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
   }, []);
@@ -174,6 +180,15 @@ export function ProductsPage() {
           No products are currently listed{category ? " in this category" : ""}.
         </p>
       )}
+
+      {/* 1-sec Material Icons Refresh Transition */}
+      <LocationRefreshingOverlay
+        isOpen={isRefreshing}
+        locationName={activeAddress.city || "Your Location"}
+        scopeText={scopeLabel}
+        durationMs={1000}
+        onFinish={() => setIsRefreshing(false)}
+      />
     </main>
   );
 }
