@@ -226,14 +226,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const marketplaceApi = {
   categories: () => api<Category[]>("/categories"),
-  products: (params?: { category?: string; pageSize?: number; q?: string }) => {
+  products: (params?: { category?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number }) => {
     const query = new URLSearchParams();
     query.set("pageSize", String(params?.pageSize ?? 24));
     if (params?.category) query.set("category", params.category);
     if (params?.q) query.set("q", params.q);
+    if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
+    if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
     return api<StoreProduct[]>(`/products?${query.toString()}`);
   },
-  stores: () => api<Store[]>("/stores/nearby?city=Hyderabad"),
+  stores: (params?: { city?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.city) query.set("city", params.city);
+    const qs = query.toString();
+    return api<Store[]>(qs ? `/stores/nearby?${qs}` : "/stores/nearby");
+  },
   login: async (body: { email?: string; identifier?: string; password: string }) => {
     const result = await api<{ accessToken: string; csrfToken: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify(body) });
     setSession(result.accessToken, result.csrfToken, result.user);

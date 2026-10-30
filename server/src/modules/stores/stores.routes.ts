@@ -22,13 +22,23 @@ storesRouter.get("/", async (_req, res, next) => {
 
 storesRouter.get("/nearby", async (req, res, next) => {
   try {
-    const city = typeof req.query.city === "string" ? req.query.city : "Hyderabad";
-    const stores = await prisma.store.findMany({
-      where: { isActive: true, city: { contains: city, mode: "insensitive" }, sellerProfile: { verificationStatus: "APPROVED" } },
-      include: { sellerProfile: { select: { businessName: true, verificationStatus: true } } },
-      take: 12
-    });
-    return sendOk(res, stores, 200, { provider: "manual", city });
+    const city = typeof req.query.city === "string" && req.query.city.trim() !== "" ? req.query.city.trim() : undefined;
+    let stores = city
+      ? await prisma.store.findMany({
+          where: { isActive: true, city: { contains: city, mode: "insensitive" }, sellerProfile: { verificationStatus: "APPROVED" } },
+          include: { sellerProfile: { select: { businessName: true, verificationStatus: true } } },
+          take: 12
+        })
+      : [];
+
+    if (stores.length === 0) {
+      stores = await prisma.store.findMany({
+        where: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } },
+        include: { sellerProfile: { select: { businessName: true, verificationStatus: true } } },
+        take: 12
+      });
+    }
+    return sendOk(res, stores, 200, { provider: "manual", city: city || "All" });
   } catch (error) {
     next(error);
   }

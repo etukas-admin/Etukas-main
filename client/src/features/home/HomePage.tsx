@@ -12,6 +12,7 @@ import { TechniciansGrid } from "./TechniciansGrid";
 import { MachineryGrid } from "./MachineryGrid";
 import { marketplaceApi, getProductImageUrl } from "../../services/api";
 import type { AdBannerImage } from "../../services/api";
+import { ADDRESS_CHANGE_EVENT, getSelectedAddress } from "../location/locationStore";
 import {
   BricksBlocksIcon,
   CementIcon,
@@ -179,8 +180,19 @@ function AdBannerDisplay({ images, section, className, autoSlide = false }: { im
 export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
-  const products = useProducts({ pageSize: 24 });
-  const stores = useStores();
+  const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
+  const products = useProducts({
+    pageSize: 24,
+    latitude: activeAddress?.latitude,
+    longitude: activeAddress?.longitude
+  });
+  const stores = useStores({ city: activeAddress?.city || activeAddress?.district });
+
+  useEffect(() => {
+    const handleAddressChange = () => setActiveAddress(getSelectedAddress());
+    window.addEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
+    return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
+  }, []);
   const banners = useQuery({ queryKey: ["home", "banners"], queryFn: marketplaceApi.publicBanners });
   const adBanners = useQuery({ queryKey: ["home", "ad-banners"], queryFn: marketplaceApi.publicAdBanners });
   const sectionOneAds = adBanners.data?.filter((banner) => banner.section === 1) ?? [];
@@ -343,8 +355,15 @@ export function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-extrabold text-gray-900 sm:text-2xl">Nearby Stores & Yards</h2>
-            <p className="text-xs text-gray-500 sm:text-sm">Verified suppliers in your area with fast local fulfillment</p>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-extrabold text-gray-900 sm:text-2xl">Nearby Stores & Yards</h2>
+              {activeAddress.city && (
+                <span className="rounded-full bg-etukas-pink px-2.5 py-0.5 text-xs font-bold text-etukas-red border border-etukas-red/20">
+                  near {activeAddress.city}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 sm:text-sm">Verified suppliers serving {activeAddress.city || "your area"} with local fulfillment</p>
           </div>
           <Link to="/stores" className="text-xs font-bold text-etukas-red sm:text-sm hover:underline">View All Stores &rarr;</Link>
         </div>

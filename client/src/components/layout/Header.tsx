@@ -80,12 +80,20 @@ export function Header() {
               </label>
             </>
           ) : null}
-          <button onClick={() => navigate("/location")} className="focus-ring hidden items-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-left text-xs md:flex">
-            <MapPin size={16} className="text-etukas-red" />
-            <span>
-              Delivering to
-              <strong className="block max-w-32 truncate text-etukas-black">{deliveryLabel}</strong>
-            </span>
+          <button
+            onClick={() => navigate("/location")}
+            className="focus-ring hidden items-center gap-2 rounded-xl border border-gray-200/80 bg-stone-50/60 px-3 py-1.5 text-left text-xs hover:border-etukas-red hover:bg-etukas-pink/50 transition-colors md:flex"
+            title="Change construction site or delivery location"
+          >
+            <div className="grid h-7 w-7 place-items-center rounded-lg bg-etukas-pink text-etukas-red">
+              <MapPin size={15} />
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-bold text-gray-400 block leading-tight">Delivering to</span>
+              <strong className="block max-w-36 truncate text-xs font-extrabold text-etukas-black leading-tight">
+                {deliveryLabel}
+              </strong>
+            </div>
           </button>
           <label className="relative hidden flex-1 md:block">
             <span className="sr-only">Search products</span>
@@ -141,8 +149,16 @@ export function Header() {
           </Link>
         </div>
         <div className={`border-t border-gray-100 px-4 py-2 md:hidden ${isMobileScrolled ? "hidden" : "block"}`}>
-          <button onClick={() => navigate("/location")} className="mb-2 flex items-center gap-1 text-xs font-semibold text-gray-700">
-            <MapPin size={14} className="text-etukas-red" /> Delivering to <span className="text-etukas-black">{deliveryLabel}</span>
+          <button
+            onClick={() => navigate("/location")}
+            className="mb-2 flex w-full items-center justify-between rounded-lg bg-etukas-pink/60 px-2.5 py-1.5 text-xs font-semibold text-gray-800 border border-etukas-red/20"
+          >
+            <div className="flex items-center gap-1.5 truncate">
+              <MapPin size={14} className="text-etukas-red shrink-0" />
+              <span className="text-gray-500">Delivering to:</span>
+              <strong className="text-etukas-black truncate font-bold">{deliveryLabel}</strong>
+            </div>
+            <span className="text-[10px] font-bold text-etukas-red underline shrink-0 ml-2">Change</span>
           </button>
           <label className="relative block">
             <span className="sr-only">Search products</span>

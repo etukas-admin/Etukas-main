@@ -1,10 +1,12 @@
-import { SlidersHorizontal } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowRight, MapPin, SlidersHorizontal, Sparkles, Truck } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useProducts } from "../../hooks/useMarketplace";
 import { formatMoney } from "../../lib/utils";
 import { getProductImageUrl } from "../../services/api";
+import { ADDRESS_CHANGE_EVENT, getDeliveryLabel, getSelectedAddress } from "../location/locationStore";
 
 const cementBrands = [
   {
@@ -75,15 +77,66 @@ function CementBrandGrid() {
 export function ProductsPage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category");
-  const products = useProducts({ category: category ?? undefined, pageSize: 24 });
+  const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
+  const products = useProducts({
+    category: category ?? undefined,
+    pageSize: 24,
+    latitude: activeAddress?.latitude,
+    longitude: activeAddress?.longitude
+  });
+
+  useEffect(() => {
+    const handleAddressChange = () => setActiveAddress(getSelectedAddress());
+    window.addEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
+    return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
+  }, []);
+
+  const scopeLabel =
+    activeAddress.pricingScope === "district"
+      ? `${activeAddress.district || "District"} Wholesale Pricing`
+      : `${activeAddress.city} 25 km Surroundings`;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
       {category === "cement" ? <CementBrandGrid /> : null}
+
+      {/* Location Refresh Banner */}
+      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center rounded-2xl bg-gradient-to-r from-etukas-pink/80 via-white to-etukas-pink/40 border border-etukas-red/20 p-4 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-etukas-red text-white shadow-sm">
+            <Truck size={20} />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-etukas-red">
+                Nearby Prices Active
+              </span>
+              <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold text-gray-700 border border-gray-200">
+                {scopeLabel}
+              </span>
+            </div>
+            <p className="text-xs font-bold text-gray-900 mt-0.5">
+              Delivering to: <span className="text-etukas-black font-extrabold">{activeAddress.line1 || activeAddress.city}</span>
+              {activeAddress.district && activeAddress.district !== activeAddress.city && (
+                <span className="text-gray-500 font-medium"> ({activeAddress.district} Dist.)</span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/location"
+          className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-2 text-xs font-bold text-white hover:bg-red-700 transition shadow self-start sm:self-auto shrink-0"
+        >
+          <MapPin size={14} />
+          <span>Change Location</span>
+        </Link>
+      </div>
+
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <h1 className="text-3xl font-extrabold">{category ? `${category.replace(/-/g, " ")} products` : "Products"}</h1>
-          <p className="mt-2 text-gray-600">Compare live listings from nearby verified stores.</p>
+          <p className="mt-1 text-sm text-gray-600">Live prices from verified stores delivering to {activeAddress.city || "your location"}.</p>
         </div>
         <Button variant="secondary"><SlidersHorizontal size={18} /> Filters</Button>
       </div>
