@@ -731,6 +731,7 @@ export function SellerDashboard() {
                         rows={2}
                         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none resize-none"
                       />
+                      <p className="mt-1 text-[11px] font-medium text-amber-700 bg-amber-50 rounded px-2 py-0.5 inline-block">Note: Enter product related description only</p>
                       <p className="mt-0.5 text-[11px] text-gray-400">{newProdDescription.length}/1000 characters</p>
                     </div>
 
@@ -957,7 +958,8 @@ export function SellerDashboard() {
                         rows={3}
                         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
                       />
-                      <p className="mt-1 text-[11px] text-gray-400">{editingProduct.description.length}/1000 — This description is shown to customers on product cards.</p>
+                      <p className="mt-1 text-[11px] font-medium text-amber-700 bg-amber-50 rounded px-2 py-0.5 inline-block">Note: Enter product related description only</p>
+                      <p className="mt-1 text-[11px] text-gray-400">{editingProduct.description.length}/1000 — Visible to customers on product cards & cart.</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
