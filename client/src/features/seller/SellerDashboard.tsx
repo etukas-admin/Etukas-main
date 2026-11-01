@@ -15,6 +15,7 @@ import {
   MapPin,
   Package,
   PackageCheck,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -71,6 +72,7 @@ type InventoryRow = {
   stock: number;
   sku: string;
   isActive: boolean;
+  description: string;
 };
 
 export function SellerDashboard() {
@@ -91,12 +93,17 @@ export function SellerDashboard() {
   const [newProdUnit, setNewProdUnit] = useState("Bag");
   const [newProdPrice, setNewProdPrice] = useState("");
   const [newProdStock, setNewProdStock] = useState("");
+  const [newProdDescription, setNewProdDescription] = useState("");
   const [newProdImageBase64, setNewProdImageBase64] = useState<string | undefined>(undefined);
   const [newProdImagePreview, setNewProdImagePreview] = useState<string | null>(null);
   const [rawNewProdImage, setRawNewProdImage] = useState<string | null>(null);
   const [showNewCropModal, setShowNewCropModal] = useState<boolean>(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit product state
+  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; stock: string; description: string } | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Manage images on existing product
   const [managingImagesFor, setManagingImagesFor] = useState<{ id: string; name: string; images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[] } | null>(null);
@@ -132,12 +139,14 @@ export function SellerDashboard() {
       unit: newProdUnit.trim(),
       priceMinor: Math.round(Number(newProdPrice) * 100),
       stockQuantity: Number(newProdStock),
-      imageBase64: newProdImageBase64
+      imageBase64: newProdImageBase64,
+      description: newProdDescription.trim() || newProdName.trim()
     }),
     onSuccess: () => {
       setNewProdName("");
       setNewProdPrice("");
       setNewProdStock("");
+      setNewProdDescription("");
       setNewProdImageBase64(undefined);
       setNewProdImagePreview(null);
       setImageError(null);
@@ -192,6 +201,26 @@ export function SellerDashboard() {
     }
   });
 
+  const editProductMutation = useMutation({
+    mutationFn: (vars: { id: string; name: string; unit: string; priceMinor: number; stockQuantity: number; description: string }) =>
+      marketplaceApi.sellerUpdateProduct(vars.id, {
+        name: vars.name,
+        unit: vars.unit,
+        priceMinor: vars.priceMinor,
+        stockQuantity: vars.stockQuantity,
+        description: vars.description
+      }),
+    onSuccess: () => {
+      setEditingProduct(null);
+      setEditError(null);
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err: Error) => {
+      setEditError(err.message);
+    }
+  });
+
   const inventoryRows: InventoryRow[] = (sellerProductsQuery.data ?? []).map((listing) => ({
     id: listing.id,
     name: listing.product.name,
@@ -200,7 +229,8 @@ export function SellerDashboard() {
     price: listing.priceMinor / 100,
     stock: listing.stockQuantity,
     sku: listing.sku,
-    isActive: listing.isActive
+    isActive: listing.isActive,
+    description: listing.product.description ?? ""
   }));
 
   const sellerId = dashboardData?.sellerId || profileData?.sellerId || "Pending";
@@ -600,6 +630,13 @@ export function SellerDashboard() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
+                            onClick={() => setEditingProduct({ id: p.id, name: p.name, unit: p.unit, price: String(p.price), stock: String(p.stock), description: p.description })}
+                            className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                            title="Edit product details"
+                          >
+                            <Pencil size={14} /> Edit
+                          </button>
+                          <button
                             onClick={() => fullListing && setManagingImagesFor({ id: fullListing.id, name: fullListing.product.name, images: fullListing.product.images })}
                             className="text-xs font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1"
                             title="Manage photos"
@@ -682,6 +719,19 @@ export function SellerDashboard() {
                         placeholder="e.g. UltraTech Super 50kg or Tata Tiscon 12mm"
                         className="mt-1"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-700">Product Description <span className="font-normal normal-case text-gray-400">(optional)</span></label>
+                      <textarea
+                        value={newProdDescription}
+                        onChange={(e) => setNewProdDescription(e.target.value)}
+                        placeholder="Describe this product — grade, specifications, brand, use case, etc. Visible to customers."
+                        maxLength={1000}
+                        rows={2}
+                        className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none resize-none"
+                      />
+                      <p className="mt-0.5 text-[11px] text-gray-400">{newProdDescription.length}/1000 characters</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -843,6 +893,132 @@ export function SellerDashboard() {
                       <Button type="submit" disabled={addProductMutation.isPending || !!imageError} className="bg-orange-500 hover:bg-orange-600">
                         {addProductMutation.isPending ? "Saving..." : "Add to Store"}
                       </Button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Edit Product Modal */}
+            {editingProduct && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+                        <Pencil size={16} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-gray-900">Edit Product Details</h3>
+                        <p className="text-xs text-gray-500">Changes will reflect on customer marketplace</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => { setEditingProduct(null); setEditError(null); }}
+                      className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (!editingProduct) return;
+                      editProductMutation.mutate({
+                        id: editingProduct.id,
+                        name: editingProduct.name.trim(),
+                        unit: editingProduct.unit.trim(),
+                        priceMinor: Math.round(Number(editingProduct.price) * 100),
+                        stockQuantity: Number(editingProduct.stock),
+                        description: editingProduct.description.trim()
+                      });
+                    }}
+                    className="mt-4 space-y-4"
+                  >
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-700">Material Title / Brand *</label>
+                      <input
+                        required
+                        value={editingProduct.name}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
+                        placeholder="e.g. UltraTech Super 50kg"
+                        className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-700">Product Description</label>
+                      <textarea
+                        value={editingProduct.description}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                        placeholder="Describe this product or service — quality, grade, specifications, use case, etc."
+                        maxLength={1000}
+                        rows={3}
+                        className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 resize-none"
+                      />
+                      <p className="mt-1 text-[11px] text-gray-400">{editingProduct.description.length}/1000 — This description is shown to customers on product cards.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Unit of Measure *</label>
+                        <input
+                          required
+                          value={editingProduct.unit}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, unit: e.target.value })}
+                          placeholder="e.g. Bag, Ton, Brass"
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Price (₹) *</label>
+                        <input
+                          required
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={editingProduct.price}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })}
+                          placeholder="e.g. 395"
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold uppercase text-gray-700">Stock Quantity *</label>
+                      <input
+                        required
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={editingProduct.stock}
+                        onChange={(e) => setEditingProduct({ ...editingProduct, stock: e.target.value })}
+                        placeholder="e.g. 100"
+                        className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      />
+                    </div>
+
+                    {editError && (
+                      <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">{editError}</p>
+                    )}
+
+                    <div className="flex justify-end gap-3 pt-3 border-t">
+                      <button
+                        type="button"
+                        onClick={() => { setEditingProduct(null); setEditError(null); }}
+                        className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={editProductMutation.isPending}
+                        className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-5 py-2 text-sm font-bold text-white hover:opacity-90 transition disabled:opacity-60"
+                      >
+                        {editProductMutation.isPending ? "Saving..." : "Save Changes"}
+                      </button>
                     </div>
                   </form>
                 </div>

@@ -296,9 +296,9 @@ export const marketplaceApi = {
   sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
   sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
-  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string }) =>
+  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
-  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number }) =>
+  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number; name?: string; unit?: string; description?: string }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   sellerAddProductImage: (listingId: string, imageBase64: string) =>
     api<{ id: string; productId: string; altText: string; sortOrder: number; sizeBytes: number; mimeType: string }>(`/seller/products/${encodeURIComponent(listingId)}/images`, { method: "POST", body: JSON.stringify({ imageBase64 }) }),

@@ -27,7 +27,8 @@ const newMaterialSchema = z.object({
   unit: z.string().trim().min(1).max(40),
   priceMinor: z.coerce.number().int().positive().max(100_000_000),
   stockQuantity: z.coerce.number().int().min(0).max(10_000_000),
-  imageBase64: z.string().optional()
+  imageBase64: z.string().optional(),
+  description: z.string().max(1000).optional()
 });
 
 const categoryInfo: Record<z.infer<typeof newMaterialSchema>["category"], { name: string; slug: string; icon: string }> = {
@@ -160,7 +161,7 @@ sellerRouter.post("/products", async (req, res, next) => {
           categoryId: dbCategory.id,
           name: input.name,
           slug: `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120)}-${randomUUID().slice(0, 8)}`,
-          description: input.name,
+          description: input.description ?? input.name,
           unit: input.unit
         }
       });
@@ -220,7 +221,7 @@ sellerRouter.post("/products", async (req, res, next) => {
 sellerRouter.patch("/products/:id", async (req, res, next) => {
   try {
     const profile = await sellerProfile(req.user!.id);
-    const listing = await prisma.storeProduct.findFirst({ where: { id: req.params.id, store: { sellerProfileId: profile.id } } });
+    const listing = await prisma.storeProduct.findFirst({ where: { id: req.params.id, store: { sellerProfileId: profile.id } }, include: { product: true } });
     if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
     if (req.body.isActive === true && profile.verificationStatus !== VerificationStatus.APPROVED) {
       throw new HttpError(403, "SELLER_NOT_APPROVED", "Only approved sellers can publish active listings");
@@ -229,7 +230,10 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
       priceMinor: z.coerce.number().int().positive().max(100_000_000).optional(),
       stockQuantity: z.coerce.number().int().min(0).max(10_000_000).optional(),
       minOrderQuantity: z.coerce.number().int().positive().optional(),
-      isActive: z.boolean().optional()
+      isActive: z.boolean().optional(),
+      name: z.string().min(2).max(200).optional(),
+      unit: z.string().min(1).max(50).optional(),
+      description: z.string().max(1000).optional()
     }).refine((value) => Object.keys(value).length > 0, "Provide at least one field to update").parse(req.body);
     if (updateInput.isActive === true && (!listing.storeId || profile.verificationStatus !== VerificationStatus.APPROVED)) {
       throw new HttpError(403, "SELLER_NOT_APPROVED", "Only approved sellers can publish active listings");
@@ -238,9 +242,22 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
       const store = await prisma.store.findFirst({ where: { id: listing.storeId, isActive: true } });
       if (!store) throw new HttpError(409, "STORE_INACTIVE", "Your store is inactive. Contact Etukas support.");
     }
+    // Separate product-level fields from listing-level fields
+    const { name, unit, description, ...listingFields } = updateInput;
+    // Update product fields (name, unit, description) if any provided
+    if (name !== undefined || unit !== undefined || description !== undefined) {
+      await prisma.product.update({
+        where: { id: listing.productId },
+        data: {
+          ...(name !== undefined && { name }),
+          ...(unit !== undefined && { unit }),
+          ...(description !== undefined && { description })
+        }
+      });
+    }
     const updated = await prisma.storeProduct.update({
       where: { id: listing.id },
-      data: updateInput,
+      data: Object.keys(listingFields).length > 0 ? listingFields : {},
       include: {
         product: { include: { images: true, category: true } },
         store: true
