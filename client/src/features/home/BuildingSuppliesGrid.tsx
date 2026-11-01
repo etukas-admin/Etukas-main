@@ -220,6 +220,13 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
                         {item.product.name}
                       </Link>
 
+                      {/* Product Description */}
+                      {item.product.description && item.product.description !== item.product.name && (
+                        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-500">
+                          {item.product.description}
+                        </p>
+                      )}
+
                       {/* Updated Price Note */}
                       <p className="mt-1 text-[10px] text-gray-500">
                         Live seller price • updated today

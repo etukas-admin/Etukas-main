@@ -112,6 +112,13 @@ export function CartItemCard({ item }: CartItemCardProps) {
               <span>{store.city}</span>
             </div>
 
+            {/* Product description */}
+            {product.description && product.description !== product.name && (
+              <p className="mt-1 line-clamp-2 text-xs text-gray-500 leading-relaxed">
+                {product.description}
+              </p>
+            )}
+
             {/* Specs row */}
             <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
               <span className="flex items-center gap-1">
