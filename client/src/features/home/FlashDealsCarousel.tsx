@@ -1,4 +1,4 @@
-import { useRef } from "react";
+﻿import { useRef } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, MapPin, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
@@ -190,9 +190,9 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
                       {/* Stock status indicator */}
                       <div className="mt-1 text-[11px] text-gray-500">
                         {item.stockQuantity > 50 ? (
-                          <span className="text-emerald-600 font-medium">● Available in local yard</span>
+                          <span className="text-emerald-600 font-medium">â— Available in local yard</span>
                         ) : (
-                          <span className="text-amber-600 font-medium">● Low stock: {item.stockQuantity} left</span>
+                          <span className="text-amber-600 font-medium">â— Low stock: {item.stockQuantity} left</span>
                         )}
                       </div>
                     </div>

@@ -1,4 +1,4 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
+﻿import { Link, Outlet, useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { PartnerHeader } from "./PartnerHeader";
 import { BottomNav } from "./BottomNav";
@@ -35,7 +35,7 @@ export function Layout() {
               <p className="mt-3 text-xs leading-relaxed text-slate-400">
                 Grow Your Business with India's dedicated construction & building materials partner network. Empowering sellers, technicians, manufacturers, and equipment owners.
               </p>
-              <p className="mt-4 text-xs text-slate-500">© 2026 Etukas Partner Network. All rights reserved.</p>
+              <p className="mt-4 text-xs text-slate-500">Â© 2026 Etukas Partner Network. All rights reserved.</p>
             </div>
             <div>
               <h3 className="font-bold text-white text-sm">Partner Categories</h3>
@@ -73,7 +73,7 @@ export function Layout() {
             <div>
               <div className="text-2xl font-extrabold text-white">Etukas.com</div>
               <p className="mt-3 text-sm text-gray-300">A local-first marketplace for trusted building materials, stores, and construction services.</p>
-              <p className="mt-3 text-sm text-gray-300">© 2023 Etukas.com. All rights reserved.</p>
+              <p className="mt-3 text-sm text-gray-300">Â© 2023 Etukas.com. All rights reserved.</p>
             </div>
             {["Company", "Help", "Policies"].map((title) => (
               <div key={title}>

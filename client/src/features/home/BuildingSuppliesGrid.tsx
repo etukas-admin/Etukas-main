@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { MapPin, Star, ShieldCheck, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
@@ -60,7 +60,7 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
               <ShieldCheck size={12} /> VERIFIED LOCAL SUPPLIERS
             </span>
             <span className="text-[11px] font-medium text-gray-500">
-              📍 Hyderabad & surrounding yards
+              ðŸ“ Hyderabad & surrounding yards
             </span>
           </div>
           <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
@@ -227,7 +227,7 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
 
                       {/* Updated Price Note */}
                       <p className="mt-1 text-[10px] text-gray-500">
-                        Live seller price • updated today
+                        Live seller price â€¢ updated today
                       </p>
                     </div>
 

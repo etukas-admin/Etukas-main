@@ -1,7 +1,7 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Check, MapPin, Search, ShoppingBag, Star, X } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useProducts, useStores } from "../../hooks/useMarketplace";
@@ -11,7 +11,6 @@ import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
 import { TechniciansGrid } from "./TechniciansGrid";
-import { ProductDetailsView } from "../products/ProductDetailsView";
 import { MachineryGrid } from "./MachineryGrid";
 import { marketplaceApi, getProductImageUrl } from "../../services/api";
 import type { AdBannerImage } from "../../services/api";
@@ -181,19 +180,15 @@ function AdBannerDisplay({ images, section, className, autoSlide = false }: { im
 }
 
 export function HomePage() {
+  const navigate = useNavigate();
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
-  const [quickViewProductId, setQuickViewProductId] = useState<string | null>(null);
   const products = useProducts({
     pageSize: 24,
     latitude: activeAddress?.latitude,
     longitude: activeAddress?.longitude
   });
-  const quickViewProduct = products.data?.find((item) => item.id === quickViewProductId) ?? null;
-  const quickViewRelatedProducts = quickViewProduct
-    ? (products.data ?? []).filter((item) => item.product.category?.slug === quickViewProduct.product.category?.slug && item.id !== quickViewProduct.id).slice(0, 4)
-    : [];
   const stores = useStores({ city: activeAddress?.city || activeAddress?.district });
 
   useEffect(() => {
@@ -219,23 +214,6 @@ export function HomePage() {
     }, 4500);
     return () => window.clearInterval(timer);
   }, [slideCount]);
-
-  if (quickViewProduct) {
-    return (
-      <ProductDetailsView
-        product={quickViewProduct}
-        relatedProducts={quickViewRelatedProducts}
-        onBack={() => {
-          setQuickViewProductId(null);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
-        onSelectProduct={(product) => {
-          setQuickViewProductId(product.id);
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }}
-      />
-    );
-  }
 
   return (
     <main>
@@ -368,7 +346,7 @@ export function HomePage() {
       </section>
 
       {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
-      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} onProductSelect={(product) => setQuickViewProductId(product.id)} />
+      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} onProductSelect={(product) => navigate(`/product/${product.id}`)} />
 
       {/* 2. Technicians & Professionals Grid (Flipkart-style) */}
       <TechniciansGrid />
@@ -430,7 +408,7 @@ export function HomePage() {
       </section>
 
       {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
-      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} onProductSelect={(product) => setQuickViewProductId(product.id)} />
+      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} onProductSelect={(product) => navigate(`/product/${product.id}`)} />
 
       {sectionThreeAds.length ? <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6"><AdBannerDisplay images={sectionThreeAds} section={3} className="h-[190px] sm:h-[240px] lg:h-[280px]" /></section> : null}
 

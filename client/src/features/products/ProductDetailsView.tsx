@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+﻿import { useState, useMemo } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -246,7 +246,7 @@ export function ProductDetailsView({
       )}
 
       {/* Minimized Header Only (h-10): [<- Back] [Logo] [Search Bar] [Cart] */}
-      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white shadow-sm">
         <div className="mx-auto flex h-10 max-w-7xl items-center gap-2 px-3 sm:gap-3 sm:px-6">
           {/* Back button left of logo */}
           <button
@@ -460,7 +460,7 @@ export function ProductDetailsView({
                 <div>
                   <div className="text-xs font-extrabold uppercase tracking-wider text-gray-700">Quantity</div>
                   <div className="text-[11px] text-gray-500">
-                    MOQ: {product.minOrderQuantity} {product.product.unit}s • In stock: {product.stockQuantity}
+                    MOQ: {product.minOrderQuantity} {product.product.unit}s â€¢ In stock: {product.stockQuantity}
                   </div>
                 </div>
 
@@ -594,7 +594,7 @@ export function ProductDetailsView({
                         {product.store.name}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {product.store.city}, {product.store.state} • Radius {product.store.serviceRadiusKm} km
+                        {product.store.city}, {product.store.state} â€¢ Radius {product.store.serviceRadiusKm} km
                       </div>
                     </div>
                   </div>
@@ -619,7 +619,7 @@ export function ProductDetailsView({
                 <div className="flex items-center gap-2">
                   <span className="text-base sm:text-lg font-black text-gray-900">Ratings & Reviews</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-900">
-                    ★ 4.6
+                    â˜… 4.6
                   </span>
                 </div>
                 <p className="text-xs text-gray-500 font-normal mt-0.5">
@@ -641,7 +641,7 @@ export function ProductDetailsView({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
                     <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
-                      ★ Top Rated Review
+                      â˜… Top Rated Review
                     </span>
                     <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
                       <CheckCircle2 size={13} /> Verified Project Buyer
@@ -677,7 +677,7 @@ export function ProductDetailsView({
                   <span className="text-xs font-extrabold uppercase tracking-wider text-gray-600">
                     More Reviews from Nearby Sites
                   </span>
-                  <span className="text-xs text-gray-400 font-medium">Scroll horizontally →</span>
+                  <span className="text-xs text-gray-400 font-medium">Scroll horizontally â†’</span>
                 </div>
 
                 <div className="flex gap-3.5 overflow-x-auto pb-3 pt-1 scroll-smooth">
@@ -748,7 +748,7 @@ export function ProductDetailsView({
       </main>
 
       {/* Fixed Bottom Action Bar with Add to Cart and Buy Now Buttons */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/98 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_20px_rgba(0,0,0,0.12)]">
         <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           {/* Price summary preview */}
           <div className="min-w-0">
