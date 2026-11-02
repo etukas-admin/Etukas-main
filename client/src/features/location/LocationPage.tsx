@@ -331,12 +331,12 @@ export function LocationPage() {
                 {/* Search Bar & GPS */}
                 <div className="flex flex-col sm:flex-row gap-2">
                   <div className="relative flex-1">
-                    <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-etukas-red" />
                     <input
                       value={searchQuery}
                       onChange={(e) => handleSearch(e.target.value)}
                       placeholder="Search village, city, mandal or PIN code..."
-                      className="h-11 w-full rounded-xl border border-gray-200 bg-stone-50/70 pl-10 pr-4 text-xs font-medium outline-none transition focus:border-etukas-red focus:bg-white focus:ring-4 focus:ring-etukas-pink"
+                      className="h-11 w-full rounded-xl border border-etukas-red bg-stone-50/70 pl-10 pr-4 text-xs font-medium outline-none transition focus:border-etukas-red focus:bg-white focus:ring-4 focus:ring-etukas-pink"
                     />
                     {searching && (
                       <RefreshCw size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-gray-400" />
@@ -362,10 +362,10 @@ export function LocationPage() {
                   <button
                     onClick={handleUseGPS}
                     disabled={locating}
-                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 text-xs font-bold text-gray-800 hover:border-etukas-red hover:bg-etukas-pink hover:text-etukas-red transition disabled:opacity-60 shrink-0"
+                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 text-xs font-bold text-etukas-red hover:border-etukas-red hover:bg-etukas-pink transition disabled:opacity-60 shrink-0"
                   >
-                    <Crosshair size={15} className={locating ? "animate-spin text-etukas-red" : ""} />
-                    <span>{locating ? "Detecting GPS…" : "Use Current GPS"}</span>
+                    <Crosshair size={15} className={`text-etukas-red ${locating ? "animate-spin" : ""}`} />
+                    <span className="text-etukas-red">{locating ? "Detecting GPS…" : "Use Current GPS"}</span>
                   </button>
                 </div>
 
