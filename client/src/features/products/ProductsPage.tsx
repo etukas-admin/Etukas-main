@@ -153,18 +153,22 @@ export function ProductsPage() {
       ) : products.data?.length ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {products.data.map((item) => (
-              <article key={item.id} className="rounded-md border border-gray-100">
-                <img
-                  className="h-40 w-full rounded-t-md object-cover"
-                  src={getProductImageUrl(item.product.images[0], item.product.id)}
-                  alt={item.product.images[0]?.altText || item.product.name}
-                  onError={(e) => {
-                    e.currentTarget.onerror = null;
-                    e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
-                  }}
-                />
+              <article key={item.id} className="rounded-md border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow group">
+                <Link to={`/product/${item.id}`} className="block">
+                  <img
+                    className="h-40 w-full rounded-t-md object-cover"
+                    src={getProductImageUrl(item.product.images[0], item.product.id)}
+                    alt={item.product.images[0]?.altText || item.product.name}
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
+                    }}
+                  />
+                </Link>
                 <div className="p-4">
-                  <h2 className="font-bold">{item.product.name}</h2>
+                  <Link to={`/product/${item.id}`} className="font-bold text-gray-900 group-hover:text-etukas-red block">
+                    {item.product.name}
+                  </Link>
                   <p className="mt-1 text-sm text-gray-500">{item.store.name}</p>
                   {item.product.description && item.product.description !== item.product.name && (
                     <p className="mt-1 text-xs text-gray-500 line-clamp-2 leading-relaxed">{item.product.description}</p>
@@ -172,7 +176,12 @@ export function ProductsPage() {
                   <p className="mt-2 text-sm text-gray-600">MOQ {item.minOrderQuantity} {item.product.unit} • Stock {item.stockQuantity}</p>
                   <div className="mt-4 flex items-center justify-between">
                     <strong>{formatMoney(item.priceMinor)}</strong>
-                    <Button className="min-h-9 px-3">Add</Button>
+                    <Link
+                      to={`/product/${item.id}`}
+                      className="inline-flex items-center justify-center rounded-md bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-red-700"
+                    >
+                      View
+                    </Link>
                   </div>
                 </div>
               </article>

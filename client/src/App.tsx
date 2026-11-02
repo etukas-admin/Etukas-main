@@ -11,6 +11,7 @@ import { PlannedModulePage } from "./features/common/PlannedModulePage";
 import { HomePage } from "./features/home/HomePage";
 import { LocationPage } from "./features/location/LocationPage";
 import { ProductsPage } from "./features/products/ProductsPage";
+import { ProductDetailsPage } from "./features/products/ProductDetailsPage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
 import { SellerHubPage } from "./features/seller/SellerHubPage";
@@ -28,6 +29,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/admin-dashboard/:section?" element={<AdminDashboard />} />
+      {/* Product Details page as dedicated full page */}
+      <Route path="/product/:id" element={<ProductDetailsPage />} />
       <Route element={<Layout />}>
         <Route index element={<HomePage />} />
         <Route path="location" element={<LocationPage />} />
