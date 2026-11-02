@@ -11,7 +11,6 @@ import {
   Store as StoreIcon,
   Calendar,
   CheckCircle2,
-  ShieldCheck,
   Search,
   ShoppingCart,
   Minus,
@@ -53,34 +52,59 @@ const IRON_BAR_SIZES = [
   { id: "20mm", label: "20 mm", multiplier: 0.98 },
 ];
 
-// Default Realistic Verified Customer Reviews
-const REVIEWS_DATA = [
-  {
-    id: "r1",
-    author: "Ramesh Babu K.",
-    rating: 5,
-    date: "3 days ago",
-    site: "Karapa Residential Project",
-    verified: true,
-    comment: "High quality genuine batch delivered directly to our site. Unloading was smooth and on-time as promised by the dealer.",
-  },
+// Realistic Verified Customer Reviews
+const TOP_REVIEW = {
+  id: "top-1",
+  author: "Ramesh Babu K.",
+  rating: 5,
+  date: "3 days ago",
+  site: "Karapa Residential Project (G+2)",
+  verified: true,
+  headline: "Outstanding genuine quality & flawless local dispatch!",
+  comment:
+    "Ordered full vehicle load directly to our site. Fresh batch without any lumps or moisture. The driver called ahead and offloading was swift and courteous. Best wholesale pricing compared to local retail yards.",
+};
+
+const SIDE_REVIEWS = [
   {
     id: "r2",
     author: "Venkata Rao M.",
     rating: 5,
     date: "1 week ago",
-    site: "Sarpavaram Commercial Work",
+    site: "Sarpavaram Commercial",
     verified: true,
-    comment: "Best wholesale rate in the local market. Fresh stock without moisture issues. Highly recommended!",
+    headline: "Unbeatable wholesale rate",
+    comment: "Best rate in the local market. Fresh stock, accurate count, quick support.",
   },
   {
     id: "r3",
     author: "K. Satyanarayana",
     rating: 4,
     date: "2 weeks ago",
-    site: "Kakinada Smart City Plot #42",
+    site: "Smart City Plot #42",
     verified: true,
-    comment: "Delivery took around 3 hours, driver called before reaching. Material weight and packaging checked out accurate.",
+    headline: "Prompt dispatch",
+    comment: "Delivered in under 3 hours, checked bag weights and batch codes. Highly satisfied.",
+  },
+  {
+    id: "r4",
+    author: "Durga Prasad Ch.",
+    rating: 5,
+    date: "3 weeks ago",
+    site: "Samalkot Road Villa",
+    verified: true,
+    headline: "Trusted supplier",
+    comment: "Consistent quality across multiple deliveries. The store owner accommodated our morning schedule.",
+  },
+  {
+    id: "r5",
+    author: "Naveen Reddy T.",
+    rating: 5,
+    date: "1 month ago",
+    site: "Pithapuram Commercial Unit",
+    verified: true,
+    headline: "Genuine test certificate",
+    comment: "Materials met structural engineering specifications. Very impressed with the service.",
   },
 ];
 
@@ -127,6 +151,7 @@ export function ProductDetailsView({
   const [quantity, setQuantity] = useState<number>(product.minOrderQuantity || 1);
   const [quantityInput, setQuantityInput] = useState<string>(String(product.minOrderQuantity || 1));
   const [isDeliveryDetailsOpen, setIsDeliveryDetailsOpen] = useState<boolean>(true);
+  const [isReviewsOpen, setIsReviewsOpen] = useState<boolean>(true);
   const [shareCopied, setShareCopied] = useState<boolean>(false);
 
   // Address
@@ -212,31 +237,31 @@ export function ProductDetailsView({
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-28">
       {/* Toast Notice */}
       {notice && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-900/95 px-5 py-2.5 text-xs font-semibold text-white shadow-xl backdrop-blur transition-all duration-300">
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-900/95 px-5 py-2.5 text-xs font-semibold text-white shadow-xl backdrop-blur transition-all duration-300">
           {notice}
         </div>
       )}
 
-      {/* Top Navigation Bar: Back <- | Logo | Search Bar | Cart */}
+      {/* Minimized Header Only (h-10): [<- Back] [Logo] [Search Bar] [Cart] */}
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 shadow-sm backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-2 px-3 sm:gap-4 sm:px-6">
+        <div className="mx-auto flex h-10 max-w-7xl items-center gap-2 px-3 sm:gap-3 sm:px-6">
           {/* Back button left of logo */}
           <button
             type="button"
             onClick={onBack}
             aria-label="Go back"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-black focus:outline-none focus-visible:ring-2 focus-visible:ring-etukas-red"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-black focus:outline-none"
           >
-            <ArrowLeft size={22} className="stroke-[2.5]" />
+            <ArrowLeft size={19} className="stroke-[2.5]" />
           </button>
 
-          {/* Etukas Logo */}
+          {/* Etukas Icon Logo */}
           <Link to="/" className="flex shrink-0 items-center gap-1.5 focus:outline-none" aria-label="Etukas Home">
-            <img src="/favicon.png" alt="Etukas" className="h-8 w-8 object-contain" />
-            <span className="hidden text-xl font-black tracking-tight text-gray-900 sm:inline-block">
+            <img src="/favicon.png" alt="Etukas" className="h-6 w-6 object-contain" />
+            <span className="hidden text-sm font-black tracking-tight text-gray-900 sm:inline-block">
               ETUKAS<span className="text-etukas-red">.COM</span>
             </span>
           </Link>
@@ -244,13 +269,13 @@ export function ProductDetailsView({
           {/* Search Bar */}
           <div className="relative min-w-0 flex-1">
             <span className="sr-only">Search building materials</span>
-            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" size={17} />
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
               type="text"
               readOnly
               onClick={() => navigate("/products")}
               placeholder="Search building materials"
-              className="h-10 w-full cursor-pointer rounded-full border border-gray-200 bg-gray-50 pl-10 pr-4 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-white focus:border-etukas-red focus:bg-white focus:outline-none sm:text-sm"
+              className="h-8 w-full cursor-pointer rounded-full border border-gray-200 bg-gray-50 pl-8 pr-3 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-white focus:border-etukas-red focus:bg-white focus:outline-none"
             />
           </div>
 
@@ -258,11 +283,11 @@ export function ProductDetailsView({
           <Link
             to="/cart"
             aria-label="View Cart"
-            className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-etukas-red focus:outline-none"
+            className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-gray-700 transition hover:bg-gray-100 hover:text-etukas-red focus:outline-none"
           >
-            <ShoppingCart size={22} />
+            <ShoppingCart size={19} />
             {cartCount > 0 && (
-              <span className="absolute 1 right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-etukas-red px-1 text-[10px] font-black text-white shadow-sm">
+              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-etukas-red px-1 text-[9px] font-black text-white shadow-sm">
                 {cartCount}
               </span>
             )}
@@ -275,7 +300,7 @@ export function ProductDetailsView({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* Left Column: Product Image with Share Button */}
           <div className="lg:col-span-6">
-            <div className="sticky top-20 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+            <div className="sticky top-14 overflow-hidden rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
               <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-gray-50 sm:aspect-square">
                 <img
                   src={imageUrl}
@@ -316,7 +341,7 @@ export function ProductDetailsView({
             </div>
           </div>
 
-          {/* Right Column: Title, Store, Dynamic Grade/Size, Quantity, Price, CTA, Delivery Details */}
+          {/* Right Column: Title, Store, Dynamic Grade/Size, Quantity, Price, Delivery Details */}
           <div className="flex flex-col gap-5 lg:col-span-6">
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
               {/* Category & Verified Store Tag */}
@@ -498,29 +523,6 @@ export function ProductDetailsView({
                   </div>
                 </div>
               </div>
-
-              {/* Action Buttons: Add to cart & Buy now */}
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => addToCart(product.id, effectiveQuantity)}
-                  disabled={isAdding}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-gray-300 bg-white py-3.5 text-sm font-extrabold text-gray-900 shadow-sm transition hover:border-gray-400 hover:bg-gray-50 active:scale-95 disabled:opacity-60"
-                >
-                  <ShoppingBag size={18} />
-                  {isAdding ? "Adding..." : "Add to cart"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    addToCart(product.id, effectiveQuantity);
-                    navigate("/cart");
-                  }}
-                  className="flex items-center justify-center gap-2 rounded-xl bg-amber-400 py-3.5 text-sm font-extrabold text-gray-900 shadow-sm transition hover:bg-amber-500 active:scale-95"
-                >
-                  Buy now
-                </button>
-              </div>
             </div>
 
             {/* Delivery Details Dropdown Section with Down Arrow Symbol */}
@@ -602,72 +604,122 @@ export function ProductDetailsView({
           </div>
         </div>
 
-        {/* Customer Reviews & Rating Details Section */}
-        <section className="mt-8 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-          <div className="flex flex-col gap-4 border-b border-gray-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-lg font-black text-gray-900 sm:text-xl">
-                Customer Ratings & Verified Reviews
-              </h2>
-              <p className="mt-0.5 text-xs text-gray-500">
-                Verified feedbacks from builders and contractors in this district
-              </p>
-            </div>
-
-            {/* Rating Summary Box */}
-            <div className="flex items-center gap-3 rounded-xl bg-amber-50 px-4 py-2 border border-amber-200">
-              <div className="text-2xl font-black text-amber-800">4.6</div>
+        {/* Customer Reviews & Rating Details Dropdown Section */}
+        <section className="mt-8 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setIsReviewsOpen(!isReviewsOpen)}
+            className="flex w-full items-center justify-between p-4 text-left font-extrabold text-gray-900 transition hover:bg-gray-50 sm:p-5"
+          >
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-200/80">
+                <Star size={18} className="fill-amber-400 text-amber-400" />
+              </div>
               <div>
-                <div className="flex items-center text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} size={14} className="fill-amber-400 text-amber-400" />
-                  ))}
+                <div className="flex items-center gap-2">
+                  <span className="text-base sm:text-lg font-black text-gray-900">Ratings & Reviews</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-900">
+                    ★ 4.6
+                  </span>
                 </div>
-                <div className="text-[11px] font-bold text-amber-900">128 Verified Ratings</div>
+                <p className="text-xs text-gray-500 font-normal mt-0.5">
+                  128 verified ratings & reviews from local site contractors
+                </p>
               </div>
             </div>
-          </div>
+            {isReviewsOpen ? (
+              <ChevronUp size={20} className="text-gray-500 shrink-0" />
+            ) : (
+              <ChevronDown size={20} className="text-gray-500 shrink-0" />
+            )}
+          </button>
 
-          {/* Reviews List */}
-          <div className="mt-5 divide-y divide-gray-100">
-            {REVIEWS_DATA.map((review) => (
-              <div key={review.id} className="py-4 first:pt-0 last:pb-0">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-black text-gray-700">
-                      {review.author.charAt(0)}
-                    </div>
-                    <span className="text-xs font-extrabold text-gray-900">{review.author}</span>
-                    {review.verified && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                        <CheckCircle2 size={11} /> Verified Buyer
-                      </span>
-                    )}
+          {isReviewsOpen && (
+            <div className="border-t border-gray-100 p-4 sm:p-6 bg-gray-50/40">
+              {/* TOP RATED REVIEW - Prominently Displayed in Big Size */}
+              <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50/70 via-white to-amber-50/30 p-4 sm:p-6 shadow-sm">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+                      ★ Top Rated Review
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                      <CheckCircle2 size={13} /> Verified Project Buyer
+                    </span>
                   </div>
-                  <span className="text-[11px] text-gray-400">{review.date}</span>
+                  <span className="text-xs text-gray-400 font-medium">{TOP_REVIEW.date}</span>
                 </div>
 
-                <div className="mt-1.5 flex items-center gap-1">
-                  {Array.from({ length: review.rating }).map((_, i) => (
-                    <Star key={i} size={12} className="fill-amber-400 text-amber-400" />
+                <div className="mt-3 flex items-center gap-1 text-amber-400">
+                  {Array.from({ length: TOP_REVIEW.rating }).map((_, i) => (
+                    <Star key={i} size={16} className="fill-amber-400" />
                   ))}
+                  <span className="ml-1 text-xs font-extrabold text-gray-800">5.0 / 5.0</span>
                 </div>
 
-                <p className="mt-2 text-xs leading-relaxed text-gray-700 sm:text-sm">
-                  {review.comment}
+                <h3 className="mt-2 text-base font-extrabold text-gray-900 sm:text-lg">
+                  "{TOP_REVIEW.headline}"
+                </h3>
+
+                <p className="mt-2 text-sm leading-relaxed text-gray-700 font-medium">
+                  {TOP_REVIEW.comment}
                 </p>
 
-                <div className="mt-2 text-[11px] font-semibold text-gray-400">
-                  Project: {review.site}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/80 pt-3 text-xs">
+                  <div className="font-black text-gray-900">{TOP_REVIEW.author}</div>
+                  <div className="text-gray-500 font-medium">Site: {TOP_REVIEW.site}</div>
                 </div>
               </div>
-            ))}
-          </div>
+
+              {/* REMAINING REVIEWS IN HORIZONTAL SIDE-SCROLL RECTANGLE CARDS */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-gray-600">
+                    More Reviews from Nearby Sites
+                  </span>
+                  <span className="text-xs text-gray-400 font-medium">Scroll horizontally →</span>
+                </div>
+
+                <div className="flex gap-3.5 overflow-x-auto pb-3 pt-1 scroll-smooth">
+                  {SIDE_REVIEWS.map((review) => (
+                    <div
+                      key={review.id}
+                      className="w-[280px] sm:w-[320px] shrink-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1 text-amber-400">
+                            {Array.from({ length: review.rating }).map((_, i) => (
+                              <Star key={i} size={12} className="fill-amber-400" />
+                            ))}
+                          </div>
+                          <span className="text-[11px] text-gray-400">{review.date}</span>
+                        </div>
+
+                        <h4 className="mt-2 text-xs font-black text-gray-900 line-clamp-1">
+                          {review.headline}
+                        </h4>
+
+                        <p className="mt-1.5 text-xs text-gray-600 leading-relaxed line-clamp-3">
+                          {review.comment}
+                        </p>
+                      </div>
+
+                      <div className="mt-3.5 border-t border-gray-100 pt-2 flex items-center justify-between text-[11px]">
+                        <span className="font-bold text-gray-900">{review.author}</span>
+                        <span className="text-gray-400 truncate max-w-[140px]">{review.site}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Related Products Grid */}
         {relatedProducts.length > 0 && (
-          <section className="mt-8">
+          <section className="mt-8 mb-6">
             <h2 className="mb-4 text-lg font-black text-gray-900 sm:text-xl">Related Materials</h2>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
               {relatedProducts.slice(0, 4).map((rel) => (
@@ -694,7 +746,50 @@ export function ProductDetailsView({
           </section>
         )}
       </main>
+
+      {/* Fixed Bottom Action Bar with Add to Cart and Buy Now Buttons */}
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-gray-200 bg-white/98 px-4 py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+          {/* Price summary preview */}
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+              Total ({effectiveQuantity} {product.product.unit}{effectiveQuantity > 1 ? "s" : ""})
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl sm:text-2xl font-black text-gray-900 tracking-tight">
+                {formatMoney(totalPriceMinor)}
+              </span>
+              <span className="text-xs text-gray-400 line-through">
+                {formatMoney(totalOriginalPriceMinor)}
+              </span>
+            </div>
+          </div>
+
+          {/* Action Buttons: Add to cart & Buy now (in Etukas Red) */}
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => addToCart(product.id, effectiveQuantity)}
+              disabled={isAdding}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold text-gray-900 shadow-sm transition hover:bg-gray-50 active:scale-95 disabled:opacity-60"
+            >
+              <ShoppingBag size={16} />
+              <span>{isAdding ? "Adding..." : "Add to cart"}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                addToCart(product.id, effectiveQuantity);
+                navigate("/cart");
+              }}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-5 sm:px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-red-700 active:scale-95"
+            >
+              Buy now
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
