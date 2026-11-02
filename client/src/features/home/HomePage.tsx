@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, MapPin, Search } from "lucide-react";
+import { ArrowRight, Check, MapPin, Search, ShoppingBag, Star, X } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useProducts, useStores } from "../../hooks/useMarketplace";
+import { formatMoney } from "../../lib/utils";
+import type { StoreProduct } from "../../services/api";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
 import { FlashDealsCarousel } from "./FlashDealsCarousel";
 import { BuildingSuppliesGrid } from "./BuildingSuppliesGrid";
@@ -177,15 +179,188 @@ function AdBannerDisplay({ images, section, className, autoSlide = false }: { im
   );
 }
 
+function ProductQuickView({
+  product,
+  relatedProducts,
+  onClose,
+  onSelect,
+}: {
+  product: StoreProduct | null;
+  relatedProducts: StoreProduct[];
+  onClose: () => void;
+  onSelect: (product: StoreProduct) => void;
+}) {
+  const [selectedColor, setSelectedColor] = useState("Pink");
+  const [selectedSize, setSelectedSize] = useState("M");
+
+  const colorOptions = [
+    { name: "Pink", value: "#f6d3dc" },
+    { name: "White", value: "#f7f7f6" },
+    { name: "Sky", value: "#cfe7ff" },
+    { name: "Beige", value: "#e9dcc2" },
+  ];
+
+  const sizeOptions = ["S", "M", "L", "XL", "XXL", "3XL"];
+
+  useEffect(() => {
+    if (!product) return;
+    setSelectedColor((current) => (colorOptions.some((option) => option.name === current) ? current : colorOptions[0].name));
+    setSelectedSize("M");
+  }, [product]);
+
+  if (!product) return null;
+
+  const image = getProductImageUrl(product.product.images[0], product.product.id, "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=900&q=80");
+  const related = relatedProducts.filter((item) => item.id !== product.id).slice(0, 4);
+  const originalPrice = (product.discountMinor ?? 0) > 0 ? product.priceMinor + product.discountMinor! : Math.round(product.priceMinor * 1.18);
+  const discountPercent = Math.max(5, Math.round(((originalPrice - product.priceMinor) / originalPrice) * 100));
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-2 sm:items-center sm:p-6" onClick={onClose}>
+      <div className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-[28px] bg-white shadow-2xl sm:rounded-[30px]" onClick={(event) => event.stopPropagation()}>
+        <div className="relative bg-[#f3f3f1] p-3 sm:p-4">
+          <button
+            type="button"
+            aria-label="Close product detail"
+            onClick={onClose}
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-gray-700 shadow-md transition hover:bg-white"
+          >
+            <X size={18} />
+          </button>
+
+          <div className="overflow-hidden rounded-[22px] bg-white shadow-sm">
+            <div className="relative">
+              <img src={image} alt={product.product.name} className="h-[330px] w-full object-cover sm:h-[420px]" />
+              <div className="absolute left-4 top-4 inline-flex items-center gap-1 rounded-full bg-white/85 px-2.5 py-1 text-[11px] font-bold text-gray-800 shadow-sm">
+                <Star size={12} className="fill-amber-400 text-amber-400" />
+                3.9 ★ | 30.4K+
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white px-4 pb-4 pt-3 sm:px-6 sm:pb-6">
+          <div className="flex items-center justify-between">
+            <div className="text-[15px] font-bold text-gray-800">Selected Color:</div>
+            <div className="text-[15px] font-extrabold text-gray-900">{selectedColor}</div>
+          </div>
+
+          <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+            {colorOptions.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                aria-label={`Select ${option.name} color`}
+                onClick={() => setSelectedColor(option.name)}
+                className={`relative h-16 w-20 shrink-0 overflow-hidden rounded-xl border-2 transition ${selectedColor === option.name ? "border-black shadow-md" : "border-gray-200"}`}
+                style={{ background: option.value }}
+              >
+                <span className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(255,255,255,0.75),transparent_40%)]" />
+                {selectedColor === option.name && (
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <Check size={18} className="text-gray-800" />
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-5 flex items-center justify-between">
+            <div className="text-[15px] font-extrabold text-gray-900">Select Size</div>
+            <button type="button" className="text-sm font-bold text-blue-600">Size Chart</button>
+          </div>
+
+          <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-6">
+            {sizeOptions.map((size) => (
+              <button
+                key={size}
+                type="button"
+                onClick={() => setSelectedSize(size)}
+                className={`flex h-12 items-center justify-center rounded-xl border text-base font-bold transition ${selectedSize === size ? "border-black bg-black text-white shadow-sm" : "border-gray-200 bg-white text-gray-800 hover:border-gray-300"}`}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 border-t border-gray-200 pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wide text-etukas-red">{product.product.category?.name ?? "Etukas"}</div>
+                <div className="mt-1 text-[13px] font-bold text-gray-500">{product.store.name}</div>
+              </div>
+              <div className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">{product.deliveryEta}</div>
+            </div>
+
+            <h3 className="mt-3 text-[22px] font-extrabold leading-tight text-gray-900">{product.product.name}</h3>
+            <p className="mt-2 text-sm text-gray-600">{product.product.description || "Premium everyday essential from a verified local seller."}</p>
+
+            <div className="mt-4 flex items-center gap-2">
+              <span className="text-3xl font-extrabold tracking-tight text-gray-900">{formatMoney(product.priceMinor)}</span>
+              <span className="text-lg font-bold text-gray-400 line-through">{formatMoney(originalPrice)}</span>
+              <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-bold text-etukas-red">{discountPercent}% OFF</span>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button type="button" className="flex items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white px-5 py-3 text-base font-extrabold text-gray-900 transition hover:bg-gray-50">
+                <ShoppingBag size={18} /> Add to cart
+              </button>
+              <button type="button" className="rounded-2xl bg-[#f5d249] px-5 py-3 text-base font-extrabold text-gray-900 shadow-sm transition hover:bg-[#f0c733]">
+                Buy now
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 bg-white px-4 pb-6 pt-4 sm:px-6">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-lg font-extrabold text-gray-900">Related products</h3>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {related.length ? (
+              related.map((relatedProduct) => (
+                <button
+                  key={relatedProduct.id}
+                  type="button"
+                  onClick={() => onSelect(relatedProduct)}
+                  className="rounded-2xl border border-gray-200 bg-gray-50 p-2 text-left transition hover:border-gray-300 hover:bg-white"
+                >
+                  <img
+                    src={getProductImageUrl(relatedProduct.product.images[0], relatedProduct.product.id)}
+                    alt={relatedProduct.product.name}
+                    className="h-24 w-full rounded-xl object-cover"
+                  />
+                  <div className="mt-2 text-sm font-bold text-gray-900 line-clamp-2">{relatedProduct.product.name}</div>
+                  <div className="mt-1 text-base font-extrabold text-gray-900">{formatMoney(relatedProduct.priceMinor)}</div>
+                </button>
+              ))
+            ) : (
+              <div className="col-span-full rounded-xl border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-sm text-gray-500">
+                No related products available.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
+  const [quickViewProductId, setQuickViewProductId] = useState<string | null>(null);
   const products = useProducts({
     pageSize: 24,
     latitude: activeAddress?.latitude,
     longitude: activeAddress?.longitude
   });
+  const quickViewProduct = products.data?.find((item) => item.id === quickViewProductId) ?? null;
+  const quickViewRelatedProducts = quickViewProduct
+    ? (products.data ?? []).filter((item) => item.product.category?.slug === quickViewProduct.product.category?.slug && item.id !== quickViewProduct.id).slice(0, 4)
+    : [];
   const stores = useStores({ city: activeAddress?.city || activeAddress?.district });
 
   useEffect(() => {
@@ -343,7 +518,7 @@ export function HomePage() {
       </section>
 
       {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
-      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} />
+      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} onProductSelect={(product) => setQuickViewProductId(product.id)} />
 
       {/* 2. Technicians & Professionals Grid (Flipkart-style) */}
       <TechniciansGrid />
@@ -405,9 +580,16 @@ export function HomePage() {
       </section>
 
       {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
-      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} />
+      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} onProductSelect={(product) => setQuickViewProductId(product.id)} />
 
       {sectionThreeAds.length ? <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6"><AdBannerDisplay images={sectionThreeAds} section={3} className="h-[190px] sm:h-[240px] lg:h-[280px]" /></section> : null}
+
+      <ProductQuickView
+        product={quickViewProduct}
+        relatedProducts={quickViewRelatedProducts}
+        onClose={() => setQuickViewProductId(null)}
+        onSelect={(product) => setQuickViewProductId(product.id)}
+      />
 
       <section className="border-y border-gray-100 bg-gray-50 px-4 py-10">
         <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-3">

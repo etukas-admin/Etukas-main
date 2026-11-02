@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Check, MapPin, Plus, Star, ShieldCheck, Sparkles, Filter } from "lucide-react";
+import { MapPin, Star, ShieldCheck, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
 import { formatMoney } from "../../lib/utils";
 import { Skeleton } from "../../components/ui/Skeleton";
-import { useAddToCart } from "../../hooks/useAddToCart";
 
 interface BuildingSuppliesGridProps {
   products?: StoreProduct[];
   isLoading?: boolean;
+  onProductSelect?: (product: StoreProduct) => void;
 }
 
 const CATEGORY_TABS = [
@@ -27,9 +27,8 @@ function getProductRating(id: string) {
   return { rating, reviewsCount };
 }
 
-export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGridProps) {
+export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: BuildingSuppliesGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const { addToCart, loadingId, successId, notice } = useAddToCart();
 
   // Filter supplies for structured discovery (Tiles, Paints, Plumbing, Electrical, etc.)
   const heavySupplies = products?.filter((item) => {
@@ -53,13 +52,6 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
-      {/* Toast Notice */}
-      {notice && (
-        <div className="fixed bottom-20 left-1/2 z-50 -translate-x-1/2 rounded-full bg-gray-900/95 px-5 py-2.5 text-xs font-semibold text-white shadow-xl backdrop-blur transition-all duration-300">
-          {notice}
-        </div>
-      )}
-
       {/* Section Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
@@ -138,13 +130,20 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
               );
               const savingsAmount = originalMrp - item.priceMinor;
               const { rating, reviewsCount } = getProductRating(item.id);
-              const isAdded = successId === item.id;
-              const isAdding = loadingId === item.id;
 
               return (
                 <article
                   key={item.id}
-                  className="group flex flex-col justify-between overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-red-200 hover:shadow-md"
+                  tabIndex={0}
+                  role="button"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onProductSelect?.(item);
+                    }
+                  }}
+                  onClick={() => onProductSelect?.(item)}
+                  className="group flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-red-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-etukas-red/40"
                 >
                   {/* High-res Thumbnail & Overlay Tags */}
                   <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
@@ -212,13 +211,12 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
                       </div>
 
                       {/* Product Title */}
-                      <Link
-                        to={`/products?category=${item.product.category?.slug ?? ""}`}
+                      <span
                         className="mt-1.5 block line-clamp-2 text-xs font-bold leading-snug text-gray-900 transition-colors group-hover:text-etukas-red sm:text-sm"
                         title={item.product.name}
                       >
                         {item.product.name}
-                      </Link>
+                      </span>
 
                       {/* Product Description */}
                       {item.product.description && item.product.description !== item.product.name && (
@@ -258,30 +256,6 @@ export function BuildingSuppliesGrid({ products, isLoading }: BuildingSuppliesGr
                         </span>
                       </div>
 
-                      {/* Action Button */}
-                      <button
-                        type="button"
-                        onClick={() => addToCart(item.id, 1)}
-                        disabled={isAdding}
-                        aria-label={`Add ${item.product.name} to cart`}
-                        className={`mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-bold transition-all duration-200 active:scale-95 ${
-                          isAdded
-                            ? "bg-emerald-600 text-white shadow-sm"
-                            : "bg-etukas-black text-white hover:bg-etukas-red shadow-sm"
-                        }`}
-                      >
-                        {isAdded ? (
-                          <>
-                            <Check size={14} className="animate-bounce" /> Added to Cart
-                          </>
-                        ) : isAdding ? (
-                          <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                        ) : (
-                          <>
-                            <Plus size={14} /> Quick Add
-                          </>
-                        )}
-                      </button>
                     </div>
                   </div>
                 </article>
