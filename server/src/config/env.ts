@@ -9,7 +9,27 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   DATABASE_URL: z.string().min(1),
-  CLIENT_URL: z.string().url().default("http://localhost:5173"),
+  CLIENT_URL: z
+    .string()
+    .default("http://localhost:5173")
+    .transform((val) => (val && val.trim() ? val.trim() : "http://localhost:5173"))
+    .refine(
+      (value) => {
+        const urls = value.split(",").map((u) => u.trim()).filter(Boolean);
+        return (
+          urls.length > 0 &&
+          urls.every((u) => {
+            try {
+              new URL(u);
+              return true;
+            } catch {
+              return false;
+            }
+          })
+        );
+      },
+      { message: "CLIENT_URL must be a valid URL or comma-separated list of valid URLs" }
+    ),
   SERVER_PORT: z.coerce.number().int().positive().default(4000),
   JWT_ACCESS_SECRET: z.string().min(16),
   JWT_REFRESH_SECRET: z.string().min(16),
