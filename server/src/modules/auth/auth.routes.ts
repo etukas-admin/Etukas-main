@@ -86,7 +86,21 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
       }
 
       if (isPasswordValid) {
-        const authUser = { id: tech.id, email: tech.email, roles: [Role.SELLER] };
+        // Technician records have their own file ID; partner profiles are tied
+        // to the registered database user. Use that user ID in auth tokens so
+        // /seller/profile sees admin verification changes for the right partner.
+        let authUserId = tech.id;
+        try {
+          const dbUser = await prisma.user.findFirst({
+            where: { OR: [{ email: { equals: tech.email, mode: "insensitive" } }, { mobile: tech.mobile }] },
+            select: { id: true }
+          });
+          if (dbUser) authUserId = dbUser.id;
+        } catch {
+          // File-backed technician accounts can still sign in without a DB user.
+        }
+
+        const authUser = { id: authUserId, email: tech.email, roles: [Role.SELLER] };
         const accessToken = signAccessToken(authUser);
         const refreshToken = signRefreshToken(authUser);
 
@@ -113,7 +127,7 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
           accessToken,
           csrfToken,
           user: {
-            id: tech.id,
+            id: authUserId,
             name: tech.name,
             email: tech.email,
             mobile: tech.mobile,

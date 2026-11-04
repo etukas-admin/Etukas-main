@@ -36,7 +36,7 @@ import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
-import { marketplaceApi, API_BASE } from "../../services/api";
+import { marketplaceApi, API_BASE, getStoredUser } from "../../services/api";
 import { ImageCropModal } from "./ImageCropModal";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
@@ -119,7 +119,8 @@ export function SellerDashboard() {
   // Queries
   const { data: dashboardData } = useQuery({
     queryKey: ["seller-dashboard"],
-    queryFn: () => marketplaceApi.sellerDashboard().catch(() => null)
+    queryFn: () => marketplaceApi.sellerDashboard().catch(() => null),
+    refetchInterval: 3000
   });
 
   const { data: profileData } = useQuery({
@@ -128,10 +129,19 @@ export function SellerDashboard() {
     refetchInterval: 3000
   });
 
+  // Older technician sessions and API responses may not carry the explicit
+  // isTechnician marker. Technician partner IDs have a stable TECH prefix.
+  const isTechnician = Boolean(
+    profileData?.isTechnician ||
+    dashboardData?.sellerId?.startsWith("TECH") ||
+    profileData?.sellerId?.startsWith("TECH") ||
+    getStoredUser()?.sellerId?.startsWith("TECH")
+  );
+
   const technicianProfileQuery = useQuery({
     queryKey: ["technician-profile", profileData?.sellerId],
     queryFn: () => marketplaceApi.getTechnician(profileData!.sellerId),
-    enabled: Boolean(profileData?.isTechnician)
+    enabled: isTechnician
   });
 
   const technicianUpdateMutation = useMutation({
@@ -251,7 +261,7 @@ export function SellerDashboard() {
   const sellerId = dashboardData?.sellerId || profileData?.sellerId || "Pending";
   const businessName = dashboardData?.businessName || profileData?.businessName || "Partner Store";
   const contactPerson = dashboardData?.contactPerson || profileData?.contactPerson || "Partner";
-  const verificationStatus = dashboardData?.verificationStatus || profileData?.verificationStatus || "PENDING";
+  const verificationStatus = profileData?.verificationStatus || dashboardData?.verificationStatus || "PENDING";
   const primaryStore = profileData?.stores?.[0];
 
   const handleAddProduct = (e: React.FormEvent) => {
@@ -321,7 +331,7 @@ export function SellerDashboard() {
     e.target.value = "";
   }, []);
 
-  if (profileData?.isTechnician) {
+  if (isTechnician) {
     const technician = technicianProfileQuery.data;
     return (
       <main className="min-h-screen bg-gray-50 p-4 sm:p-8">
