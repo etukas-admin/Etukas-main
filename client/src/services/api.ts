@@ -1,5 +1,12 @@
 import type { ApiResponse } from "@etukas/shared";
-import type { SellerEnquiryInput } from "@etukas/shared";
+import type {
+  SellerEnquiryInput,
+  Technician,
+  TechnicianRegistrationInput,
+  TechnicianBookingInput
+} from "@etukas/shared";
+
+export type { Technician, TechnicianRegistrationInput, TechnicianBookingInput };
 
 export function normalizeApiBase(rawUrl?: string): string {
   const trimmed = (rawUrl ?? "").trim().replace(/\/+$/, "");
@@ -340,6 +347,54 @@ export const marketplaceApi = {
   adminNotifications: (unreadOnly?: boolean) =>
     api<AdminNotification[]>(`/admin/chat/notifications${unreadOnly ? "?unread=true" : ""}`),
   adminNotificationCount: () => api<{ count: number }>("/admin/chat/notifications/count"),
+  // ─── Technicians & Professionals ───────────────────────────────────────────
+  getTechnicians: (params?: {
+    category?: string;
+    q?: string;
+    lat?: number;
+    lng?: number;
+    maxDistance?: number;
+    maxCharge?: number;
+    sort?: string;
+  }) => {
+    const query = new URLSearchParams();
+    if (params?.category) query.set("category", params.category);
+    if (params?.q) query.set("q", params.q);
+    if (params?.lat !== undefined) query.set("lat", String(params.lat));
+    if (params?.lng !== undefined) query.set("lng", String(params.lng));
+    if (params?.maxDistance) query.set("maxDistance", String(params.maxDistance));
+    if (params?.maxCharge) query.set("maxCharge", String(params.maxCharge));
+    if (params?.sort) query.set("sort", params.sort);
+    const qs = query.toString();
+    return api<Technician[]>(`/technicians${qs ? `?${qs}` : ""}`);
+  },
+  getTechnician: (id: string, lat?: number, lng?: number) => {
+    const query = new URLSearchParams();
+    if (lat !== undefined) query.set("lat", String(lat));
+    if (lng !== undefined) query.set("lng", String(lng));
+    const qs = query.toString();
+    return api<Technician>(`/technicians/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`);
+  },
+  registerTechnician: (body: TechnicianRegistrationInput) =>
+    api<{
+      technician: Technician;
+      partnerId: string;
+      sellerId: string;
+      businessName: string;
+      registrationStep: number;
+      message: string;
+    }>("/technicians/register", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  bookTechnician: (id: string, body: TechnicianBookingInput) =>
+    api<{
+      booking: Record<string, unknown>;
+      message: string;
+    }>(`/technicians/${encodeURIComponent(id)}/book`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
   adminMarkNotificationsRead: (ids?: string[]) =>
     api<{ success: boolean }>("/admin/chat/notifications/read", {
       method: "PATCH",

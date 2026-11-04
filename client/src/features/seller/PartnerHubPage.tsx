@@ -38,10 +38,12 @@ import {
   type SellerRegStep1Input,
   type SellerRegStep2Input
 } from "@etukas/shared";
+import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { ApiError, marketplaceApi } from "../../services/api";
 import type { SellerRegistrationResult } from "../../services/api";
+import { TechnicianRegistrationForm } from "../technicians/TechnicianRegistrationForm";
 
 // ---------- step labels ----------
 
@@ -558,7 +560,21 @@ export function PartnerHubPage() {
             )}
 
             {/* Step 2: Business Details */}
-            {currentStep === 1 && (
+            {currentStep === 1 && selectedPartnerCategory === "technician" ? (
+              <TechnicianRegistrationForm
+                initialContact={step1Form.getValues()}
+                userId={userId}
+                onSuccess={(data) => {
+                  setRegistrationResult((prev) => ({
+                    ...prev,
+                    ...data,
+                    tempPassword: prev?.tempPassword || data.tempPassword
+                  }));
+                  setCurrentStep(2);
+                }}
+                onBack={() => setCurrentStep(0)}
+              />
+            ) : currentStep === 1 && (
               <form
                 onSubmit={step2Form.handleSubmit((values) =>
                   step2Mutation.mutate(values)
@@ -848,16 +864,25 @@ export function PartnerHubPage() {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    window.dispatchEvent(new Event("open_partner_login"));
-                  }}
-                  className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#e94560] to-[#f97316] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:opacity-90 cursor-pointer"
-                >
-                  Login & Explore Etukas Partner Dashboard{" "}
-                  <ExternalLink size={18} />
-                </button>
+                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                  {selectedPartnerCategory === "technician" && (
+                    <Link
+                      to="/technicians"
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl border-2 border-orange-500 bg-orange-50 px-5 py-3.5 text-sm font-bold text-orange-700 shadow-sm transition hover:bg-orange-100"
+                    >
+                      View Live on Marketplace <ExternalLink size={18} />
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new Event("open_partner_login"));
+                    }}
+                    className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#e94560] to-[#f97316] px-5 py-3.5 text-sm font-bold text-white shadow-lg shadow-orange-500/25 transition hover:opacity-90 cursor-pointer"
+                  >
+                    Partner Dashboard <ExternalLink size={18} />
+                  </button>
+                </div>
 
                 <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
                   <p className="text-sm text-blue-800">

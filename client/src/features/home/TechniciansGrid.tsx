@@ -79,7 +79,7 @@ export function TechniciansGrid() {
             </div>
           </div>
           <Link
-            to="/products?category=professionals"
+            to="/technicians"
             className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-xs"
           >
             View All <ArrowRight size={13} />
@@ -91,7 +91,7 @@ export function TechniciansGrid() {
           {professionals.map((pro) => (
             <Link
               key={pro.slug}
-              to={`/products?category=${pro.slug}`}
+              to={`/technicians?category=${pro.slug}`}
               className="group flex min-w-[124px] max-w-[140px] flex-1 flex-col items-center justify-between rounded-2xl bg-white p-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3"
             >
               {/* Image container: clean white, large character */}
