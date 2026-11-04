@@ -117,6 +117,11 @@ export function TechniciansPage() {
       list = list.filter((t) => t.chargePerDay <= 2000);
     }
 
+    const nearbyMatches = list.filter((t) => (t.distanceKm ?? Number.POSITIVE_INFINITY) <= (t.serviceRadiusKm ?? 25));
+    if (nearbyMatches.length > 0) {
+      list = nearbyMatches;
+    }
+
     // Sorting: default is NEAREST FIRST ("First nearly registered technicians should be visible to customer, after distance technicians")
     if (sortBy === "nearest") {
       list.sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));

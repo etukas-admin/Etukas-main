@@ -500,6 +500,13 @@ techniciansRouter.get("/", async (req, res, next) => {
       list = list.filter((tech) => tech.chargePerHour <= maxChargeQuery);
     }
 
+    const approvedNearby = list.filter(
+      (tech) => (tech.distanceKm ?? Number.POSITIVE_INFINITY) <= (tech.serviceRadiusKm ?? 25)
+    );
+    if (approvedNearby.length > 0) {
+      list = approvedNearby;
+    }
+
     // Sorting
     // "First nearly registered technicians should be visible to customer, after distance technicians."
     if (sort === "nearest" || !sort) {
