@@ -65,10 +65,19 @@ export function createApp() {
     next();
   });
 
-  const allowedClientUrls = env.CLIENT_URL
+  const PRODUCTION_ORIGINS = [
+    "https://etukas.com",
+    "https://www.etukas.com"
+  ];
+
+  const configuredClientUrls = env.CLIENT_URL
     .split(",")
-    .map((u) => u.trim().replace(/\/+$/, ""))
+    .map((u) => u.trim().toLowerCase().replace(/\/+$/, ""))
     .filter(Boolean);
+
+  const allowedClientUrls = Array.from(
+    new Set([...PRODUCTION_ORIGINS, ...configuredClientUrls])
+  );
 
   app.use(contentSecurityPolicy());
   app.use(crossOriginOpenerPolicy());
@@ -99,13 +108,13 @@ export function createApp() {
           return callback(null, true);
         }
 
-        const normalizedOrigin = origin.trim().replace(/\/+$/, "");
+        const normalizedOrigin = origin.trim().toLowerCase().replace(/\/+$/, "");
 
         // Allowed web client origins (normalized without trailing slashes)
         if (
           allowedClientUrls.includes(normalizedOrigin) ||
           normalizedOrigin === "http://localhost:5173" ||
-          /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+):5173$/.test(normalizedOrigin)
+          /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+)(:\d+)?$/.test(normalizedOrigin)
         ) {
           return callback(null, true);
         }
@@ -116,7 +125,17 @@ export function createApp() {
 
         return callback(new HttpError(403, "CORS_BLOCKED", `CORS blocked for origin: ${origin}`));
       },
-      credentials: true
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "x-csrf-token",
+        "Accept",
+        "Origin",
+        "X-Requested-With"
+      ],
+      maxAge: 86400
     })
   );
   app.use(express.json({ limit: "10mb" }));
