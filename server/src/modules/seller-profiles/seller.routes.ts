@@ -44,14 +44,60 @@ const categoryInfo: Record<z.infer<typeof newMaterialSchema>["category"], { name
 };
 
 async function sellerProfile(userId: string, email?: string) {
+  let profile: any = null;
   try {
-    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
-    if (profile) return profile;
+    profile = await prisma.sellerProfile.findFirst({
+      where: {
+        OR: [
+          { userId },
+          { id: userId },
+          ...(email ? [{ user: { email: { equals: email, mode: "insensitive" as const } } }] : [])
+        ]
+      },
+      include: {
+        user: { select: { name: true, email: true, mobile: true } },
+        stores: true
+      }
+    });
   } catch {
     // DB offline, fall through
   }
-  const tech = loadTechnicians().find((t) => t.id === userId || (email && t.email.toLowerCase() === email.toLowerCase()));
+
+  const tech = loadTechnicians().find(
+    (t) =>
+      t.id === userId ||
+      t.partnerId === userId ||
+      (email && t.email.toLowerCase() === email.toLowerCase()) ||
+      (profile?.user?.email && t.email.toLowerCase() === profile.user.email.toLowerCase()) ||
+      (profile?.sellerId && t.partnerId.toLowerCase() === profile.sellerId.toLowerCase())
+  );
+
+  if (profile && tech) {
+    const isApproved =
+      profile.verificationStatus === VerificationStatus.APPROVED ||
+      tech.verificationStatus === "APPROVED";
+    const status = isApproved
+      ? VerificationStatus.APPROVED
+      : tech.verificationStatus === "REJECTED" || profile.verificationStatus === VerificationStatus.REJECTED
+      ? VerificationStatus.REJECTED
+      : VerificationStatus.PENDING;
+
+    return {
+      ...profile,
+      sellerId: profile.sellerId || tech.partnerId,
+      businessName: profile.businessName || tech.businessName,
+      contactPerson: profile.contactPerson || tech.name,
+      verificationStatus: status,
+      isTechnician: true
+    };
+  }
+
+  if (profile) {
+    return profile;
+  }
+
   if (tech) {
+    const status = (tech.verificationStatus as VerificationStatus) || VerificationStatus.PENDING;
     return {
       id: tech.id,
       sellerId: tech.partnerId,
@@ -60,14 +106,15 @@ async function sellerProfile(userId: string, email?: string) {
       businessName: tech.businessName,
       businessType: "RETAILER" as const,
       gstin: null,
-      verificationStatus: VerificationStatus.APPROVED,
-      rejectionReason: null,
+      verificationStatus: status,
+      rejectionReason: tech.rejectionReason || null,
       registrationStep: 2,
-      createdAt: new Date(),
+      createdAt: new Date(tech.createdAt || Date.now()),
       updatedAt: new Date(),
       isTechnician: true
     };
   }
+
   throw new HttpError(403, "SELLER_PROFILE_REQUIRED", "Seller profile is required");
 }
 
@@ -111,52 +158,43 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
 
 sellerRouter.get("/profile", async (req, res, next) => {
   try {
-    const technician = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
-    let profile = null;
-    try {
-      profile = await prisma.sellerProfile.findUnique({
-        where: { userId: req.user!.id },
-        include: {
-          user: { select: { name: true, email: true, mobile: true } },
-          stores: true
-        }
-      });
-    } catch {
-      // DB offline
-    }
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    const tech = loadTechnicians().find(
+      (t) =>
+        t.id === req.user!.id ||
+        t.partnerId === profile.sellerId ||
+        (req.user?.email && t.email.toLowerCase() === req.user.email.toLowerCase())
+    );
 
-    if (!profile) {
-      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
-      if (tech) {
-        return sendOk(res, {
-          id: tech.id,
-          sellerId: tech.partnerId,
-          contactPerson: tech.name,
-          businessName: tech.businessName,
-          businessType: "RETAILER",
-          isTechnician: true,
-          verificationStatus: "APPROVED",
-          registrationStep: 2,
-          user: { name: tech.name, email: tech.email, mobile: tech.mobile },
-          stores: [{
-            id: `store-${tech.id}`,
-            name: tech.businessName,
-            slug: `tech-${tech.partnerId.toLowerCase()}`,
-            phone: tech.mobile,
-            addressLine1: tech.addressLine1,
-            city: tech.city,
-            state: tech.state,
-            postalCode: tech.postalCode,
-            latitude: tech.latitude,
-            longitude: tech.longitude,
-            isActive: true
-          }]
-        });
-      }
-      throw new HttpError(404, "SELLER_NOT_FOUND", "Seller profile not found");
-    }
+    const stores =
+      (profile as any).stores && (profile as any).stores.length > 0
+        ? (profile as any).stores
+        : [
+            {
+              id: `store-${profile.id}`,
+              name: profile.businessName,
+              slug: `store-${(profile.sellerId || profile.id).toLowerCase()}`,
+              phone: (profile as any).user?.mobile || tech?.mobile || "Registered Mobile",
+              addressLine1: tech?.addressLine1 || "Registered Location",
+              city: tech?.city || "Kakinada",
+              state: tech?.state || "Andhra Pradesh",
+              postalCode: tech?.postalCode || "533001",
+              latitude: tech?.latitude || 16.9891,
+              longitude: tech?.longitude || 82.2475,
+              isActive: profile.verificationStatus === VerificationStatus.APPROVED
+            }
+          ];
 
-    return sendOk(res, technician ? { ...profile, isTechnician: true } : profile);
+    return sendOk(res, {
+      ...profile,
+      stores,
+      user: (profile as any).user || {
+        name: profile.contactPerson,
+        email: tech?.email || req.user?.email,
+        mobile: tech?.mobile || ""
+      },
+      isTechnician: Boolean(tech || (profile as any).isTechnician)
+    });
   } catch (error) {
     next(error);
   }

@@ -1,3 +1,4 @@
+import { loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
 import { randomUUID } from "node:crypto";
 import { del, put } from "@vercel/blob";
 import { Router } from "express";
@@ -27,26 +28,89 @@ adminRouter.get("/dashboard", async (_req, res, next) => {
 
 adminRouter.get("/sellers", async (_req, res, next) => {
   try {
-    const sellers = await prisma.sellerProfile.findMany({
-      include: {
-        user: { select: { name: true, email: true, mobile: true } },
-        stores: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            addressLine1: true,
-            city: true,
-            state: true,
-            postalCode: true,
-            latitude: true,
-            longitude: true,
-            isActive: true
+    let sellers: any[] = [];
+    try {
+      sellers = await prisma.sellerProfile.findMany({
+        include: {
+          user: { select: { name: true, email: true, mobile: true } },
+          stores: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+              addressLine1: true,
+              city: true,
+              state: true,
+              postalCode: true,
+              latitude: true,
+              longitude: true,
+              isActive: true
+            }
           }
-        }
-      },
-      orderBy: { createdAt: "desc" }
-    });
+        },
+        orderBy: { createdAt: "desc" }
+      });
+    } catch {
+      // Prisma offline, continue with technician file store
+    }
+
+    // Merge in technicians from technicians.json
+    try {
+      const technicians = loadTechnicians();
+      const techAsSellers = technicians
+        .map((tech) => {
+          const existing = sellers.find(
+            (s) =>
+              (s.sellerId && s.sellerId.toLowerCase() === tech.partnerId.toLowerCase()) ||
+              s.id === tech.id ||
+              (s.user?.email && s.user.email.toLowerCase() === tech.email.toLowerCase()) ||
+              (s.user?.mobile && s.user.mobile === tech.mobile)
+          );
+          if (existing) {
+            // Keep status aligned with technician JSON if present
+            if (tech.verificationStatus) {
+              existing.verificationStatus = tech.verificationStatus;
+            }
+            return null;
+          }
+          return {
+            id: tech.id,
+            sellerId: tech.partnerId,
+            contactPerson: tech.name,
+            businessName: tech.businessName,
+            businessType: "TECHNICIAN",
+            gstin: null,
+            verificationStatus: tech.verificationStatus || "APPROVED",
+            rejectionReason: tech.rejectionReason || null,
+            createdAt: tech.createdAt,
+            user: {
+              name: tech.name,
+              email: tech.email,
+              mobile: tech.mobile
+            },
+            stores: [
+              {
+                id: `store-${tech.id}`,
+                name: tech.businessName,
+                phone: tech.mobile,
+                addressLine1: tech.addressLine1,
+                city: tech.city,
+                state: tech.state,
+                postalCode: tech.postalCode,
+                latitude: tech.latitude,
+                longitude: tech.longitude,
+                isActive: (tech.verificationStatus || "APPROVED") === "APPROVED"
+              }
+            ]
+          };
+        })
+        .filter(Boolean);
+
+      sellers = [...sellers, ...techAsSellers];
+    } catch (techErr) {
+      console.warn("Could not load technicians for admin sellers list:", techErr);
+    }
+
     return sendOk(res, sellers);
   } catch (error) {
     next(error);
@@ -279,26 +343,69 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
       status: z.nativeEnum(VerificationStatus),
       rejectionReason: z.string().trim().max(500).optional()
     }).parse(req.body);
-    const seller = await prisma.$transaction(async (transaction) => {
-      const profile = await transaction.sellerProfile.update({
-        where: { id: req.params.id },
-        data: {
-          verificationStatus: status,
-          rejectionReason: status === VerificationStatus.REJECTED ? rejectionReason ?? null : null
+
+    const targetId = req.params.id;
+    let updatedTechnician = updateTechnicianStatus(targetId, status as any, rejectionReason);
+    let updatedProfile: any = null;
+
+    try {
+      const existingProfile = await prisma.sellerProfile.findFirst({
+        where: {
+          OR: [
+            { id: targetId },
+            { sellerId: targetId },
+            { userId: targetId }
+          ]
+        },
+        include: { user: true }
+      });
+
+      if (existingProfile) {
+        updatedProfile = await prisma.$transaction(async (transaction) => {
+          const profile = await transaction.sellerProfile.update({
+            where: { id: existingProfile.id },
+            data: {
+              verificationStatus: status,
+              rejectionReason: status === VerificationStatus.REJECTED ? rejectionReason ?? null : null
+            }
+          });
+          const isApproved = status === VerificationStatus.APPROVED;
+          await transaction.store.updateMany({ where: { sellerProfileId: profile.id }, data: { isActive: isApproved } });
+          await transaction.storeProduct.updateMany({
+            where: { store: { sellerProfileId: profile.id } },
+            data: { isActive: isApproved }
+          });
+          await transaction.auditLog.create({
+            data: { actorId: req.user!.id, action: "SELLER_STATUS_UPDATED", target: profile.id, metadata: { status } }
+          }).catch(() => {});
+          return profile;
+        });
+
+        if (!updatedTechnician && existingProfile.user?.email) {
+          updatedTechnician = updateTechnicianStatus(existingProfile.user.email, status as any, rejectionReason);
         }
+      }
+    } catch (dbErr) {
+      console.warn("Prisma update status skipped or failed:", dbErr);
+    }
+
+    if (updatedProfile) {
+      return sendOk(res, updatedProfile);
+    }
+
+    if (updatedTechnician) {
+      return sendOk(res, {
+        id: updatedTechnician.id,
+        sellerId: updatedTechnician.partnerId,
+        contactPerson: updatedTechnician.name,
+        businessName: updatedTechnician.businessName,
+        businessType: "TECHNICIAN",
+        verificationStatus: updatedTechnician.verificationStatus,
+        rejectionReason: updatedTechnician.rejectionReason ?? null
       });
-      const isApproved = status === VerificationStatus.APPROVED;
-      await transaction.store.updateMany({ where: { sellerProfileId: profile.id }, data: { isActive: isApproved } });
-      await transaction.storeProduct.updateMany({
-        where: { store: { sellerProfileId: profile.id } },
-        data: { isActive: isApproved }
-      });
-      await transaction.auditLog.create({
-        data: { actorId: req.user!.id, action: "SELLER_STATUS_UPDATED", target: profile.id, metadata: { status } }
-      });
-      return profile;
-    });
-    return sendOk(res, seller);
+    }
+
+    throw new HttpError(404, "SELLER_NOT_FOUND", "Partner profile not found");
   } catch (error) {
     next(error);
   }

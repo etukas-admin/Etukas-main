@@ -377,23 +377,48 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
       // DB offline
     }
 
-    if (!user) {
-      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email === req.user!.email);
-      if (tech) {
-        return sendOk(res, {
-          id: tech.id,
-          name: tech.name,
-          email: tech.email,
-          mobile: tech.mobile,
-          roles: [Role.SELLER],
-          sellerProfile: {
-            verificationStatus: "APPROVED",
-            businessName: tech.businessName,
-            sellerId: tech.partnerId
-          }
-        });
-      }
+    const tech = loadTechnicians().find(
+      (t) =>
+        t.id === req.user!.id ||
+        (user?.email && t.email.toLowerCase() === user.email.toLowerCase()) ||
+        (req.user?.email && t.email.toLowerCase() === req.user.email.toLowerCase())
+    );
+
+    if (user && tech) {
+      const isApproved =
+        user.sellerProfile?.verificationStatus === "APPROVED" ||
+        tech.verificationStatus === "APPROVED";
+      const resolvedStatus = isApproved
+        ? "APPROVED"
+        : tech.verificationStatus === "REJECTED" || user.sellerProfile?.verificationStatus === "REJECTED"
+        ? "REJECTED"
+        : "PENDING";
+
+      return sendOk(res, {
+        ...user,
+        sellerProfile: {
+          verificationStatus: resolvedStatus,
+          businessName: user.sellerProfile?.businessName || tech.businessName,
+          sellerId: user.sellerProfile?.sellerId || tech.partnerId
+        }
+      });
     }
+
+    if (!user && tech) {
+      return sendOk(res, {
+        id: tech.id,
+        name: tech.name,
+        email: tech.email,
+        mobile: tech.mobile,
+        roles: [Role.SELLER],
+        sellerProfile: {
+          verificationStatus: tech.verificationStatus || "PENDING",
+          businessName: tech.businessName,
+          sellerId: tech.partnerId
+        }
+      });
+    }
+
     return sendOk(res, user);
   } catch (error) {
     next(error);

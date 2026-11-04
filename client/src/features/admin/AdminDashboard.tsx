@@ -110,7 +110,15 @@ function SellerCard({ seller, onStatusChange, isPending }: {
           <h3 className="font-bold">{seller.businessName || seller.contactPerson}</h3>
           <p className="mt-1 text-sm text-gray-600">{seller.contactPerson} · {seller.businessType}</p>
         </div>
-        <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-bold">{seller.verificationStatus}</span>
+        <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+          seller.verificationStatus === "APPROVED"
+            ? "bg-green-100 text-green-800 border border-green-300"
+            : seller.verificationStatus === "REJECTED"
+            ? "bg-red-100 text-red-800 border border-red-300"
+            : "bg-amber-100 text-amber-800 border border-amber-300"
+        }`}>
+          {seller.verificationStatus === "APPROVED" ? "✓ APPROVED" : seller.verificationStatus === "REJECTED" ? "✕ REJECTED" : "⏳ PENDING"}
+        </span>
       </div>
       <p className="mt-3 text-sm">{seller.user.email} · {seller.user.mobile}</p>
       {seller.sellerId ? <p className="mt-1 text-xs text-gray-500">Partner ID: {seller.sellerId}</p> : null}

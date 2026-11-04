@@ -3,8 +3,8 @@ import {
   AlertTriangle,
   BadgeAlert,
   BadgeCheck,
-  Boxes,
-  Building2,
+  Boxes, Wrench,
+  Building2, Phone, ExternalLink,
   Calendar,
   CheckCircle2,
   Clock,
@@ -33,7 +33,7 @@ import {
   Crop
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { marketplaceApi, API_BASE, getStoredUser } from "../../services/api";
@@ -148,8 +148,19 @@ export function SellerDashboard() {
     mutationFn: marketplaceApi.updateTechnicianProfile,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["technician-profile"] });
+      await queryClient.invalidateQueries({ queryKey: ["seller-profile"] });
+      await queryClient.invalidateQueries({ queryKey: ["seller-dashboard"] });
       await technicianProfileQuery.refetch();
     }
+  });
+
+  const [techTab, setTechTab] = useState<"overview" | "bookings" | "profile">("overview");
+
+  const technicianBookingsQuery = useQuery({
+    queryKey: ["technician-bookings", profileData?.sellerId],
+    queryFn: () => marketplaceApi.getTechnicianMyBookings().catch(() => []),
+    enabled: isTechnician,
+    refetchInterval: 5000
   });
 
   const sellerProductsQuery = useQuery({
@@ -331,39 +342,460 @@ export function SellerDashboard() {
     e.target.value = "";
   }, []);
 
-  if (isTechnician) {
+    if (isTechnician) {
     const technician = technicianProfileQuery.data;
+    const bookings = technicianBookingsQuery.data ?? [];
+    const isApproved = verificationStatus === "APPROVED";
+
     return (
-      <main className="min-h-screen bg-gray-50 p-4 sm:p-8">
-        <section className="mx-auto max-w-3xl rounded-2xl border bg-white p-6 shadow-sm">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-5">
-            <div><p className="text-sm font-semibold text-orange-600">Technician Partner</p><h1 className="mt-1 text-2xl font-black">{technician?.name ?? contactPerson}</h1><p className="text-sm text-gray-500">Partner ID: {sellerId}</p></div>
-            <div className="flex items-center gap-3"><span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{verificationStatus}</span><button onClick={handleLogout} className="rounded-lg border px-3 py-2 text-sm font-semibold">Logout</button></div>
-          </header>
-          <h2 className="mt-6 text-lg font-bold">Service profile</h2>
-          {technician ? <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            technicianUpdateMutation.mutate({
-              name: String(form.get("name")), workingHours: String(form.get("workingHours")),
-              availableDays: form.getAll("availableDays").map(String), isAvailableToday: form.get("isAvailableToday") === "on",
-              chargePerHour: Number(form.get("chargePerHour")), chargePerDay: Number(form.get("chargePerDay")),
-              addressLine1: String(form.get("addressLine1")), city: String(form.get("city")), state: String(form.get("state")),
-              postalCode: String(form.get("postalCode")), latitude: Number(form.get("latitude")), longitude: Number(form.get("longitude"))
-            });
-          }}>
-            {[
-              ["name", "Name", technician.name], ["workingHours", "Available time", technician.workingHours],
-              ["chargePerHour", "Hourly service charge (₹)", technician.chargePerHour], ["chargePerDay", "Daily service charge (₹)", technician.chargePerDay],
-              ["addressLine1", "Address", technician.addressLine1], ["city", "City", technician.city],
-              ["state", "State", technician.state], ["postalCode", "Postal code", technician.postalCode],
-              ["latitude", "Latitude", technician.latitude], ["longitude", "Longitude", technician.longitude]
-            ].map(([name, label, value]) => <label key={String(name)} className="text-sm font-semibold text-gray-700">{label}<Input name={String(name)} defaultValue={String(value)} required type={String(name).startsWith("charge") || name === "latitude" || name === "longitude" ? "number" : "text"} min={String(name).startsWith("charge") ? 0 : undefined} step={name === "latitude" || name === "longitude" ? "any" : undefined} /></label>)}
-            <fieldset className="sm:col-span-2"><legend className="text-sm font-semibold text-gray-700">Available days</legend><div className="mt-2 flex flex-wrap gap-3">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <label key={day} className="flex items-center gap-1.5 text-sm"><input name="availableDays" type="checkbox" value={day} defaultChecked={technician.availableDays.includes(day)} />{day}</label>)}</div></fieldset>
-            <label className="flex items-center gap-2 text-sm font-semibold"><input name="isAvailableToday" type="checkbox" defaultChecked={technician.isAvailableToday} /> Available for bookings today</label>
-            <div className="sm:col-span-2 flex items-center gap-3"><Button disabled={technicianUpdateMutation.isPending} className="bg-orange-500 hover:bg-orange-600">{technicianUpdateMutation.isPending ? "Saving..." : "Save changes"}</Button>{technicianUpdateMutation.isSuccess ? <span className="text-sm text-emerald-700">Profile updated</span> : null}{technicianUpdateMutation.error ? <span role="alert" className="text-sm text-red-700">{technicianUpdateMutation.error.message}</span> : null}</div>
-          </form> : <p className="mt-4 text-sm text-gray-500">Loading your service profile...</p>}
-        </section>
+      <main className="min-h-screen bg-gray-50 pb-16">
+        {/* Top Banner with Technician ID, Status & Navigation */}
+        <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white shadow-md">
+          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 font-extrabold text-white shadow-lg shadow-orange-500/20">
+                  <Wrench size={28} />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-2xl font-black tracking-tight">{technician?.businessName || businessName}</h1>
+                    <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono text-xs font-bold text-orange-400 border border-orange-500/30">
+                      Partner ID: {sellerId}
+                    </span>
+                    <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-xs font-semibold text-blue-300 border border-blue-500/30">
+                      Technician & Professional
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-400 mt-0.5">
+                    Welcome, <strong className="text-gray-200">{technician?.name ?? contactPerson}</strong> | Authorized Service Partner
+                  </p>
+                </div>
+              </div>
+
+              {/* Status & Actions */}
+              <div className="flex flex-wrap items-center gap-3">
+                {isApproved ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-2 text-emerald-400">
+                    <BadgeCheck size={20} />
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider">Verified Partner</div>
+                      <div className="text-[11px] text-emerald-300/80">Active on marketplace</div>
+                    </div>
+                  </div>
+                ) : verificationStatus === "REJECTED" ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-500/40 px-3.5 py-2 text-red-300">
+                    <AlertTriangle size={20} className="text-red-400" />
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider">Verification Rejected</div>
+                      <div className="text-[11px] text-red-200/80">{(profileData as any)?.rejectionReason || "Contact Etukas support"}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3.5 py-2 text-amber-300">
+                    <Clock size={20} className="animate-spin text-amber-400" />
+                    <div>
+                      <div className="text-xs font-bold uppercase tracking-wider">Verification Pending</div>
+                      <div className="text-[11px] text-amber-200/80">Under review by onboarding team</div>
+                    </div>
+                  </div>
+                )}
+
+                <Link
+                  to="/technicians"
+                  className="flex items-center gap-1.5 rounded-xl border border-orange-500/50 bg-orange-500/20 px-3.5 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500 hover:text-white transition-all shadow-sm"
+                >
+                  <span>View Marketplace</span>
+                  <ExternalLink size={14} />
+                </Link>
+
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 hover:bg-red-600 hover:border-red-600 hover:text-white transition-all shadow-sm"
+                  title="Log out of Partner Dashboard"
+                >
+                  <LogOut size={16} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Navigation Tabs */}
+            <nav className="mt-6 flex space-x-2 border-t border-gray-700/60 pt-4">
+              {[
+                { id: "overview", label: "Overview", icon: Layers },
+                { id: "bookings", label: `Customer Bookings (${bookings.length})`, icon: ShoppingBag },
+                { id: "profile", label: "Service Profile & Availability", icon: Wrench }
+              ].map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setTechTab(id as typeof techTab)}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                    techTab === id
+                      ? "bg-orange-500 text-white shadow"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  }`}
+                >
+                  <Icon size={16} />
+                  {label}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+
+        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-6">
+          {/* Status Alert Banner */}
+          {!isApproved && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-5 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="rounded-xl bg-amber-100 p-2.5 text-amber-700">
+                  <BadgeAlert size={24} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-amber-900">
+                    Technician Partner Application Under Review
+                  </h3>
+                  <p className="mt-1 text-sm text-amber-800">
+                    Your Partner ID is <strong className="font-mono bg-amber-200/60 px-1.5 py-0.5 rounded">{sellerId}</strong>.
+                    Our administrative team is verifying your registration. Once approved by an admin, your profile and service card will be featured on the customer marketplace.
+                    You can set up your charges and available hours right now!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isApproved && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-5 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-700">
+                  <CheckCircle2 size={24} />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-bold text-emerald-900">
+                    Partner Account Approved & Live!
+                  </h3>
+                  <p className="mt-1 text-sm text-emerald-800">
+                    Congratulations! Your partner account is fully verified. Customers searching for <strong>{technician?.categories.join(", ") || "Technical"}</strong> services in <strong>{technician?.city || "your area"}</strong> can discover your card and book appointments with you.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 1: OVERVIEW */}
+          {techTab === "overview" && (
+            <div className="space-y-6">
+              {/* Metric Cards */}
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Hourly Rate</span>
+                    <div className="rounded-lg bg-orange-50 p-2 text-orange-600">
+                      <IndianRupee size={20} />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-gray-900">
+                    ₹{technician?.chargePerHour ?? 350}<span className="text-sm font-normal text-gray-500">/hr</span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">Standard service charge</div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Full Day Rate</span>
+                    <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                      <Calendar size={20} />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-gray-900">
+                    ₹{technician?.chargePerDay ?? 1800}<span className="text-sm font-normal text-gray-500">/day</span>
+                  </div>
+                  <div className="mt-1 text-xs text-emerald-600 font-semibold">For 8-hour continuous work</div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Bookings Received</span>
+                    <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                      <ShoppingBag size={20} />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-gray-900">
+                    {bookings.length}
+                  </div>
+                  <div className="mt-1 text-xs text-blue-600 font-semibold">Total customer requests</div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Service Radius</span>
+                    <div className="rounded-lg bg-purple-50 p-2 text-purple-600">
+                      <MapPin size={20} />
+                    </div>
+                  </div>
+                  <div className="mt-3 text-3xl font-black text-gray-900">
+                    {technician?.serviceRadiusKm ?? 25} km
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">From {technician?.city || "Registered City"}</div>
+                </div>
+              </div>
+
+              {/* Skills and working info */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <h3 className="font-bold text-gray-900 text-lg">Registered Skills & Categories</h3>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {technician?.categories.map((cat) => (
+                      <span key={cat} className="rounded-lg bg-orange-50 border border-orange-200 px-3 py-1.5 text-xs font-bold text-orange-700">
+                        ✓ {cat}
+                      </span>
+                    ))}
+                  </div>
+
+                  <h3 className="font-bold text-gray-900 text-lg mt-6">Working Hours & Days</h3>
+                  <div className="mt-3 space-y-2 text-sm text-gray-700">
+                    <div className="flex items-center gap-2">
+                      <Clock size={16} className="text-orange-500" />
+                      <span><strong>Hours:</strong> {technician?.workingHours || "8:00 AM - 6:00 PM"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Calendar size={16} className="text-orange-500" />
+                      <span><strong>Active Days:</strong> {technician?.availableDays.join(", ") || "Mon - Sat"}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 size={16} className={technician?.isAvailableToday ? "text-emerald-500" : "text-gray-400"} />
+                      <span><strong>Today's Status:</strong> {technician?.isAvailableToday ? "Available for bookings" : "Unavailable today"}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <h3 className="font-bold text-gray-900 text-lg">Service Address & Geolocation</h3>
+                  <p className="mt-2 text-sm text-gray-600">
+                    {technician?.addressLine1}, {technician?.city}, {technician?.state} - {technician?.postalCode}
+                  </p>
+                  <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+                    <div className="flex items-center gap-2 font-bold text-blue-900">
+                      <MapPin size={18} className="text-blue-600" />
+                      <span>GPS Coordinates</span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2 font-mono text-xs text-blue-950">
+                      <div>Latitude: <strong className="text-blue-900">{technician?.latitude ? Number(technician.latitude).toFixed(6) : "16.989100"}</strong></div>
+                      <div>Longitude: <strong className="text-blue-900">{technician?.longitude ? Number(technician.longitude).toFixed(6) : "82.247500"}</strong></div>
+                    </div>
+                    <div className="mt-2 text-[11px] text-blue-700">
+                      ✓ Used to sort nearest technicians first for local customers.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: BOOKINGS */}
+          {techTab === "bookings" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Customer Service Bookings</h2>
+                  <p className="text-sm text-gray-500">Service requests submitted by customers through the marketplace</p>
+                </div>
+                <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-800">
+                  {bookings.length} Bookings
+                </span>
+              </div>
+
+              {bookings.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+                    <ShoppingBag size={32} />
+                  </div>
+                  <h3 className="mt-4 text-lg font-bold text-gray-900">No Bookings Yet</h3>
+                  <p className="mt-1 text-sm text-gray-500 max-w-md mx-auto">
+                    {isApproved
+                      ? "When local customers select your profile and book a service appointment, their details and location will appear right here."
+                      : "Once your profile is approved by the admin team, your card will become visible to customers for bookings."}
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                  <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+                    <thead className="bg-gray-50 font-bold text-gray-700">
+                      <tr>
+                        <th className="px-6 py-3.5">Customer</th>
+                        <th className="px-6 py-3.5">Service Requested</th>
+                        <th className="px-6 py-3.5">Date & Time</th>
+                        <th className="px-6 py-3.5">Service Address</th>
+                        <th className="px-6 py-3.5">Estimated Total</th>
+                        <th className="px-6 py-3.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {bookings.map((b: any, idx: number) => (
+                        <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-gray-900">{b.customerName || "Customer"}</div>
+                            {b.customerPhone && (
+                              <a href={`tel:${b.customerPhone}`} className="flex items-center gap-1 font-mono text-xs text-orange-600 hover:underline mt-0.5">
+                                <Phone size={12} /> {b.customerPhone}
+                              </a>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="rounded-md bg-orange-50 border border-orange-200 px-2.5 py-1 text-xs font-bold text-orange-800">
+                              {b.serviceCategory || "General"}
+                            </span>
+                            {b.bookingType && (
+                              <div className="text-[11px] text-gray-500 mt-1 capitalize">{b.bookingType.toLowerCase()} booking</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-gray-700">
+                            <div className="font-semibold">{b.bookingDate || "Today"}</div>
+                            <div className="text-xs text-gray-500">{b.timeSlot || "Flexible"}</div>
+                          </td>
+                          <td className="px-6 py-4 text-gray-700 max-w-xs">
+                            <div className="text-xs">{b.address || "Location provided upon confirmation"}</div>
+                            {b.notes && <div className="text-[11px] text-gray-400 italic mt-0.5">&ldquo;{b.notes}&rdquo;</div>}
+                          </td>
+                          <td className="px-6 py-4 font-black text-gray-900">
+                            {b.estimatedTotal ? `₹${Number(b.estimatedTotal).toLocaleString("en-IN")}` : "₹350"}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
+                              {b.status || "CONFIRMED"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: SERVICE PROFILE & AVAILABILITY */}
+          {techTab === "profile" && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+              <div className="border-b pb-4">
+                <h2 className="text-xl font-bold text-gray-900">Edit Service Profile & Charges</h2>
+                <p className="text-sm text-gray-500">Update your rates, available days, hours, and service radius visible to customers</p>
+              </div>
+
+              {technician ? (
+                <form
+                  className="mt-6 grid gap-4 sm:grid-cols-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    technicianUpdateMutation.mutate({
+                      name: String(form.get("name")),
+                      workingHours: String(form.get("workingHours")),
+                      availableDays: form.getAll("availableDays").map(String),
+                      isAvailableToday: form.get("isAvailableToday") === "on",
+                      chargePerHour: Number(form.get("chargePerHour")),
+                      chargePerDay: Number(form.get("chargePerDay")),
+                      addressLine1: String(form.get("addressLine1")),
+                      city: String(form.get("city")),
+                      state: String(form.get("state")),
+                      postalCode: String(form.get("postalCode")),
+                      latitude: Number(form.get("latitude")),
+                      longitude: Number(form.get("longitude"))
+                    });
+                  }}
+                >
+                  <label className="text-sm font-semibold text-gray-700">
+                    Full Name / Contact Person
+                    <Input name="name" defaultValue={technician.name} required className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Working Hours
+                    <Input name="workingHours" defaultValue={technician.workingHours} required className="mt-1" placeholder="e.g. 8:00 AM - 7:00 PM" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Hourly Service Charge (₹)
+                    <Input name="chargePerHour" defaultValue={String(technician.chargePerHour)} required type="number" min={0} className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Daily Service Charge (₹)
+                    <Input name="chargePerDay" defaultValue={String(technician.chargePerDay)} required type="number" min={0} className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700 sm:col-span-2">
+                    Address Line
+                    <Input name="addressLine1" defaultValue={technician.addressLine1} required className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    City / Town
+                    <Input name="city" defaultValue={technician.city} required className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    State
+                    <Input name="state" defaultValue={technician.state} required className="mt-1" />
+                  </label>
+
+                  <label className="text-sm font-semibold text-gray-700">
+                    Postal Code
+                    <Input name="postalCode" defaultValue={technician.postalCode} required className="mt-1" />
+                  </label>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="text-sm font-semibold text-gray-700">
+                      Latitude
+                      <Input name="latitude" defaultValue={String(technician.latitude)} required type="number" step="any" className="mt-1" />
+                    </label>
+                    <label className="text-sm font-semibold text-gray-700">
+                      Longitude
+                      <Input name="longitude" defaultValue={String(technician.longitude)} required type="number" step="any" className="mt-1" />
+                    </label>
+                  </div>
+
+                  <fieldset className="sm:col-span-2 mt-2">
+                    <legend className="text-sm font-semibold text-gray-700">Available Days of the Week</legend>
+                    <div className="mt-2 flex flex-wrap gap-3">
+                      {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                        <label key={day} className="flex items-center gap-1.5 text-sm bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-lg cursor-pointer hover:bg-orange-50">
+                          <input name="availableDays" type="checkbox" value={day} defaultChecked={technician.availableDays.includes(day)} />
+                          <span>{day}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2 bg-orange-50/50 p-3 rounded-xl border border-orange-200">
+                    <input name="isAvailableToday" type="checkbox" defaultChecked={technician.isAvailableToday} className="h-4 w-4 rounded text-orange-600" />
+                    <span>✓ Available for incoming bookings today</span>
+                  </label>
+
+                  <div className="sm:col-span-2 flex items-center gap-3 pt-2">
+                    <Button disabled={technicianUpdateMutation.isPending} className="bg-orange-500 hover:bg-orange-600 px-6 py-2.5 font-bold">
+                      {technicianUpdateMutation.isPending ? "Saving..." : "Save Changes"}
+                    </Button>
+                    {technicianUpdateMutation.isSuccess && (
+                      <span className="text-sm font-bold text-emerald-700 flex items-center gap-1">
+                        <CheckCircle2 size={16} /> Changes saved successfully!
+                      </span>
+                    )}
+                    {technicianUpdateMutation.error && (
+                      <span role="alert" className="text-sm text-red-700">
+                        {technicianUpdateMutation.error.message}
+                      </span>
+                    )}
+                  </div>
+                </form>
+              ) : (
+                <p className="mt-4 text-sm text-gray-500">Loading service profile...</p>
+              )}
+            </div>
+          )}
+        </div>
       </main>
     );
   }

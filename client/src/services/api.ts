@@ -302,7 +302,9 @@ export const marketplaceApi = {
     api<SellerRegistrationResult>("/seller-registration/step2", { method: "POST", body: JSON.stringify(body) }),
   sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
   sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
-  updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
+    updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
+  getTechnicianMyBookings: () => api<Record<string, unknown>[]>("/technicians/me/bookings"),
+  getTechnicianBookings: (id: string) => api<Record<string, unknown>[]>(`/technicians/${encodeURIComponent(id)}/bookings`),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
   sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
@@ -567,6 +569,7 @@ export type SellerDashboardData = {
   lowStockProducts: number;
   revenueMinor: number;
   verificationStatus: string;
+  rejectionReason?: string | null;
 };
 
 export type SellerProfileFull = {
@@ -578,6 +581,7 @@ export type SellerProfileFull = {
   businessType: string;
   gstin?: string | null;
   verificationStatus: string;
+  rejectionReason?: string | null;
   registrationStep: number;
   user: {
     name: string;

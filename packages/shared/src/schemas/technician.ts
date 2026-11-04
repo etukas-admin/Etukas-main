@@ -80,4 +80,6 @@ export type Technician = {
   distanceKm?: number;
   passwordHash?: string;
   tempPassword?: string;
+  verificationStatus?: "PENDING" | "APPROVED" | "REJECTED";
+  rejectionReason?: string | null;
 };

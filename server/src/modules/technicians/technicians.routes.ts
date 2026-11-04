@@ -357,7 +357,10 @@ export function loadTechnicians(): Technician[] {
     }
     const data = fs.readFileSync(TECHNICIANS_FILE, "utf8");
     const list = JSON.parse(data) as Technician[];
-    return Array.isArray(list) && list.length > 0 ? list : SEED_TECHNICIANS;
+    if (Array.isArray(list) && list.length > 0) {
+      return list.map(t => ({ ...t, verificationStatus: t.verificationStatus || "APPROVED" }));
+    }
+    return SEED_TECHNICIANS.map(t => ({ ...t, verificationStatus: t.verificationStatus || "APPROVED" }));
   } catch (err) {
     console.error("Failed to load technicians file, using seed:", err);
     return SEED_TECHNICIANS;
@@ -374,6 +377,49 @@ export function saveTechnicians(list: Technician[]): void {
     console.error("Failed to persist technicians to disk:", err);
   }
 }
+
+export function updateTechnicianStatus(
+  idOrPartnerId: string,
+  status: "PENDING" | "APPROVED" | "REJECTED",
+  rejectionReason?: string | null
+): Technician | null {
+  const list = loadTechnicians();
+  const lower = idOrPartnerId.toLowerCase().trim();
+  const index = list.findIndex(
+    (t) =>
+      t.id.toLowerCase() === lower ||
+      t.partnerId.toLowerCase() === lower ||
+      t.email.toLowerCase() === lower ||
+      t.mobile.trim() === idOrPartnerId.trim()
+  );
+  if (index < 0) return null;
+  list[index] = {
+    ...list[index],
+    verificationStatus: status,
+    rejectionReason: status === "REJECTED" ? (rejectionReason ?? null) : null
+  };
+  saveTechnicians(list);
+  return list[index];
+}
+
+export function loadBookings(technicianId?: string): Record<string, unknown>[] {
+  try {
+    if (!fs.existsSync(BOOKINGS_FILE)) return [];
+    const data = fs.readFileSync(BOOKINGS_FILE, "utf8");
+    const bookings = JSON.parse(data) as Record<string, unknown>[];
+    if (!Array.isArray(bookings)) return [];
+    if (!technicianId) return bookings;
+    const lower = technicianId.toLowerCase().trim();
+    return bookings.filter(
+      (b) =>
+        String(b.technicianId || "").toLowerCase().trim() === lower ||
+        String(b.partnerId || "").toLowerCase().trim() === lower
+    );
+  } catch {
+    return [];
+  }
+}
+
 
 function saveBooking(booking: Record<string, unknown>): void {
   try {
@@ -420,6 +466,9 @@ techniciansRouter.get("/", async (req, res, next) => {
         distanceKm
       };
     });
+
+    // Public marketplace only shows approved technicians
+    list = list.filter((tech) => (tech.verificationStatus ?? "APPROVED") === "APPROVED");
 
     // Filter by Category
     if (categoryQuery && categoryQuery !== "all" && categoryQuery !== "professionals") {
@@ -549,7 +598,8 @@ techniciansRouter.post("/register", async (req, res, next) => {
       reviewCount: 1,
       isAssured: true,
       isAd: false,
-      badge: "Newly Verified",
+      badge: "New Partner",
+      verificationStatus: "PENDING",
       createdAt: new Date().toISOString(),
       tempPassword: input.tempPassword,
       passwordHash
@@ -569,7 +619,7 @@ techniciansRouter.post("/register", async (req, res, next) => {
             sellerId: partnerId,
             businessName: input.businessName,
             registrationStep: 2,
-            verificationStatus: "APPROVED"
+            verificationStatus: "PENDING"
           }
         });
 
@@ -634,6 +684,38 @@ techniciansRouter.post("/register", async (req, res, next) => {
  * POST /api/v1/technicians/:id/book
  * Book service or submit enquiry for technician
  */
+
+techniciansRouter.get("/me/bookings", requireAuth, async (req, res, next) => {
+  try {
+    const list = loadTechnicians();
+    const tech = list.find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user!.email.toLowerCase());
+    if (!tech) throw new HttpError(404, "TECHNICIAN_NOT_FOUND", "Technician profile not found");
+    const bookings = loadBookings(tech.id).concat(loadBookings(tech.partnerId));
+    const unique = Array.from(new Map(bookings.map((b) => [String(b.bookingId || b.id || JSON.stringify(b)), b])).values());
+    return sendOk(res, unique);
+  } catch (error) {
+    next(error);
+  }
+});
+
+techniciansRouter.get("/:id/bookings", requireAuth, async (req, res, next) => {
+  try {
+    const list = loadTechnicians();
+    const tech = list.find((t) => t.id === req.params.id || t.partnerId === req.params.id);
+    if (!tech) throw new HttpError(404, "NOT_FOUND", "Technician not found");
+    const isAdmin = req.user?.roles.includes("ADMIN");
+    const isOwner = req.user?.id === tech.id || req.user?.email.toLowerCase() === tech.email.toLowerCase();
+    if (!isAdmin && !isOwner) {
+      throw new HttpError(403, "FORBIDDEN", "Not authorized to view these bookings");
+    }
+    const bookings = loadBookings(tech.id).concat(loadBookings(tech.partnerId));
+    const unique = Array.from(new Map(bookings.map((b) => [String(b.bookingId || b.id || JSON.stringify(b)), b])).values());
+    return sendOk(res, unique);
+  } catch (error) {
+    next(error);
+  }
+});
+
 techniciansRouter.post("/:id/book", async (req, res, next) => {
   try {
     const input: TechnicianBookingInput = technicianBookingSchema.parse(req.body);
