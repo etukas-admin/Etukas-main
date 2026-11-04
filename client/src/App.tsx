@@ -17,6 +17,7 @@ import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
 import { SellerHubPage } from "./features/seller/SellerHubPage";
 import { PartnerHubPage } from "./features/seller/PartnerHubPage";
 import { StoresPage } from "./features/stores/StoresPage";
+import { TechniciansPage } from "./features/technicians/TechniciansPage";
 import { initMobileApp } from "./lib/mobile";
 
 export default function App() {
@@ -36,6 +37,8 @@ export default function App() {
         <Route path="location" element={<LocationPage />} />
         <Route path="products" element={<ProductsPage />} />
         <Route path="stores" element={<StoresPage />} />
+        <Route path="technicians" element={<TechniciansPage />} />
+        <Route path="technicians/:category" element={<TechniciansPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="cart" element={<CartPage />} />
         <Route path="orders" element={<PlannedModulePage title="Orders" />} />

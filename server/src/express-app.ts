@@ -29,6 +29,7 @@ import { sellerEnquiriesRouter } from "./modules/seller-enquiries/seller-enquiri
 import { sellerRegistrationRouter } from "./modules/seller-registration/seller-registration.routes.js";
 import { sellerRouter } from "./modules/seller-profiles/seller.routes.js";
 import { storesRouter } from "./modules/stores/stores.routes.js";
+import { techniciansRouter } from "./modules/technicians/technicians.routes.js";
 import { chatRouter, adminChatRouter } from "./modules/chat/chat.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
@@ -147,6 +148,7 @@ export function createApp() {
   app.use("/api/v1/categories", categoriesRouter);
   app.use("/api/v1/products", productsRouter);
   app.use("/api/v1/stores", storesRouter);
+  app.use("/api/v1/technicians", techniciansRouter);
   app.use("/api/v1/cart", cartsRouter);
   app.use("/api/v1/orders", ordersRouter);
   app.use("/api/v1/seller-enquiries", sellerEnquiriesRouter);
