@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { Router } from "express";
+import { z } from "zod";
 import {
   technicianBookingSchema,
   technicianRegistrationSchema,
@@ -12,9 +13,35 @@ import {
 } from "@etukas/shared";
 import { AdminNotificationType } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
+import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
 
 export const techniciansRouter = Router();
+
+techniciansRouter.patch("/me", requireAuth, requireRole("SELLER"), async (req, res, next) => {
+  try {
+    const input = z.object({
+      name: z.string().trim().min(2).max(120),
+      workingHours: z.string().trim().min(3).max(80),
+      availableDays: z.array(z.string().trim().min(2).max(12)).min(1).max(7),
+      isAvailableToday: z.boolean(),
+      chargePerHour: z.number().min(0).max(100000),
+      chargePerDay: z.number().min(0).max(1000000),
+      addressLine1: z.string().trim().min(3).max(200),
+      city: z.string().trim().min(2).max(100),
+      state: z.string().trim().min(2).max(100),
+      postalCode: z.string().trim().min(4).max(12),
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180)
+    }).parse(req.body);
+    const list = loadTechnicians();
+    const index = list.findIndex((tech) => tech.id === req.user!.id || tech.email.toLowerCase() === req.user!.email.toLowerCase());
+    if (index < 0) throw new HttpError(404, "TECHNICIAN_NOT_FOUND", "Technician profile not found");
+    list[index] = { ...list[index], ...input };
+    saveTechnicians(list);
+    return sendOk(res, list[index]);
+  } catch (error) { next(error); }
+});
 
 // ---------- Helpers & Math ----------
 

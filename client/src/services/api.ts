@@ -302,6 +302,7 @@ export const marketplaceApi = {
     api<SellerRegistrationResult>("/seller-registration/step2", { method: "POST", body: JSON.stringify(body) }),
   sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
   sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
+  updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
   sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
@@ -569,6 +570,7 @@ export type SellerDashboardData = {
 };
 
 export type SellerProfileFull = {
+  isTechnician?: boolean;
   id: string;
   sellerId: string;
   contactPerson: string;

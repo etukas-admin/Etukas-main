@@ -111,6 +111,7 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
 
 sellerRouter.get("/profile", async (req, res, next) => {
   try {
+    const technician = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
     let profile = null;
     try {
       profile = await prisma.sellerProfile.findUnique({
@@ -133,6 +134,7 @@ sellerRouter.get("/profile", async (req, res, next) => {
           contactPerson: tech.name,
           businessName: tech.businessName,
           businessType: "RETAILER",
+          isTechnician: true,
           verificationStatus: "APPROVED",
           registrationStep: 2,
           user: { name: tech.name, email: tech.email, mobile: tech.mobile },
@@ -154,7 +156,7 @@ sellerRouter.get("/profile", async (req, res, next) => {
       throw new HttpError(404, "SELLER_NOT_FOUND", "Seller profile not found");
     }
 
-    return sendOk(res, profile);
+    return sendOk(res, technician ? { ...profile, isTechnician: true } : profile);
   } catch (error) {
     next(error);
   }

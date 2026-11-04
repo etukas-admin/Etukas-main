@@ -124,7 +124,22 @@ export function SellerDashboard() {
 
   const { data: profileData } = useQuery({
     queryKey: ["seller-profile"],
-    queryFn: () => marketplaceApi.sellerProfile().catch(() => null)
+    queryFn: () => marketplaceApi.sellerProfile().catch(() => null),
+    refetchInterval: 3000
+  });
+
+  const technicianProfileQuery = useQuery({
+    queryKey: ["technician-profile", profileData?.sellerId],
+    queryFn: () => marketplaceApi.getTechnician(profileData!.sellerId),
+    enabled: Boolean(profileData?.isTechnician)
+  });
+
+  const technicianUpdateMutation = useMutation({
+    mutationFn: marketplaceApi.updateTechnicianProfile,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["technician-profile"] });
+      await technicianProfileQuery.refetch();
+    }
   });
 
   const sellerProductsQuery = useQuery({
@@ -305,6 +320,43 @@ export function SellerDashboard() {
     reader.readAsDataURL(file);
     e.target.value = "";
   }, []);
+
+  if (profileData?.isTechnician) {
+    const technician = technicianProfileQuery.data;
+    return (
+      <main className="min-h-screen bg-gray-50 p-4 sm:p-8">
+        <section className="mx-auto max-w-3xl rounded-2xl border bg-white p-6 shadow-sm">
+          <header className="flex flex-wrap items-center justify-between gap-3 border-b pb-5">
+            <div><p className="text-sm font-semibold text-orange-600">Technician Partner</p><h1 className="mt-1 text-2xl font-black">{technician?.name ?? contactPerson}</h1><p className="text-sm text-gray-500">Partner ID: {sellerId}</p></div>
+            <div className="flex items-center gap-3"><span className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{verificationStatus}</span><button onClick={handleLogout} className="rounded-lg border px-3 py-2 text-sm font-semibold">Logout</button></div>
+          </header>
+          <h2 className="mt-6 text-lg font-bold">Service profile</h2>
+          {technician ? <form className="mt-4 grid gap-4 sm:grid-cols-2" onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            technicianUpdateMutation.mutate({
+              name: String(form.get("name")), workingHours: String(form.get("workingHours")),
+              availableDays: form.getAll("availableDays").map(String), isAvailableToday: form.get("isAvailableToday") === "on",
+              chargePerHour: Number(form.get("chargePerHour")), chargePerDay: Number(form.get("chargePerDay")),
+              addressLine1: String(form.get("addressLine1")), city: String(form.get("city")), state: String(form.get("state")),
+              postalCode: String(form.get("postalCode")), latitude: Number(form.get("latitude")), longitude: Number(form.get("longitude"))
+            });
+          }}>
+            {[
+              ["name", "Name", technician.name], ["workingHours", "Available time", technician.workingHours],
+              ["chargePerHour", "Hourly service charge (₹)", technician.chargePerHour], ["chargePerDay", "Daily service charge (₹)", technician.chargePerDay],
+              ["addressLine1", "Address", technician.addressLine1], ["city", "City", technician.city],
+              ["state", "State", technician.state], ["postalCode", "Postal code", technician.postalCode],
+              ["latitude", "Latitude", technician.latitude], ["longitude", "Longitude", technician.longitude]
+            ].map(([name, label, value]) => <label key={String(name)} className="text-sm font-semibold text-gray-700">{label}<Input name={String(name)} defaultValue={String(value)} required type={String(name).startsWith("charge") || name === "latitude" || name === "longitude" ? "number" : "text"} min={String(name).startsWith("charge") ? 0 : undefined} step={name === "latitude" || name === "longitude" ? "any" : undefined} /></label>)}
+            <fieldset className="sm:col-span-2"><legend className="text-sm font-semibold text-gray-700">Available days</legend><div className="mt-2 flex flex-wrap gap-3">{["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => <label key={day} className="flex items-center gap-1.5 text-sm"><input name="availableDays" type="checkbox" value={day} defaultChecked={technician.availableDays.includes(day)} />{day}</label>)}</div></fieldset>
+            <label className="flex items-center gap-2 text-sm font-semibold"><input name="isAvailableToday" type="checkbox" defaultChecked={technician.isAvailableToday} /> Available for bookings today</label>
+            <div className="sm:col-span-2 flex items-center gap-3"><Button disabled={technicianUpdateMutation.isPending} className="bg-orange-500 hover:bg-orange-600">{technicianUpdateMutation.isPending ? "Saving..." : "Save changes"}</Button>{technicianUpdateMutation.isSuccess ? <span className="text-sm text-emerald-700">Profile updated</span> : null}{technicianUpdateMutation.error ? <span role="alert" className="text-sm text-red-700">{technicianUpdateMutation.error.message}</span> : null}</div>
+          </form> : <p className="mt-4 text-sm text-gray-500">Loading your service profile...</p>}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 pb-16">
