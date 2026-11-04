@@ -1,3 +1,4 @@
+import { loadTechnicians } from "../technicians/technicians.routes.js";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -42,15 +43,50 @@ const categoryInfo: Record<z.infer<typeof newMaterialSchema>["category"], { name
   plumbing: { name: "Plumbing", slug: "plumbing", icon: "Pipes" }
 };
 
-async function sellerProfile(userId: string) {
-  const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
-  if (!profile) throw new HttpError(403, "SELLER_PROFILE_REQUIRED", "Seller profile is required");
-  return profile;
+async function sellerProfile(userId: string, email?: string) {
+  try {
+    const profile = await prisma.sellerProfile.findUnique({ where: { userId } });
+    if (profile) return profile;
+  } catch {
+    // DB offline, fall through
+  }
+  const tech = loadTechnicians().find((t) => t.id === userId || (email && t.email.toLowerCase() === email.toLowerCase()));
+  if (tech) {
+    return {
+      id: tech.id,
+      sellerId: tech.partnerId,
+      userId: tech.id,
+      contactPerson: tech.name,
+      businessName: tech.businessName,
+      businessType: "RETAILER" as const,
+      gstin: null,
+      verificationStatus: VerificationStatus.APPROVED,
+      rejectionReason: null,
+      registrationStep: 2,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isTechnician: true
+    };
+  }
+  throw new HttpError(403, "SELLER_PROFILE_REQUIRED", "Seller profile is required");
 }
 
 sellerRouter.get("/dashboard", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    if ((profile as any).isTechnician) {
+      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
+      return sendOk(res, {
+        sellerId: profile.sellerId,
+        businessName: profile.businessName,
+        contactPerson: profile.contactPerson,
+        totalOrders: 0,
+        productsListed: tech ? tech.categories.length : 1,
+        lowStockProducts: 0,
+        revenueMinor: 0,
+        verificationStatus: profile.verificationStatus
+      });
+    }
     const storeIds = (await prisma.store.findMany({ where: { sellerProfileId: profile.id }, select: { id: true } })).map((store) => store.id);
     const [orders, products, lowStock] = await Promise.all([
       prisma.order.count({ where: { storeId: { in: storeIds } } }),
@@ -75,14 +111,49 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
 
 sellerRouter.get("/profile", async (req, res, next) => {
   try {
-    const profile = await prisma.sellerProfile.findUnique({
-      where: { userId: req.user!.id },
-      include: {
-        user: { select: { name: true, email: true, mobile: true } },
-        stores: true
+    let profile = null;
+    try {
+      profile = await prisma.sellerProfile.findUnique({
+        where: { userId: req.user!.id },
+        include: {
+          user: { select: { name: true, email: true, mobile: true } },
+          stores: true
+        }
+      });
+    } catch {
+      // DB offline
+    }
+
+    if (!profile) {
+      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
+      if (tech) {
+        return sendOk(res, {
+          id: tech.id,
+          sellerId: tech.partnerId,
+          contactPerson: tech.name,
+          businessName: tech.businessName,
+          businessType: "RETAILER",
+          verificationStatus: "APPROVED",
+          registrationStep: 2,
+          user: { name: tech.name, email: tech.email, mobile: tech.mobile },
+          stores: [{
+            id: `store-${tech.id}`,
+            name: tech.businessName,
+            slug: `tech-${tech.partnerId.toLowerCase()}`,
+            phone: tech.mobile,
+            addressLine1: tech.addressLine1,
+            city: tech.city,
+            state: tech.state,
+            postalCode: tech.postalCode,
+            latitude: tech.latitude,
+            longitude: tech.longitude,
+            isActive: true
+          }]
+        });
       }
-    });
-    if (!profile) throw new HttpError(404, "SELLER_NOT_FOUND", "Seller profile not found");
+      throw new HttpError(404, "SELLER_NOT_FOUND", "Seller profile not found");
+    }
+
     return sendOk(res, profile);
   } catch (error) {
     next(error);

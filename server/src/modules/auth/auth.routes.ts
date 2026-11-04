@@ -8,6 +8,7 @@ import { prisma } from "../../config/prisma.js";
 import { requireAuth, signAccessToken, signRefreshToken } from "../../middleware/auth.js";
 import { cookieOptions, issueCsrf, loginLimiter } from "../../middleware/security.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
+import { loadTechnicians, saveTechnicians } from "../technicians/technicians.routes.js";
 
 export const authRouter = Router();
 
@@ -43,72 +44,158 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
     const loginId = (input.identifier || input.email || "").trim();
 
     if (!loginId) {
-      throw new HttpError(400, "MISSING_IDENTIFIER", "Email, Seller ID, or Mobile number is required");
+      throw new HttpError(400, "MISSING_IDENTIFIER", "Email, Partner ID, or Mobile number is required");
     }
 
-    // 1. Try finding by Seller ID (e.g., SEA01234 or SEA65943)
-    let user = null;
-    let sellerId: string | undefined;
+    // 1. Check in Technician Partner repository first
+    const technicians = loadTechnicians();
+    const tech = technicians.find(
+      (t) =>
+        t.partnerId?.toLowerCase() === loginId.toLowerCase() ||
+        t.email?.toLowerCase() === loginId.toLowerCase() ||
+        t.mobile === loginId
+    );
 
-    const sellerProfile = await prisma.sellerProfile.findFirst({
-      where: {
-        sellerId: {
-          equals: loginId,
-          mode: "insensitive"
+    if (tech) {
+      let isPasswordValid = false;
+
+      // Check direct tempPassword match or passwordHash
+      if (tech.tempPassword && tech.tempPassword === input.password) {
+        isPasswordValid = true;
+      } else if (tech.passwordHash) {
+        isPasswordValid = await bcrypt.compare(input.password, tech.passwordHash);
+      }
+
+      // Check DB user if password didn't match memory hash
+      if (!isPasswordValid) {
+        try {
+          const dbUser = await prisma.user.findFirst({
+            where: {
+              OR: [
+                { email: { equals: tech.email, mode: "insensitive" } },
+                { mobile: tech.mobile }
+              ]
+            }
+          });
+          if (dbUser && (await bcrypt.compare(input.password, dbUser.passwordHash))) {
+            isPasswordValid = true;
+          }
+        } catch {
+          // DB offline, ignore
         }
-      },
-      include: { user: true }
-    });
+      }
 
-    if (sellerProfile?.user) {
-      user = sellerProfile.user;
-      sellerId = sellerProfile.sellerId ?? undefined;
-    }
+      if (isPasswordValid) {
+        const authUser = { id: tech.id, email: tech.email, roles: [Role.SELLER] };
+        const accessToken = signAccessToken(authUser);
+        const refreshToken = signRefreshToken(authUser);
 
-    // 2. Try finding by mobile number
-    if (!user && /^\+?\d{7,15}$/.test(loginId)) {
-      user = await prisma.user.findFirst({
-        where: { mobile: loginId },
-        include: { sellerProfile: { select: { sellerId: true } } }
-      });
-      if (user?.sellerProfile?.sellerId) {
-        sellerId = user.sellerProfile.sellerId;
+        res.cookie("etukas_refresh", refreshToken, cookieOptions(30 * 24 * 60 * 60 * 1000));
+        res.cookie("etukas_access", accessToken, cookieOptions(7 * 24 * 60 * 60 * 1000));
+        const csrfToken = issueCsrf(res);
+
+        // Keep sellerProfile in sync if DB is up
+        try {
+          await prisma.sellerProfile.updateMany({
+            where: {
+              OR: [
+                { user: { email: tech.email.toLowerCase() } },
+                { user: { mobile: tech.mobile } }
+              ]
+            },
+            data: { sellerId: tech.partnerId, registrationStep: 2 }
+          });
+        } catch {
+          // ignore
+        }
+
+        return sendOk(res, {
+          accessToken,
+          csrfToken,
+          user: {
+            id: tech.id,
+            name: tech.name,
+            email: tech.email,
+            mobile: tech.mobile,
+            roles: [Role.SELLER],
+            sellerId: tech.partnerId
+          }
+        });
       }
     }
 
-    // 3. Try finding by email
-    if (!user) {
-      user = await prisma.user.findFirst({
+    // 2. Try finding user in database (Sellers, Customers, Admins)
+    let user = null;
+    let sellerId: string | undefined;
+
+    try {
+      // 2a. By Partner / Seller ID
+      const sellerProfile = await prisma.sellerProfile.findFirst({
         where: {
-          email: {
+          sellerId: {
             equals: loginId,
             mode: "insensitive"
           }
         },
-        include: { sellerProfile: { select: { sellerId: true } } }
+        include: { user: true }
       });
-      if (user?.sellerProfile?.sellerId) {
-        sellerId = user.sellerProfile.sellerId;
+
+      if (sellerProfile?.user) {
+        user = sellerProfile.user;
+        sellerId = sellerProfile.sellerId ?? undefined;
       }
+
+      // 2b. By mobile number
+      if (!user && /^\+?\d{7,15}$/.test(loginId)) {
+        user = await prisma.user.findFirst({
+          where: { mobile: loginId },
+          include: { sellerProfile: { select: { sellerId: true } } }
+        });
+        if (user?.sellerProfile?.sellerId) {
+          sellerId = user.sellerProfile.sellerId;
+        }
+      }
+
+      // 2c. By email
+      if (!user) {
+        user = await prisma.user.findFirst({
+          where: {
+            email: {
+              equals: loginId,
+              mode: "insensitive"
+            }
+          },
+          include: { sellerProfile: { select: { sellerId: true } } }
+        });
+        if (user?.sellerProfile?.sellerId) {
+          sellerId = user.sellerProfile.sellerId;
+        }
+      }
+    } catch (dbErr) {
+      console.warn("Database lookup error during login:", dbErr);
     }
 
     if (!user || !user.isActive) {
-      throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid Seller ID, email, or password");
+      throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid Partner ID, email, or password");
     }
 
     const valid = await bcrypt.compare(input.password, user.passwordHash);
     if (!valid) {
-      throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid Seller ID, email, or password");
+      throw new HttpError(401, "INVALID_CREDENTIALS", "Invalid Partner ID, email, or password");
     }
 
     const authUser = { id: user.id, email: user.email, roles: user.roles };
     const accessToken = signAccessToken(authUser);
     const refreshToken = signRefreshToken(authUser);
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { refreshTokenHash: await bcrypt.hash(refreshToken, 12) }
-    });
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { refreshTokenHash: await bcrypt.hash(refreshToken, 12) }
+      });
+    } catch {
+      // Non-blocking
+    }
 
     // Set persistent session cookies for 30 days
     res.cookie("etukas_refresh", refreshToken, cookieOptions(30 * 24 * 60 * 60 * 1000));
@@ -137,39 +224,64 @@ authRouter.post("/reset-password", async (req, res, next) => {
     const input = resetPasswordSchema.parse(req.body);
     const loginId = input.identifier.trim();
 
-    let user = null;
+    // Check technician store first
+    const technicians = loadTechnicians();
+    const tech = technicians.find(
+      (t) =>
+        t.partnerId?.toLowerCase() === loginId.toLowerCase() ||
+        t.email?.toLowerCase() === loginId.toLowerCase() ||
+        t.mobile === loginId
+    );
 
-    // 1. By Seller ID
-    const sellerProfile = await prisma.sellerProfile.findFirst({
-      where: { sellerId: { equals: loginId, mode: "insensitive" } },
-      include: { user: true }
-    });
-    if (sellerProfile?.user) user = sellerProfile.user;
+    let updated = false;
+    const newHash = await bcrypt.hash(input.newPassword, 12);
 
-    // 2. By mobile
-    if (!user && /^\+?\d{7,15}$/.test(loginId)) {
-      user = await prisma.user.findFirst({ where: { mobile: loginId } });
+    if (tech) {
+      tech.passwordHash = newHash;
+      tech.tempPassword = input.newPassword;
+      saveTechnicians(technicians);
+      updated = true;
     }
 
-    // 3. By email
-    if (!user) {
-      user = await prisma.user.findFirst({
-        where: { email: { equals: loginId, mode: "insensitive" } }
+    try {
+      let user = null;
+      // 1. By Seller ID
+      const sellerProfile = await prisma.sellerProfile.findFirst({
+        where: { sellerId: { equals: loginId, mode: "insensitive" } },
+        include: { user: true }
       });
+      if (sellerProfile?.user) user = sellerProfile.user;
+
+      // 2. By mobile
+      if (!user && /^\+?\d{7,15}$/.test(loginId)) {
+        user = await prisma.user.findFirst({ where: { mobile: loginId } });
+      }
+
+      // 3. By email
+      if (!user) {
+        user = await prisma.user.findFirst({
+          where: { email: { equals: loginId, mode: "insensitive" } }
+        });
+      }
+
+      if (user) {
+        if (user.roles.includes(Role.ADMIN)) {
+          throw new HttpError(403, "ADMIN_PASSWORD_RESET_DISABLED", "Administrator passwords must be reset by an authorized operator.");
+        }
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { passwordHash: newHash, refreshTokenHash: null }
+        });
+        updated = true;
+      }
+    } catch (err: any) {
+      if (err instanceof HttpError) throw err;
+      // DB offline, ignore
     }
 
-    if (!user) {
-      throw new HttpError(404, "USER_NOT_FOUND", "No account found matching this Email, Seller ID, or Mobile number");
+    if (!updated) {
+      throw new HttpError(404, "USER_NOT_FOUND", "No account found matching this Email, Partner ID, or Mobile number");
     }
-    if (user.roles.includes(Role.ADMIN)) {
-      throw new HttpError(403, "ADMIN_PASSWORD_RESET_DISABLED", "Administrator passwords must be reset by an authorized operator.");
-    }
-
-    const passwordHash = await bcrypt.hash(input.newPassword, 12);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash, refreshTokenHash: null }
-    });
 
     return sendOk(res, {
       message: "Password reset successful! You can now log in with your new password."
@@ -184,14 +296,31 @@ authRouter.post("/refresh", async (req, res, next) => {
     const token = req.cookies?.etukas_refresh;
     if (!token) throw new HttpError(401, "UNAUTHENTICATED", "Refresh token missing");
     const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as { id: string };
-    const user = await prisma.user.findUnique({ where: { id: payload.id } });
-    if (!user?.refreshTokenHash || !(await bcrypt.compare(token, user.refreshTokenHash))) {
-      throw new HttpError(401, "UNAUTHENTICATED", "Refresh token invalid");
+
+    let user = null;
+    try {
+      user = await prisma.user.findUnique({ where: { id: payload.id } });
+    } catch {
+      // DB offline
     }
-    const authUser = { id: user.id, email: user.email, roles: user.roles };
-    const accessToken = signAccessToken(authUser);
-    res.cookie("etukas_access", accessToken, cookieOptions(7 * 24 * 60 * 60 * 1000));
-    return sendOk(res, { accessToken, csrfToken: issueCsrf(res) });
+
+    if (user && user.refreshTokenHash && (await bcrypt.compare(token, user.refreshTokenHash))) {
+      const authUser = { id: user.id, email: user.email, roles: user.roles };
+      const accessToken = signAccessToken(authUser);
+      res.cookie("etukas_access", accessToken, cookieOptions(7 * 24 * 60 * 60 * 1000));
+      return sendOk(res, { accessToken, csrfToken: issueCsrf(res) });
+    }
+
+    // Check technician
+    const tech = loadTechnicians().find((t) => t.id === payload.id);
+    if (tech) {
+      const authUser = { id: tech.id, email: tech.email, roles: [Role.SELLER] };
+      const accessToken = signAccessToken(authUser);
+      res.cookie("etukas_access", accessToken, cookieOptions(7 * 24 * 60 * 60 * 1000));
+      return sendOk(res, { accessToken, csrfToken: issueCsrf(res) });
+    }
+
+    throw new HttpError(401, "UNAUTHENTICATED", "Refresh token invalid");
   } catch (error) {
     next(error);
   }
@@ -217,10 +346,40 @@ authRouter.post("/logout", async (req, res, next) => {
 
 authRouter.get("/me", requireAuth, async (req, res, next) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { id: true, name: true, email: true, mobile: true, roles: true, sellerProfile: { select: { verificationStatus: true, businessName: true } } }
-    });
+    let user = null;
+    try {
+      user = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          mobile: true,
+          roles: true,
+          sellerProfile: { select: { verificationStatus: true, businessName: true, sellerId: true } }
+        }
+      });
+    } catch {
+      // DB offline
+    }
+
+    if (!user) {
+      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email === req.user!.email);
+      if (tech) {
+        return sendOk(res, {
+          id: tech.id,
+          name: tech.name,
+          email: tech.email,
+          mobile: tech.mobile,
+          roles: [Role.SELLER],
+          sellerProfile: {
+            verificationStatus: "APPROVED",
+            businessName: tech.businessName,
+            sellerId: tech.partnerId
+          }
+        });
+      }
+    }
     return sendOk(res, user);
   } catch (error) {
     next(error);

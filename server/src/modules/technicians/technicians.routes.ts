@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import bcrypt from "bcryptjs";
 import { Router } from "express";
 import {
   technicianBookingSchema,
@@ -318,7 +319,7 @@ const SEED_TECHNICIANS: Technician[] = [
   }
 ];
 
-function loadTechnicians(): Technician[] {
+export function loadTechnicians(): Technician[] {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -336,7 +337,7 @@ function loadTechnicians(): Technician[] {
   }
 }
 
-function saveTechnicians(list: Technician[]): void {
+export function saveTechnicians(list: Technician[]): void {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -485,6 +486,11 @@ techniciansRouter.post("/register", async (req, res, next) => {
     const originalPerHour = Math.round(input.chargePerHour * 1.25);
     const discountPercent = Math.round(((originalPerHour - input.chargePerHour) / originalPerHour) * 100);
 
+    let passwordHash: string | undefined;
+    if (input.tempPassword) {
+      passwordHash = await bcrypt.hash(input.tempPassword, 12);
+    }
+
     const newTechnician: Technician = {
       id: techId,
       partnerId,
@@ -517,13 +523,58 @@ techniciansRouter.post("/register", async (req, res, next) => {
       isAssured: true,
       isAd: false,
       badge: "Newly Verified",
-      createdAt: new Date().toISOString()
+      createdAt: new Date().toISOString(),
+      tempPassword: input.tempPassword,
+      passwordHash
     };
 
     const currentList = loadTechnicians();
     // Add new technician at beginning of list
     currentList.unshift(newTechnician);
     saveTechnicians(currentList);
+
+    // Sync with database if available
+    try {
+      if (input.userId) {
+        await prisma.sellerProfile.updateMany({
+          where: { userId: input.userId },
+          data: {
+            sellerId: partnerId,
+            businessName: input.businessName,
+            registrationStep: 2,
+            verificationStatus: "APPROVED"
+          }
+        });
+
+        const profile = await prisma.sellerProfile.findFirst({
+          where: { userId: input.userId }
+        });
+        if (profile) {
+          const slug = `tech-${partnerId.toLowerCase()}`;
+          const existingStore = await prisma.store.findUnique({ where: { slug } });
+          if (!existingStore) {
+            await prisma.store.create({
+              data: {
+                sellerProfileId: profile.id,
+                name: input.businessName,
+                slug,
+                phone: input.mobile,
+                addressLine1: input.addressLine1,
+                city: input.city,
+                state: input.state,
+                postalCode: input.postalCode,
+                latitude: input.latitude ?? null,
+                longitude: input.longitude ?? null,
+                serviceRadiusKm: input.serviceRadiusKm,
+                isActive: true
+              }
+            });
+          }
+        }
+      }
+    } catch (dbSyncErr) {
+      console.warn("Prisma DB sync skipped for technician:", dbSyncErr);
+    }
 
     // Also notify admin
     try {

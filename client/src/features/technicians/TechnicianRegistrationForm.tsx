@@ -39,6 +39,7 @@ type Props = {
     contactPerson: string;
     mobile: string;
     email: string;
+    tempPassword?: string;
   };
   userId?: string | null;
   onSuccess: (result: SellerRegistrationResult) => void;
@@ -174,6 +175,7 @@ export function TechnicianRegistrationForm({ initialContact, userId, onSuccess, 
         email: data.technician.email,
         username: data.technician.email,
         registrationStep: 2,
+        tempPassword: initialContact.tempPassword,
         message: data.message
       });
     },
@@ -200,6 +202,7 @@ export function TechnicianRegistrationForm({ initialContact, userId, onSuccess, 
     setFormError(null);
     registerMutation.mutate({
       userId: userId || undefined,
+      tempPassword: initialContact.tempPassword,
       contactPerson: initialContact.contactPerson,
       mobile: initialContact.mobile,
       email: initialContact.email,
