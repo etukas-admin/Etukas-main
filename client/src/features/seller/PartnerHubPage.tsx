@@ -562,7 +562,10 @@ export function PartnerHubPage() {
             {/* Step 2: Business Details */}
             {currentStep === 1 && selectedPartnerCategory === "technician" ? (
               <TechnicianRegistrationForm
-                initialContact={step1Form.getValues()}
+                initialContact={{
+                  ...step1Form.getValues(),
+                  tempPassword: registrationResult?.tempPassword
+                }}
                 userId={userId}
                 onSuccess={(data) => {
                   setRegistrationResult((prev) => ({

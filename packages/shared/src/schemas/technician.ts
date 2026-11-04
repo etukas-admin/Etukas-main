@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const technicianRegistrationSchema = z.object({
   userId: z.string().optional(),
+  tempPassword: z.string().optional(),
   contactPerson: z.string().trim().min(2, "Name is required").max(120),
   mobile: z.string().trim().min(10, "Enter a valid 10-digit mobile number").max(15),
   email: z.string().trim().email("Enter a valid email").max(180),
@@ -77,5 +78,6 @@ export type Technician = {
   badge?: string;
   createdAt: string;
   distanceKm?: number;
+  passwordHash?: string;
+  tempPassword?: string;
 };
-
