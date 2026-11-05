@@ -68,23 +68,68 @@ export function Layout() {
           </div>
         </footer>
       ) : (
-        <footer className="border-t border-gray-100 bg-etukas-black px-4 py-10 text-white">
-          <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
-            <div>
-              <div className="text-2xl font-extrabold text-white">Etukas.com</div>
-              <p className="mt-3 text-sm text-gray-300">A local-first marketplace for trusted building materials, stores, and construction services.</p>
-              <p className="mt-3 text-sm text-gray-300">Â© 2023 Etukas.com. All rights reserved.</p>
+        <footer className="bg-[#090909] px-4 py-8 text-white md:px-8">
+          <div className="mx-auto max-w-[1200px] rounded-[28px] border border-white/10 bg-[#0a0a0a] px-5 py-8 md:px-8 lg:px-10">
+            <div className="mb-8">
+              <h2 className="text-4xl font-black tracking-[-0.06em] text-white md:text-6xl">Etukas</h2>
+              <p className="mt-5 text-lg text-slate-300 md:text-2xl">
+                Building materials, delivered to your doorstep.
+              </p>
             </div>
-            {["Company", "Help", "Policies"].map((title) => (
-              <div key={title}>
-                <h3 className="font-semibold">{title}</h3>
-                <ul className="mt-3 space-y-2 text-sm text-gray-300">
-                  <li>About Etukas</li>
-                  <li>Contact support</li>
-                  <li><Link to="/partner-hub" className="hover:text-white transition-colors">Etukas Partner Network</Link></li>
-                </ul>
+
+            <div className="border-t border-white/10" />
+
+            <div className="mt-8 grid gap-10 md:grid-cols-2">
+              <div className="space-y-10">
+                <section>
+                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Customer Support</h3>
+                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
+                    <li>Contact Us</li>
+                    <li>Help Center</li>
+                    <li>FAQs</li>
+                    <li>Track Your Order</li>
+                    <li>Raise a Complaint</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">About Etukas</h3>
+                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
+                    <li>About Us</li>
+                    <li>Become a Seller</li>
+                    <li>Careers</li>
+                  </ul>
+                </section>
               </div>
-            ))}
+
+              <div className="space-y-10">
+                <section>
+                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Legal &amp; Policies</h3>
+                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
+                    <li>Terms &amp; Conditions</li>
+                    <li>Privacy Policy</li>
+                    <li>Shipping Policy</li>
+                    <li>Cancellation Policy</li>
+                    <li>Return &amp; Refund Policy</li>
+                    <li>Seller Terms &amp; Conditions</li>
+                  </ul>
+                </section>
+
+                <section>
+                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Important Information</h3>
+                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
+                    <li>Grievance Redressal</li>
+                    <li>Product Warranty Policy</li>
+                    <li>Payment &amp; Tax Information</li>
+                  </ul>
+                </section>
+              </div>
+            </div>
+
+            <div className="mt-10 border-t border-white/10 pt-8 text-center">
+              <p className="text-lg text-slate-300 md:text-2xl">&copy; 2026 Etukas. All rights reserved.</p>
+              <p className="mt-2 text-lg text-slate-300 md:text-2xl">Privacy · Terms · Refunds</p>
+            </div>
           </div>
         </footer>
       )}
