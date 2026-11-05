@@ -81,41 +81,41 @@ export function Layout() {
               <section>
                 <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Customer Support</h3>
                 <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
-                  <li>Contact Us</li>
-                  <li>Help Center</li>
-                  <li>FAQs</li>
-                  <li>Track Your Order</li>
-                  <li>Raise a Complaint</li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Contact Us</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Help Center</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">FAQs</Link></li>
+                  <li><Link to="/orders" className="transition-colors hover:text-white">Track Your Order</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Raise a Complaint</Link></li>
                 </ul>
               </section>
 
               <section>
                 <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Legal &amp; Policies</h3>
                 <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
-                  <li>Terms &amp; Conditions</li>
-                  <li>Privacy Policy</li>
-                  <li>Shipping Policy</li>
-                  <li>Cancellation Policy</li>
-                  <li>Return &amp; Refund Policy</li>
-                  <li>Seller Terms &amp; Conditions</li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Terms &amp; Conditions</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Privacy Policy</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Shipping Policy</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Cancellation Policy</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Return &amp; Refund Policy</Link></li>
+                  <li><Link to="/partner-hub" className="transition-colors hover:text-white">Seller Terms &amp; Conditions</Link></li>
                 </ul>
               </section>
 
               <section>
                 <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">About Etukas</h3>
                 <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
-                  <li>About Us</li>
-                  <li>Become a Seller</li>
-                  <li>Careers</li>
+                  <li><Link to="/" className="transition-colors hover:text-white">About Us</Link></li>
+                  <li><Link to="/partner-hub" className="transition-colors hover:text-white">Become a Seller</Link></li>
+                  <li><Link to="/" className="transition-colors hover:text-white">Careers</Link></li>
                 </ul>
               </section>
 
               <section>
                 <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Important Information</h3>
                 <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
-                  <li>Grievance Redressal</li>
-                  <li>Product Warranty Policy</li>
-                  <li>Payment &amp; Tax Information</li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Grievance Redressal</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Product Warranty Policy</Link></li>
+                  <li><Link to="/customer" className="transition-colors hover:text-white">Payment &amp; Tax Information</Link></li>
                 </ul>
               </section>
             </div>
