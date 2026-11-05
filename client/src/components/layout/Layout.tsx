@@ -68,67 +68,61 @@ export function Layout() {
           </div>
         </footer>
       ) : (
-        <footer className="bg-[#090909] px-4 py-8 text-white md:px-8">
-          <div className="mx-auto max-w-[1200px] rounded-[28px] border border-white/10 bg-[#0a0a0a] px-5 py-8 md:px-8 lg:px-10">
-            <div className="mb-8">
-              <h2 className="text-4xl font-black tracking-[-0.06em] text-white md:text-6xl">Etukas</h2>
-              <p className="mt-5 text-lg text-slate-300 md:text-2xl">
-                Building materials, delivered to your doorstep.
-              </p>
+        <footer className="border-t border-gray-100 bg-etukas-black px-4 py-6 text-white md:py-8">
+          <div className="mx-auto max-w-7xl rounded-[18px] border border-white/10 bg-[#0b0b0b] px-4 py-6 sm:px-5 md:px-7 md:py-7 lg:px-8">
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold tracking-normal text-white md:text-3xl">Etukas</h2>
+              <p className="mt-2 text-base text-slate-300 md:text-lg">Online marketplace for building materials.</p>
             </div>
 
             <div className="border-t border-white/10" />
 
-            <div className="mt-8 grid gap-10 md:grid-cols-2">
-              <div className="space-y-10">
-                <section>
-                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Customer Support</h3>
-                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
-                    <li>Contact Us</li>
-                    <li>Help Center</li>
-                    <li>FAQs</li>
-                    <li>Track Your Order</li>
-                    <li>Raise a Complaint</li>
-                  </ul>
-                </section>
+            <div className="mt-6 grid grid-cols-2 gap-x-5 gap-y-6 sm:gap-x-8 md:grid-cols-4 md:gap-x-8 lg:gap-x-12">
+              <section>
+                <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Customer Support</h3>
+                <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
+                  <li>Contact Us</li>
+                  <li>Help Center</li>
+                  <li>FAQs</li>
+                  <li>Track Your Order</li>
+                  <li>Raise a Complaint</li>
+                </ul>
+              </section>
 
-                <section>
-                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">About Etukas</h3>
-                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
-                    <li>About Us</li>
-                    <li>Become a Seller</li>
-                    <li>Careers</li>
-                  </ul>
-                </section>
-              </div>
+              <section>
+                <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Legal &amp; Policies</h3>
+                <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
+                  <li>Terms &amp; Conditions</li>
+                  <li>Privacy Policy</li>
+                  <li>Shipping Policy</li>
+                  <li>Cancellation Policy</li>
+                  <li>Return &amp; Refund Policy</li>
+                  <li>Seller Terms &amp; Conditions</li>
+                </ul>
+              </section>
 
-              <div className="space-y-10">
-                <section>
-                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Legal &amp; Policies</h3>
-                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
-                    <li>Terms &amp; Conditions</li>
-                    <li>Privacy Policy</li>
-                    <li>Shipping Policy</li>
-                    <li>Cancellation Policy</li>
-                    <li>Return &amp; Refund Policy</li>
-                    <li>Seller Terms &amp; Conditions</li>
-                  </ul>
-                </section>
+              <section>
+                <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">About Etukas</h3>
+                <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
+                  <li>About Us</li>
+                  <li>Become a Seller</li>
+                  <li>Careers</li>
+                </ul>
+              </section>
 
-                <section>
-                  <h3 className="text-3xl font-black tracking-[-0.04em] text-white md:text-4xl">Important Information</h3>
-                  <ul className="mt-5 space-y-3 text-lg text-slate-300 md:text-[1.6rem] md:leading-relaxed">
-                    <li>Grievance Redressal</li>
-                    <li>Product Warranty Policy</li>
-                    <li>Payment &amp; Tax Information</li>
-                  </ul>
-                </section>
-              </div>
+              <section>
+                <h3 className="text-base font-bold leading-tight text-white sm:text-lg md:text-xl">Important Information</h3>
+                <ul className="mt-3 space-y-2 text-xs leading-snug text-slate-300 sm:text-sm md:text-base">
+                  <li>Grievance Redressal</li>
+                  <li>Product Warranty Policy</li>
+                  <li>Payment &amp; Tax Information</li>
+                </ul>
+              </section>
             </div>
 
-            <div className="mt-10 border-t border-white/10 pt-8 text-center">
-              <p className="text-lg text-slate-300 md:text-2xl">&copy; 2026 Etukas. All rights reserved.</p>
-              <p className="mt-2 text-lg text-slate-300 md:text-2xl">Privacy · Terms · Refunds</p>
+            <div className="mt-6 border-t border-white/10 pt-4 text-center">
+              <p className="text-xs text-slate-300 sm:text-sm md:text-base">&copy; 2026 Etukas. All rights reserved.</p>
+              <p className="mt-1 text-xs text-slate-300 sm:text-sm md:text-base">Privacy · Terms · Refunds</p>
             </div>
           </div>
         </footer>
