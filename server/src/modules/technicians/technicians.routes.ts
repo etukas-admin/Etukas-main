@@ -384,9 +384,9 @@ export function loadTechnicians(): Technician[] {
     const data = fs.readFileSync(TECHNICIANS_FILE, "utf8");
     const list = JSON.parse(data) as Technician[];
     if (Array.isArray(list) && list.length > 0) {
-      return list.map(t => ({ ...t, verificationStatus: t.verificationStatus || "APPROVED" }));
+      return list.map(t => ({ ...t, tempPassword: t.tempPassword || "Password@123", verificationStatus: t.verificationStatus || "APPROVED" }));
     }
-    return SEED_TECHNICIANS.map(t => ({ ...t, verificationStatus: t.verificationStatus || "APPROVED" }));
+    return SEED_TECHNICIANS.map(t => ({ ...t, tempPassword: t.tempPassword || "Password@123", verificationStatus: t.verificationStatus || "APPROVED" }));
   } catch (err) {
     console.error("Failed to load technicians file, using seed:", err);
     return SEED_TECHNICIANS;
@@ -472,36 +472,220 @@ export function updateTechnicianStatus(
   return list[index];
 }
 
-export function loadBookings(technicianId?: string): Record<string, unknown>[] {
+function getBookingsFilePaths(): string[] {
+  return [
+    BOOKINGS_FILE,
+    path.resolve(process.cwd(), "server", "data", "technician-bookings.json"),
+    path.resolve(process.cwd(), "data", "technician-bookings.json")
+  ];
+}
+
+export async function findTechnicianForUser(user: { id: string; email?: string; roles?: string[] }): Promise<Technician | null> {
+  const list = loadTechnicians();
+  const userId = user.id.toLowerCase().trim();
+  const userEmail = (user.email || "").toLowerCase().trim();
+
+  // 1. Direct match on id, partnerId, or email in loaded technicians
+  let tech = list.find((t) => {
+    const tId = t.id.toLowerCase().trim();
+    const tPartnerId = t.partnerId.toLowerCase().trim();
+    const tEmail = (t.email || "").toLowerCase().trim();
+    return tId === userId || tPartnerId === userId || (userEmail && tEmail === userEmail);
+  });
+  if (tech) return tech;
+
+  // 2. Query Prisma User to check phone / sellerProfile
   try {
-    if (!fs.existsSync(BOOKINGS_FILE)) return [];
-    const data = fs.readFileSync(BOOKINGS_FILE, "utf8");
-    const bookings = JSON.parse(data) as Record<string, unknown>[];
-    if (!Array.isArray(bookings)) return [];
-    if (!technicianId) return bookings;
-    const lower = technicianId.toLowerCase().trim();
-    return bookings.filter(
-      (b) =>
-        String(b.technicianId || "").toLowerCase().trim() === lower ||
-        String(b.partnerId || "").toLowerCase().trim() === lower
-    );
+    const dbUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { id: user.id },
+          ...(user.email ? [{ email: { equals: user.email, mode: "insensitive" as const } }] : [])
+        ]
+      },
+      include: {
+        sellerProfile: {
+          include: { stores: true }
+        }
+      }
+    });
+
+    if (dbUser) {
+      const cleanDbMobile = cleanPhone(dbUser.mobile);
+      const sellerId = dbUser.sellerProfile?.sellerId?.toLowerCase().trim();
+      const profileId = dbUser.sellerProfile?.id?.toLowerCase().trim();
+
+      tech = list.find((t) => {
+        if (cleanDbMobile && cleanPhone(t.mobile) === cleanDbMobile) return true;
+        if (sellerId && (t.partnerId.toLowerCase().trim() === sellerId || t.id.toLowerCase().trim() === sellerId)) return true;
+        if (profileId && (t.id.toLowerCase().trim() === profileId || t.partnerId.toLowerCase().trim() === profileId)) return true;
+        if (dbUser.email && t.email.toLowerCase().trim() === dbUser.email.toLowerCase().trim()) return true;
+        return false;
+      });
+
+      if (tech) return tech;
+
+      if (dbUser.sellerProfile) {
+        const p = dbUser.sellerProfile;
+        const store = p.stores?.[0];
+        return {
+          id: p.id,
+          partnerId: p.sellerId || p.id,
+          name: p.contactPerson || dbUser.name || "Technician Partner",
+          mobile: dbUser.mobile || store?.phone || "",
+          email: dbUser.email || "",
+          businessName: p.businessName || store?.name || "Professional Services",
+          categories: ["Technician"],
+          primaryCategory: "others",
+          tagline: `${p.businessName || "Professional"} Services`,
+          addressLine1: store?.addressLine1 || "",
+          city: store?.city || "Kakinada",
+          state: store?.state || "Andhra Pradesh",
+          postalCode: store?.postalCode || "533001",
+          latitude: Number(store?.latitude) || 16.9891,
+          longitude: Number(store?.longitude) || 82.2475,
+          serviceRadiusKm: store?.serviceRadiusKm || 25,
+          availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+          workingHours: "8:00 AM - 7:00 PM",
+          isAvailableToday: true,
+          chargePerHour: 350,
+          chargePerDay: 1800,
+          originalPerHour: 450,
+          discountPercent: 22,
+          avatar: "/images/technicians/plumber.webp",
+          experienceYears: 5,
+          bio: "Verified technician partner.",
+          rating: 5.0,
+          reviewCount: 1,
+          isAssured: true,
+          isAd: false,
+          badge: "Verified Partner",
+          verificationStatus: p.verificationStatus as any,
+          createdAt: p.createdAt.toISOString()
+        };
+      }
+    }
+  } catch {
+    // DB offline fallback
+  }
+
+  return null;
+}
+
+export function loadBookings(
+  filter?: string | string[] | { id?: string; partnerId?: string; mobile?: string; email?: string }
+): Record<string, unknown>[] {
+  try {
+    const filePaths = getBookingsFilePaths();
+    let allBookings: Record<string, unknown>[] = [];
+
+    for (const filePath of filePaths) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const raw = fs.readFileSync(filePath, "utf8");
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            allBookings = parsed;
+            break;
+          }
+        } catch {}
+      }
+    }
+
+    if (!Array.isArray(allBookings)) return [];
+
+    // Auto-enrich legacy bookings
+    const techList = loadTechnicians();
+    allBookings = allBookings.map((b) => {
+      const match = techList.find(
+        (t) =>
+          t.id === b.technicianId ||
+          t.partnerId === b.technicianId ||
+          t.partnerId === b.partnerId
+      );
+      const bAddress = String(b.address || b.customerAddress || "");
+      return {
+        ...b,
+        id: b.id || b.bookingId,
+        bookingId: b.bookingId || b.id,
+        partnerId: b.partnerId || match?.partnerId || "",
+        technicianId: b.technicianId || match?.id || "",
+        technicianName: b.technicianName || match?.name || "Technician",
+        technicianPhone: b.technicianPhone || match?.mobile || "",
+        technicianEmail: b.technicianEmail || match?.email || "",
+        address: bAddress || "Location provided upon confirmation",
+        customerAddress: b.customerAddress || bAddress || "Location provided upon confirmation",
+        customerName: b.customerName || "Valued Customer",
+        customerPhone: b.customerPhone || "",
+        status: b.status || "CONFIRMED"
+      };
+    });
+
+    if (!filter) return allBookings;
+
+    const targets = new Set<string>();
+    const phoneTargets = new Set<string>();
+
+    const addTarget = (val?: unknown) => {
+      if (typeof val === "string" && val.trim()) {
+        const lower = val.toLowerCase().trim();
+        targets.add(lower);
+        const digits = val.replace(/\D/g, "");
+        if (digits.length >= 10) phoneTargets.add(digits.slice(-10));
+      }
+    };
+
+    if (typeof filter === "string") {
+      addTarget(filter);
+    } else if (Array.isArray(filter)) {
+      for (const item of filter) addTarget(item);
+    } else if (typeof filter === "object") {
+      addTarget(filter.id);
+      addTarget(filter.partnerId);
+      addTarget(filter.email);
+      addTarget(filter.mobile);
+    }
+
+    return allBookings.filter((b) => {
+      const bTechId = String(b.technicianId || "").toLowerCase().trim();
+      const bPartnerId = String(b.partnerId || "").toLowerCase().trim();
+      const bTechEmail = String(b.technicianEmail || "").toLowerCase().trim();
+      const bPhone = String(b.technicianPhone || "").replace(/\D/g, "").slice(-10);
+
+      if (bTechId && targets.has(bTechId)) return true;
+      if (bPartnerId && targets.has(bPartnerId)) return true;
+      if (bTechEmail && targets.has(bTechEmail)) return true;
+      if (bPhone && phoneTargets.has(bPhone)) return true;
+
+      return false;
+    });
   } catch {
     return [];
   }
 }
 
-
-function saveBooking(booking: Record<string, unknown>): void {
+export function saveBooking(booking: Record<string, unknown>): void {
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
+    const filePaths = getBookingsFilePaths();
+    for (const filePath of filePaths) {
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      let existing: Record<string, unknown>[] = [];
+      if (fs.existsSync(filePath)) {
+        try {
+          existing = JSON.parse(fs.readFileSync(filePath, "utf8"));
+          if (!Array.isArray(existing)) existing = [];
+        } catch {
+          existing = [];
+        }
+      }
+      const bId = String(booking.bookingId || booking.id || "");
+      existing = existing.filter((b) => String(b.bookingId || b.id || "") !== bId);
+      existing.unshift(booking);
+      fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), "utf8");
     }
-    let existing: Record<string, unknown>[] = [];
-    if (fs.existsSync(BOOKINGS_FILE)) {
-      existing = JSON.parse(fs.readFileSync(BOOKINGS_FILE, "utf8"));
-    }
-    existing.unshift(booking);
-    fs.writeFileSync(BOOKINGS_FILE, JSON.stringify(existing, null, 2), "utf8");
   } catch (err) {
     console.error("Failed to save booking:", err);
   }
@@ -906,12 +1090,18 @@ techniciansRouter.post("/register", async (req, res, next) => {
 
 techniciansRouter.get("/me/bookings", requireAuth, async (req, res, next) => {
   try {
-    const list = loadTechnicians();
-    const tech = list.find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user!.email.toLowerCase());
-    if (!tech) throw new HttpError(404, "TECHNICIAN_NOT_FOUND", "Technician profile not found");
-    const bookings = loadBookings(tech.id).concat(loadBookings(tech.partnerId));
-    const unique = Array.from(new Map(bookings.map((b) => [String(b.bookingId || b.id || JSON.stringify(b)), b])).values());
-    return sendOk(res, unique);
+    const tech = await findTechnicianForUser(req.user!);
+    const identifiers = [
+      tech?.id,
+      tech?.partnerId,
+      tech?.mobile,
+      tech?.email,
+      req.user!.id,
+      req.user!.email
+    ].filter(Boolean) as string[];
+
+    const bookings = loadBookings(identifiers.length > 0 ? identifiers : undefined);
+    return sendOk(res, bookings);
   } catch (error) {
     next(error);
   }
@@ -920,16 +1110,35 @@ techniciansRouter.get("/me/bookings", requireAuth, async (req, res, next) => {
 techniciansRouter.get("/:id/bookings", requireAuth, async (req, res, next) => {
   try {
     const list = loadTechnicians();
-    const tech = list.find((t) => t.id === req.params.id || t.partnerId === req.params.id);
-    if (!tech) throw new HttpError(404, "NOT_FOUND", "Technician not found");
+    const searchId = req.params.id.toLowerCase().trim();
+    const tech = list.find((t) => t.id.toLowerCase().trim() === searchId || t.partnerId.toLowerCase().trim() === searchId);
+    const userTech = await findTechnicianForUser(req.user!);
     const isAdmin = req.user?.roles.includes("ADMIN");
-    const isOwner = req.user?.id === tech.id || req.user?.email.toLowerCase() === tech.email.toLowerCase();
+    const isOwner =
+      req.user?.id.toLowerCase() === searchId ||
+      (tech && (
+        req.user?.id === tech.id ||
+        req.user?.id === tech.partnerId ||
+        req.user?.email.toLowerCase() === tech.email.toLowerCase() ||
+        (userTech && (userTech.id === tech.id || userTech.partnerId === tech.partnerId))
+      )) ||
+      (userTech && (userTech.id.toLowerCase() === searchId || userTech.partnerId.toLowerCase() === searchId));
+
     if (!isAdmin && !isOwner) {
       throw new HttpError(403, "FORBIDDEN", "Not authorized to view these bookings");
     }
-    const bookings = loadBookings(tech.id).concat(loadBookings(tech.partnerId));
-    const unique = Array.from(new Map(bookings.map((b) => [String(b.bookingId || b.id || JSON.stringify(b)), b])).values());
-    return sendOk(res, unique);
+
+    const targetTech = tech || userTech;
+    const identifiers = [
+      targetTech?.id,
+      targetTech?.partnerId,
+      targetTech?.mobile,
+      targetTech?.email,
+      req.params.id
+    ].filter(Boolean) as string[];
+
+    const bookings = loadBookings(identifiers);
+    return sendOk(res, bookings);
   } catch (error) {
     next(error);
   }
@@ -939,7 +1148,63 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
   try {
     const input: TechnicianBookingInput = technicianBookingSchema.parse(req.body);
     const list = loadTechnicians();
-    const tech = list.find((t) => t.id === req.params.id || t.partnerId === req.params.id);
+    const searchId = req.params.id.toLowerCase().trim();
+    let tech = list.find((t) => t.id.toLowerCase().trim() === searchId || t.partnerId.toLowerCase().trim() === searchId);
+
+    if (!tech) {
+      try {
+        const profile = await prisma.sellerProfile.findFirst({
+          where: {
+            OR: [
+              { id: req.params.id },
+              { sellerId: req.params.id },
+              { userId: req.params.id }
+            ]
+          },
+          include: { user: true, stores: true }
+        });
+        if (profile) {
+          const store = profile.stores?.[0];
+          tech = {
+            id: profile.id,
+            partnerId: profile.sellerId || req.params.id,
+            name: profile.contactPerson || profile.user?.name || "Technician Partner",
+            mobile: profile.user?.mobile || store?.phone || "",
+            email: profile.user?.email || "",
+            businessName: profile.businessName || store?.name || "Technical Services",
+            categories: ["Technician"],
+            primaryCategory: "others",
+            tagline: `${profile.businessName || "Professional"} Services`,
+            addressLine1: store?.addressLine1 || "",
+            city: store?.city || "Kakinada",
+            state: store?.state || "Andhra Pradesh",
+            postalCode: store?.postalCode || "533001",
+            latitude: Number(store?.latitude) || 16.9891,
+            longitude: Number(store?.longitude) || 82.2475,
+            serviceRadiusKm: store?.serviceRadiusKm || 25,
+            availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+            workingHours: "8:00 AM - 7:00 PM",
+            isAvailableToday: true,
+            chargePerHour: 350,
+            chargePerDay: 1800,
+            originalPerHour: 450,
+            discountPercent: 22,
+            avatar: "/images/technicians/plumber.webp",
+            experienceYears: 5,
+            bio: "Verified technician partner.",
+            rating: 5.0,
+            reviewCount: 1,
+            isAssured: true,
+            isAd: false,
+            badge: "Verified Partner",
+            verificationStatus: profile.verificationStatus as any,
+            createdAt: profile.createdAt.toISOString()
+          };
+        }
+      } catch {
+        // DB fallback
+      }
+    }
 
     if (!tech) {
       throw new HttpError(404, "NOT_FOUND", "Technician not found");
@@ -948,9 +1213,12 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
     const bookingId = `BOOK-${Date.now()}`;
     const bookingRecord = {
       bookingId,
+      id: bookingId,
       technicianId: tech.id,
+      partnerId: tech.partnerId,
       technicianName: tech.name,
       technicianPhone: tech.mobile,
+      technicianEmail: tech.email,
       customerName: input.customerName,
       customerPhone: input.customerPhone,
       serviceCategory: input.serviceCategory,
@@ -963,6 +1231,7 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
           ? tech.chargePerDay
           : tech.chargePerHour * (input.estimatedHours || 1),
       address: input.address,
+      customerAddress: input.address,
       notes: input.notes || "",
       status: "CONFIRMED",
       createdAt: new Date().toISOString()
@@ -987,6 +1256,46 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
       booking: bookingRecord,
       message: `Your service booking with ${tech.name} has been confirmed for ${input.bookingDate} (${input.timeSlot})!`
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+techniciansRouter.patch("/bookings/:id/status", requireAuth, async (req, res, next) => {
+  try {
+    const statusSchema = z.object({
+      status: z.enum(["PENDING", "CONFIRMED", "IN_PROGRESS", "COMPLETED", "CANCELLED"])
+    });
+    const { status } = statusSchema.parse(req.body);
+    const bookingId = req.params.id;
+
+    const filePaths = getBookingsFilePaths();
+    let updatedBooking: Record<string, unknown> | null = null;
+
+    for (const filePath of filePaths) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const raw = fs.readFileSync(filePath, "utf8");
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            const idx = list.findIndex(
+              (b) => String(b.bookingId || b.id) === bookingId
+            );
+            if (idx >= 0) {
+              list[idx] = { ...list[idx], status, updatedAt: new Date().toISOString() };
+              updatedBooking = list[idx];
+              fs.writeFileSync(filePath, JSON.stringify(list, null, 2), "utf8");
+            }
+          }
+        } catch {}
+      }
+    }
+
+    if (!updatedBooking) {
+      throw new HttpError(404, "BOOKING_NOT_FOUND", "Booking not found");
+    }
+
+    return sendOk(res, updatedBooking);
   } catch (error) {
     next(error);
   }
