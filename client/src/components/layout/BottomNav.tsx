@@ -16,7 +16,7 @@ export function BottomNav() {
 
   const accountHref = currentUser
     ? currentUser.roles.includes("SELLER")
-      ? "/seller"
+      ? "/partner-dashboard"
       : currentUser.roles.includes("ADMIN")
       ? "/admin"
       : "/customer"

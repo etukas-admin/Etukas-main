@@ -1,4 +1,4 @@
-﻿import { Link, Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
 import { Header } from "./Header";
 import { PartnerHeader } from "./PartnerHeader";
 import { BottomNav } from "./BottomNav";
@@ -10,6 +10,7 @@ export function Layout() {
   const isPartnerPage =
     location.pathname === "/partner-hub" ||
     location.pathname === "/seller-hub" ||
+    location.pathname === "/partner-dashboard" ||
     location.pathname === "/seller";
 
   return (

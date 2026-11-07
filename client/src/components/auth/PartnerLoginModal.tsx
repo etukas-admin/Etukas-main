@@ -85,11 +85,11 @@ export function PartnerLoginModal({
       onClose();
       // Direct partners directly to the partner dashboard
       if (user.roles.includes("SELLER") || user.roles.includes("PARTNER")) {
-        navigate("/seller");
+        navigate("/partner-dashboard");
       } else if (user.roles.includes("ADMIN")) {
         navigate("/admin");
       } else {
-        navigate("/seller");
+        navigate("/partner-dashboard");
       }
     },
     onError: (err: Error) => {

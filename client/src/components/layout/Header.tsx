@@ -118,7 +118,7 @@ export function Header() {
           {currentUser ? (
             <div className="hidden items-center gap-2 md:flex">
               <Link
-                to={currentUser.roles.includes("SELLER") ? "/seller" : currentUser.roles.includes("ADMIN") ? "/admin" : "/customer"}
+                to={currentUser.roles.includes("SELLER") ? "/partner-dashboard" : currentUser.roles.includes("ADMIN") ? "/admin" : "/customer"}
                 className="flex items-center gap-1.5 rounded-lg bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors"
               >
                 <UserRound size={16} />

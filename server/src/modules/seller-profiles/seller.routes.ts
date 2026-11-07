@@ -137,7 +137,7 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
         profile.id,
         req.user!.id
       ].filter(Boolean) as string[];
-      const bookings = loadBookings(identifiers);
+      const bookings = await loadBookings(identifiers);
       const revenueMinor = bookings
         .filter((b: any) => b.status === "CONFIRMED" || b.status === "COMPLETED")
         .reduce((sum: number, b: any) => sum + (Number(b.estimatedTotal) || 0) * 100, 0);

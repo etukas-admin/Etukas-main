@@ -166,7 +166,7 @@ export function PartnerHeader() {
             {currentUser ? (
               <div className="flex items-center gap-2">
                 <Link
-                  to="/seller"
+                  to="/partner-dashboard"
                   className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-2 text-xs font-bold text-white shadow-md shadow-orange-500/20 hover:from-orange-600 hover:to-amber-600 transition-all"
                 >
                   <UserRound size={15} />

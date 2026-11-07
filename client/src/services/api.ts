@@ -305,6 +305,13 @@ export const marketplaceApi = {
     updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
   getTechnicianMyBookings: () => api<Record<string, unknown>[]>("/technicians/me/bookings"),
   getTechnicianBookings: (id: string) => api<Record<string, unknown>[]>(`/technicians/${encodeURIComponent(id)}/bookings`),
+  updateTechnicianBookingStatus: (id: string, status: string) =>
+    api<Record<string, unknown>>(`/technicians/bookings/${encodeURIComponent(id)}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ status })
+    }),
+  getCustomerOrders: () => api<any[]>("/orders"),
+  getCustomerServiceBookings: () => api<Record<string, unknown>[]>("/technicians/customer/bookings"),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
   sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),

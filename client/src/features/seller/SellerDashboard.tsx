@@ -158,9 +158,33 @@ export function SellerDashboard() {
 
   const technicianBookingsQuery = useQuery({
     queryKey: ["technician-bookings", profileData?.sellerId],
-    queryFn: () => marketplaceApi.getTechnicianMyBookings().catch(() => []),
+    queryFn: async () => {
+      try {
+        const res = await marketplaceApi.getTechnicianMyBookings();
+        if (Array.isArray(res) && res.length > 0) return res;
+      } catch (err) {
+        console.warn("Could not fetch /me/bookings:", err);
+      }
+      if (profileData?.sellerId) {
+        try {
+          const res = await marketplaceApi.getTechnicianBookings(profileData.sellerId);
+          if (Array.isArray(res) && res.length > 0) return res;
+        } catch (err) {
+          console.warn("Could not fetch /bookings by sellerId:", err);
+        }
+      }
+      return [];
+    },
     enabled: isTechnician,
-    refetchInterval: 5000
+    refetchInterval: 3000
+  });
+
+  const updateBookingStatusMutation = useMutation({
+    mutationFn: ({ bookingId, status }: { bookingId: string; status: string }) =>
+      marketplaceApi.updateTechnicianBookingStatus(bookingId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["technician-bookings"] });
+    }
   });
 
   const sellerProductsQuery = useQuery({
@@ -624,51 +648,122 @@ export function SellerDashboard() {
                   <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
                     <thead className="bg-gray-50 font-bold text-gray-700">
                       <tr>
-                        <th className="px-6 py-3.5">Customer</th>
+                        <th className="px-6 py-3.5">Customer Details</th>
                         <th className="px-6 py-3.5">Service Requested</th>
-                        <th className="px-6 py-3.5">Date & Time</th>
-                        <th className="px-6 py-3.5">Service Address</th>
-                        <th className="px-6 py-3.5">Estimated Total</th>
+                        <th className="px-6 py-3.5">Appointment Slot</th>
+                        <th className="px-6 py-3.5">Customer Service Address</th>
+                        <th className="px-6 py-3.5">Estimated Charge</th>
                         <th className="px-6 py-3.5">Status</th>
+                        <th className="px-6 py-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 font-medium">
-                      {bookings.map((b: any, idx: number) => (
-                        <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-gray-900">{b.customerName || "Customer"}</div>
-                            {b.customerPhone && (
-                              <a href={`tel:${b.customerPhone}`} className="flex items-center gap-1 font-mono text-xs text-orange-600 hover:underline mt-0.5">
-                                <Phone size={12} /> {b.customerPhone}
+                      {bookings.map((b: any, idx: number) => {
+                        const fullAddress = b.customerAddress || b.address || "Location provided upon confirmation";
+                        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+                        const isPending = b.status === "PENDING";
+                        const isConfirmed = b.status === "CONFIRMED";
+                        const isCompleted = b.status === "COMPLETED";
+
+                        return (
+                          <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-gray-900 text-sm">{b.customerName || "Customer"}</div>
+                              {b.customerPhone ? (
+                                <div className="mt-1 flex items-center gap-2">
+                                  <a
+                                    href={`tel:${b.customerPhone}`}
+                                    className="inline-flex items-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 px-2.5 py-1 font-mono text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors"
+                                  >
+                                    <Phone size={13} />
+                                    <span>{b.customerPhone}</span>
+                                  </a>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-400">Phone not provided</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <span className="inline-flex rounded-md bg-orange-100 border border-orange-200 px-2.5 py-1 text-xs font-bold text-orange-900">
+                                {b.serviceCategory || "General Service"}
+                              </span>
+                              {b.bookingType && (
+                                <div className="text-[11px] text-gray-500 mt-1 font-medium capitalize">
+                                  {b.bookingType.toLowerCase()} service
+                                  {b.estimatedHours ? ` (${b.estimatedHours} hrs)` : ""}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-gray-700">
+                              <div className="font-bold text-gray-900">{b.bookingDate || "Today"}</div>
+                              <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                                <Clock size={12} className="text-gray-400" />
+                                <span>{b.timeSlot || "Standard hours"}</span>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-gray-700 max-w-xs">
+                              <div className="text-xs font-medium text-gray-800 leading-snug">{fullAddress}</div>
+                              <a
+                                href={mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline mt-1 font-semibold"
+                              >
+                                <MapPin size={12} />
+                                <span>Open in Google Maps ↗</span>
                               </a>
-                            )}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="rounded-md bg-orange-50 border border-orange-200 px-2.5 py-1 text-xs font-bold text-orange-800">
-                              {b.serviceCategory || "General"}
-                            </span>
-                            {b.bookingType && (
-                              <div className="text-[11px] text-gray-500 mt-1 capitalize">{b.bookingType.toLowerCase()} booking</div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 text-gray-700">
-                            <div className="font-semibold">{b.bookingDate || "Today"}</div>
-                            <div className="text-xs text-gray-500">{b.timeSlot || "Flexible"}</div>
-                          </td>
-                          <td className="px-6 py-4 text-gray-700 max-w-xs">
-                            <div className="text-xs">{b.address || "Location provided upon confirmation"}</div>
-                            {b.notes && <div className="text-[11px] text-gray-400 italic mt-0.5">&ldquo;{b.notes}&rdquo;</div>}
-                          </td>
-                          <td className="px-6 py-4 font-black text-gray-900">
-                            {b.estimatedTotal ? `₹${Number(b.estimatedTotal).toLocaleString("en-IN")}` : "₹350"}
-                          </td>
-                          <td className="px-6 py-4">
-                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-800">
-                              {b.status || "CONFIRMED"}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                              {b.notes && (
+                                <div className="text-[11px] text-gray-500 italic mt-1 bg-gray-50 p-1.5 rounded border border-gray-100">
+                                  &ldquo;{b.notes}&rdquo;
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="text-sm font-black text-gray-900">
+                                ₹{Number(b.estimatedTotal || 350).toLocaleString("en-IN")}
+                              </div>
+                              <div className="text-[10px] text-gray-400 font-normal">estimated total</div>
+                            </td>
+                            <td className="px-6 py-4">
+                              <span
+                                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                                  isCompleted
+                                    ? "bg-blue-100 text-blue-800"
+                                    : isConfirmed
+                                    ? "bg-emerald-100 text-emerald-800"
+                                    : isPending
+                                    ? "bg-amber-100 text-amber-800"
+                                    : "bg-gray-100 text-gray-800"
+                                }`}
+                              >
+                                {b.status || "CONFIRMED"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              {!isCompleted ? (
+                                <button
+                                  onClick={() =>
+                                    updateBookingStatusMutation.mutate({
+                                      bookingId: b.bookingId || b.id,
+                                      status: "COMPLETED"
+                                    })
+                                  }
+                                  disabled={updateBookingStatusMutation.isPending}
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 transition shadow-sm"
+                                  title="Mark service completed"
+                                >
+                                  <CheckCircle2 size={13} />
+                                  <span>Complete</span>
+                                </button>
+                              ) : (
+                                <span className="text-xs text-emerald-600 font-bold inline-flex items-center gap-1">
+                                  <CheckCircle2 size={14} /> Done
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
