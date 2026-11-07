@@ -1,4 +1,4 @@
-import { loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
+import { cleanPhone, loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
 import { randomUUID } from "node:crypto";
 import { del, put } from "@vercel/blob";
 import { Router } from "express";
@@ -64,12 +64,15 @@ adminRouter.get("/sellers", async (_req, res, next) => {
               (s.sellerId && s.sellerId.toLowerCase() === tech.partnerId.toLowerCase()) ||
               s.id === tech.id ||
               (s.user?.email && s.user.email.toLowerCase() === tech.email.toLowerCase()) ||
-              (s.user?.mobile && s.user.mobile === tech.mobile)
+              (s.user?.mobile && cleanPhone(s.user.mobile) === cleanPhone(tech.mobile))
           );
           if (existing) {
-            // Keep status aligned with technician JSON if present
-            if (tech.verificationStatus) {
-              existing.verificationStatus = tech.verificationStatus;
+            // Keep status aligned: if either is approved, mark approved in both places
+            if (tech.verificationStatus === "APPROVED" || existing.verificationStatus === "APPROVED") {
+              existing.verificationStatus = "APPROVED";
+              tech.verificationStatus = "APPROVED";
+            } else if (tech.verificationStatus === "REJECTED" || existing.verificationStatus === "REJECTED") {
+              existing.verificationStatus = "REJECTED";
             }
             return null;
           }
@@ -345,11 +348,12 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
     }).parse(req.body);
 
     const targetId = req.params.id;
-    let updatedTechnician = updateTechnicianStatus(targetId, status as any, rejectionReason);
     let updatedProfile: any = null;
+    let updatedTechnician: any = null;
 
+    let existingProfile: any = null;
     try {
-      const existingProfile = await prisma.sellerProfile.findFirst({
+      existingProfile = await prisma.sellerProfile.findFirst({
         where: {
           OR: [
             { id: targetId },
@@ -357,10 +361,36 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
             { userId: targetId }
           ]
         },
-        include: { user: true }
+        include: { user: true, stores: true }
       });
+    } catch {
+      // Prisma offline or schema check skipped
+    }
 
-      if (existingProfile) {
+    // 1. Update technician status in file store with ALL available identifiers
+    if (existingProfile) {
+      updatedTechnician = updateTechnicianStatus(
+        {
+          id: existingProfile.id,
+          sellerId: existingProfile.sellerId,
+          partnerId: existingProfile.sellerId,
+          userId: existingProfile.userId,
+          email: existingProfile.user?.email,
+          mobile: existingProfile.user?.mobile || existingProfile.stores?.[0]?.phone,
+          businessName: existingProfile.businessName
+        },
+        status as any,
+        rejectionReason
+      );
+    }
+
+    if (!updatedTechnician) {
+      updatedTechnician = updateTechnicianStatus(targetId, status as any, rejectionReason);
+    }
+
+    // 2. Update status in Prisma
+    if (existingProfile) {
+      try {
         updatedProfile = await prisma.$transaction(async (transaction) => {
           const profile = await transaction.sellerProfile.update({
             where: { id: existingProfile.id },
@@ -380,13 +410,28 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
           }).catch(() => {});
           return profile;
         });
-
-        if (!updatedTechnician && existingProfile.user?.email) {
-          updatedTechnician = updateTechnicianStatus(existingProfile.user.email, status as any, rejectionReason);
-        }
+      } catch (dbErr) {
+        console.warn("Prisma update status skipped or failed:", dbErr);
       }
-    } catch (dbErr) {
-      console.warn("Prisma update status skipped or failed:", dbErr);
+    } else if (updatedTechnician) {
+      // If profile wasn't found by targetId, but updatedTechnician was found, sync status to Prisma
+      try {
+        await prisma.sellerProfile.updateMany({
+          where: {
+            OR: [
+              { sellerId: updatedTechnician.partnerId },
+              { user: { email: { equals: updatedTechnician.email, mode: "insensitive" } } },
+              { user: { mobile: updatedTechnician.mobile } }
+            ]
+          },
+          data: {
+            verificationStatus: status,
+            rejectionReason: status === VerificationStatus.REJECTED ? rejectionReason ?? null : null
+          }
+        });
+      } catch {
+        // Non-blocking
+      }
     }
 
     if (updatedProfile) {

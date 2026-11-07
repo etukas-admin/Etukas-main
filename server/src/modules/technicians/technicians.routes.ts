@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import bcrypt from "bcryptjs";
 import { Router } from "express";
 import { z } from "zod";
@@ -15,6 +16,9 @@ import { AdminNotificationType } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export const techniciansRouter = Router();
 
@@ -64,9 +68,15 @@ function generatePartnerId(): string {
   return `TECH${num}`;
 }
 
+export function cleanPhone(phone?: string | null): string {
+  if (!phone) return "";
+  return phone.replace(/\D/g, "").slice(-10);
+}
+
 // ---------- Data Store with File Persistence ----------
 
-const DATA_DIR = path.resolve(process.cwd(), "server", "data");
+// Resolves consistently to <project-root>/server/data
+const DATA_DIR = path.resolve(__dirname, "../../../data");
 const TECHNICIANS_FILE = path.join(DATA_DIR, "technicians.json");
 const BOOKINGS_FILE = path.join(DATA_DIR, "technician-bookings.json");
 
@@ -351,6 +361,22 @@ export function loadTechnicians(): Technician[] {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
+    // Check if technicians.json was previously created under alternate cwd path
+    const altFiles = [
+      path.resolve(process.cwd(), "server", "data", "technicians.json"),
+      path.resolve(process.cwd(), "data", "technicians.json")
+    ];
+    if (!fs.existsSync(TECHNICIANS_FILE)) {
+      for (const alt of altFiles) {
+        if (fs.existsSync(alt)) {
+          try {
+            const altContent = fs.readFileSync(alt, "utf8");
+            fs.writeFileSync(TECHNICIANS_FILE, altContent, "utf8");
+            break;
+          } catch {}
+        }
+      }
+    }
     if (!fs.existsSync(TECHNICIANS_FILE)) {
       fs.writeFileSync(TECHNICIANS_FILE, JSON.stringify(SEED_TECHNICIANS, null, 2), "utf8");
       return SEED_TECHNICIANS;
@@ -378,21 +404,65 @@ export function saveTechnicians(list: Technician[]): void {
   }
 }
 
+export type TechnicianIdentifier =
+  | string
+  | {
+      id?: string | null;
+      partnerId?: string | null;
+      sellerId?: string | null;
+      userId?: string | null;
+      email?: string | null;
+      mobile?: string | null;
+      businessName?: string | null;
+    };
+
 export function updateTechnicianStatus(
-  idOrPartnerId: string,
+  identifier: TechnicianIdentifier,
   status: "PENDING" | "APPROVED" | "REJECTED",
   rejectionReason?: string | null
 ): Technician | null {
   const list = loadTechnicians();
-  const lower = idOrPartnerId.toLowerCase().trim();
-  const index = list.findIndex(
-    (t) =>
-      t.id.toLowerCase() === lower ||
-      t.partnerId.toLowerCase() === lower ||
-      t.email.toLowerCase() === lower ||
-      t.mobile.trim() === idOrPartnerId.trim()
-  );
+
+  let targetId = "";
+  let targetPartnerId = "";
+  let targetEmail = "";
+  let targetMobile = "";
+  let targetBusinessName = "";
+
+  if (typeof identifier === "string") {
+    const trimmed = identifier.trim();
+    targetId = trimmed.toLowerCase();
+    targetPartnerId = trimmed.toLowerCase();
+    targetEmail = trimmed.toLowerCase();
+    targetMobile = cleanPhone(trimmed);
+    targetBusinessName = trimmed.toLowerCase();
+  } else if (identifier && typeof identifier === "object") {
+    targetId = (identifier.id || identifier.userId || "").trim().toLowerCase();
+    targetPartnerId = (identifier.partnerId || identifier.sellerId || "").trim().toLowerCase();
+    targetEmail = (identifier.email || "").trim().toLowerCase();
+    targetMobile = cleanPhone(identifier.mobile);
+    targetBusinessName = (identifier.businessName || "").trim().toLowerCase();
+  }
+
+  const index = list.findIndex((t) => {
+    const tId = t.id.toLowerCase().trim();
+    const tPartnerId = t.partnerId.toLowerCase().trim();
+    const tEmail = t.email.toLowerCase().trim();
+    const tMobile = cleanPhone(t.mobile);
+    const tBiz = t.businessName.toLowerCase().trim();
+
+    // Check matches
+    if (targetId && (tId === targetId || tPartnerId === targetId)) return true;
+    if (targetPartnerId && (tPartnerId === targetPartnerId || tId === targetPartnerId)) return true;
+    if (targetEmail && tEmail === targetEmail) return true;
+    if (targetMobile && tMobile && tMobile === targetMobile) return true;
+    if (targetBusinessName && tBiz === targetBusinessName) return true;
+
+    return false;
+  });
+
   if (index < 0) return null;
+
   list[index] = {
     ...list[index],
     verificationStatus: status,
@@ -458,19 +528,108 @@ techniciansRouter.get("/", async (req, res, next) => {
 
     let list = loadTechnicians();
 
-    // Compute distance for each technician
+    // 1. Sync with Prisma DB: check if any technicians in Prisma are approved
+    try {
+      const approvedProfiles = await prisma.sellerProfile.findMany({
+        where: { verificationStatus: "APPROVED" },
+        include: { user: true, stores: true }
+      });
+
+      let changed = false;
+      for (const tech of list) {
+        if (tech.verificationStatus !== "APPROVED") {
+          const isDbApproved = approvedProfiles.some(
+            (p) =>
+              (p.sellerId && p.sellerId.toLowerCase() === tech.partnerId.toLowerCase()) ||
+              p.id === tech.id ||
+              (p.user?.email && p.user.email.toLowerCase() === tech.email.toLowerCase()) ||
+              (p.user?.mobile && cleanPhone(p.user.mobile) === cleanPhone(tech.mobile))
+          );
+          if (isDbApproved) {
+            tech.verificationStatus = "APPROVED";
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        saveTechnicians(list);
+      }
+
+      // If any approved technician profile in Prisma is missing from file store, convert and include them
+      for (const p of approvedProfiles) {
+        const isTechProfile =
+          (p.businessType as string) === "TECHNICIAN" ||
+          (p.sellerId && p.sellerId.toUpperCase().startsWith("TECH")) ||
+          p.stores.some((s) => s.slug.startsWith("tech-"));
+
+        if (isTechProfile) {
+          const alreadyInList = list.some(
+            (t) =>
+              (p.sellerId && t.partnerId.toLowerCase() === p.sellerId.toLowerCase()) ||
+              t.id === p.id ||
+              (p.user?.email && t.email.toLowerCase() === p.user.email.toLowerCase()) ||
+              (p.user?.mobile && cleanPhone(t.mobile) === cleanPhone(p.user.mobile))
+          );
+          if (!alreadyInList) {
+            const store = p.stores[0];
+            const techFromDb: Technician = {
+              id: p.id,
+              partnerId: p.sellerId || generatePartnerId(),
+              name: p.contactPerson || p.user?.name || "Technician Partner",
+              mobile: p.user?.mobile || store?.phone || "",
+              email: p.user?.email || "",
+              businessName: p.businessName || store?.name || "Verified Technical Services",
+              categories: ["Technician"],
+              primaryCategory: "others",
+              tagline: `${p.businessName || "Professional"} Services`,
+              addressLine1: store?.addressLine1 || "",
+              city: store?.city || "Kakinada",
+              state: store?.state || "Andhra Pradesh",
+              postalCode: store?.postalCode || "533001",
+              latitude: Number(store?.latitude) || 16.9891,
+              longitude: Number(store?.longitude) || 82.2475,
+              serviceRadiusKm: store?.serviceRadiusKm || 25,
+              availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+              workingHours: "8:00 AM - 7:00 PM",
+              isAvailableToday: true,
+              chargePerHour: 350,
+              chargePerDay: 1800,
+              originalPerHour: 450,
+              discountPercent: 22,
+              avatar: "/images/technicians/plumber.webp",
+              experienceYears: 5,
+              bio: `Verified professional technician providing quality services in ${store?.city || "your area"}.`,
+              rating: 5.0,
+              reviewCount: 1,
+              isAssured: true,
+              isAd: false,
+              badge: "Verified Partner",
+              verificationStatus: "APPROVED",
+              createdAt: p.createdAt.toISOString()
+            };
+            list.unshift(techFromDb);
+          }
+        }
+      }
+    } catch {
+      // Prisma offline or schema check skipped; continue with file store
+    }
+
+    // 2. Compute exact distance from user's current GPS / address location for each technician
     list = list.map((tech) => {
-      const distanceKm = calculateDistanceKm(userLat, userLng, tech.latitude, tech.longitude);
+      const techLat = typeof tech.latitude === "number" && !isNaN(tech.latitude) ? tech.latitude : 16.9891;
+      const techLng = typeof tech.longitude === "number" && !isNaN(tech.longitude) ? tech.longitude : 82.2475;
+      const distanceKm = calculateDistanceKm(userLat, userLng, techLat, techLng);
       return {
         ...tech,
         distanceKm
       };
     });
 
-    // Public marketplace only shows approved technicians
+    // 3. Public marketplace only shows approved technicians
     list = list.filter((tech) => (tech.verificationStatus ?? "APPROVED") === "APPROVED");
 
-    // Filter by Category
+    // 4. Filter by Category
     if (categoryQuery && categoryQuery !== "all" && categoryQuery !== "professionals") {
       const normalizedCat = categoryQuery.replace(/-/g, " ");
       list = list.filter((tech) => {
@@ -482,7 +641,7 @@ techniciansRouter.get("/", async (req, res, next) => {
       });
     }
 
-    // Filter by Search text
+    // 5. Filter by Search text
     if (searchQuery) {
       list = list.filter((tech) => {
         const text = `${tech.name} ${tech.businessName} ${tech.tagline} ${tech.city} ${tech.categories.join(" ")}`.toLowerCase();
@@ -490,27 +649,23 @@ techniciansRouter.get("/", async (req, res, next) => {
       });
     }
 
-    // Filter by max distance (e.g. 25km, 40km)
+    // 6. Filter by max distance (e.g. 25km, 40km)
     if (maxDistQuery && !isNaN(maxDistQuery) && maxDistQuery > 0) {
       list = list.filter((tech) => (tech.distanceKm ?? 0) <= maxDistQuery);
     }
 
-    // Filter by max charge
+    // 7. Filter by max charge
     if (maxChargeQuery && !isNaN(maxChargeQuery) && maxChargeQuery > 0) {
       list = list.filter((tech) => tech.chargePerHour <= maxChargeQuery);
     }
 
-    const approvedNearby = list.filter(
-      (tech) => (tech.distanceKm ?? Number.POSITIVE_INFINITY) <= (tech.serviceRadiusKm ?? 25)
-    );
-    if (approvedNearby.length > 0) {
-      list = approvedNearby;
-    }
-
-    // Sorting
-    // "First nearly registered technicians should be visible to customer, after distance technicians."
+    // 8. Sorting: Nearest first by default so nearest customers get the nearest technicians
     if (sort === "nearest" || !sort) {
-      list.sort((a, b) => (a.distanceKm ?? 0) - (b.distanceKm ?? 0));
+      list.sort((a, b) => {
+        const distA = typeof a.distanceKm === "number" && !isNaN(a.distanceKm) ? a.distanceKm : 999999;
+        const distB = typeof b.distanceKm === "number" && !isNaN(b.distanceKm) ? b.distanceKm : 999999;
+        return distA - distB;
+      });
     } else if (sort === "price_asc") {
       list.sort((a, b) => a.chargePerHour - b.chargePerHour);
     } else if (sort === "price_desc") {
@@ -536,14 +691,71 @@ techniciansRouter.get("/", async (req, res, next) => {
 techniciansRouter.get("/:id", async (req, res, next) => {
   try {
     const list = loadTechnicians();
-    const tech = list.find((t) => t.id === req.params.id || t.partnerId === req.params.id);
+    let tech = list.find((t) => t.id === req.params.id || t.partnerId === req.params.id);
+
+    if (!tech) {
+      try {
+        const profile = await prisma.sellerProfile.findFirst({
+          where: {
+            OR: [
+              { id: req.params.id },
+              { sellerId: req.params.id }
+            ]
+          },
+          include: { user: true, stores: true }
+        });
+        if (profile) {
+          const store = profile.stores[0];
+          tech = {
+            id: profile.id,
+            partnerId: profile.sellerId || req.params.id,
+            name: profile.contactPerson || profile.user?.name || "Technician Partner",
+            mobile: profile.user?.mobile || store?.phone || "",
+            email: profile.user?.email || "",
+            businessName: profile.businessName || store?.name || "Technical Services",
+            categories: ["Technician"],
+            primaryCategory: "others",
+            tagline: `${profile.businessName || "Professional"} Services`,
+            addressLine1: store?.addressLine1 || "",
+            city: store?.city || "Kakinada",
+            state: store?.state || "Andhra Pradesh",
+            postalCode: store?.postalCode || "533001",
+            latitude: Number(store?.latitude) || 16.9891,
+            longitude: Number(store?.longitude) || 82.2475,
+            serviceRadiusKm: store?.serviceRadiusKm || 25,
+            availableDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+            workingHours: "8:00 AM - 7:00 PM",
+            isAvailableToday: true,
+            chargePerHour: 350,
+            chargePerDay: 1800,
+            originalPerHour: 450,
+            discountPercent: 22,
+            avatar: "/images/technicians/plumber.webp",
+            experienceYears: 5,
+            bio: "Verified technician partner.",
+            rating: 5.0,
+            reviewCount: 1,
+            isAssured: true,
+            isAd: false,
+            badge: "Verified Partner",
+            verificationStatus: profile.verificationStatus as any,
+            createdAt: profile.createdAt.toISOString()
+          };
+        }
+      } catch {
+        // DB offline fallback
+      }
+    }
+
     if (!tech) {
       throw new HttpError(404, "NOT_FOUND", "Technician not found");
     }
 
     const userLat = typeof req.query.lat === "string" ? Number(req.query.lat) : 16.9891;
     const userLng = typeof req.query.lng === "string" ? Number(req.query.lng) : 82.2475;
-    const distanceKm = calculateDistanceKm(userLat, userLng, tech.latitude, tech.longitude);
+    const techLat = typeof tech.latitude === "number" && !isNaN(tech.latitude) ? tech.latitude : 16.9891;
+    const techLng = typeof tech.longitude === "number" && !isNaN(tech.longitude) ? tech.longitude : 82.2475;
+    const distanceKm = calculateDistanceKm(userLat, userLng, techLat, techLng);
 
     return sendOk(res, { ...tech, distanceKm });
   } catch (error) {

@@ -23,7 +23,7 @@ import {
   ArrowUpDown
 } from "lucide-react";
 import { marketplaceApi, type Technician, type TechnicianBookingInput } from "../../services/api";
-import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE } from "../location/locationStore";
+import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, ADDRESS_CHANGE_EVENT } from "../location/locationStore";
 import { AVAILABLE_SKILLS, DISTANCE_OPTIONS, TECHNICIAN_AVATARS } from "./technicianAvatars";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
@@ -32,10 +32,18 @@ export function TechniciansPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Active customer location from locationStore
-  const userAddress = getSelectedAddress() || DEFAULT_CONSTRUCTION_SITE;
+  // Active customer location from locationStore with real-time updates
+  const [userAddress, setUserAddress] = useState(() => getSelectedAddress() || DEFAULT_CONSTRUCTION_SITE);
   const userLat = userAddress.latitude || 16.9891;
   const userLng = userAddress.longitude || 82.2475;
+
+  useEffect(() => {
+    const onAddressChange = () => {
+      setUserAddress(getSelectedAddress() || DEFAULT_CONSTRUCTION_SITE);
+    };
+    window.addEventListener(ADDRESS_CHANGE_EVENT, onAddressChange);
+    return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, onAddressChange);
+  }, []);
 
   // Filter states
   const initialCategory = searchParams.get("category") || "all";
@@ -76,6 +84,17 @@ export function TechniciansPage() {
       return res;
     }
   });
+
+  // Support ?techId=... parameter to automatically open booking for selected technician
+  useEffect(() => {
+    const techId = searchParams.get("techId");
+    if (techId && technicians.length > 0) {
+      const found = technicians.find((t) => t.id === techId || t.partnerId === techId);
+      if (found) {
+        setSelectedTechnician(found);
+      }
+    }
+  }, [searchParams, technicians]);
 
   // Calculate active filter count
   const activeFilterCount = useMemo(() => {
