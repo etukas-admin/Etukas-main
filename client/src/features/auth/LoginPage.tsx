@@ -52,7 +52,7 @@ export function LoginPage() {
     },
     onSuccess: (user) => {
       if (user.roles.includes("ADMIN")) navigate("/admin-dashboard");
-      else if (user.roles.includes("SELLER")) navigate("/seller");
+      else if (user.roles.includes("SELLER")) navigate("/partner-dashboard");
       else navigate("/customer");
     }
   });

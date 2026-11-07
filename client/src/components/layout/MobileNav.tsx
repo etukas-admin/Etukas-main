@@ -207,7 +207,7 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
                 {currentUser.roles.includes("SELLER") && (
                   <li>
                     <NavLink
-                      to="/seller"
+                      to="/partner-dashboard"
                       onClick={onClose}
                       className={({ isActive }) =>
                         `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${

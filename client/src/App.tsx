@@ -47,7 +47,8 @@ export default function App() {
         <Route path="partner-hub" element={<PartnerHubPage />} />
         <Route path="seller-hub" element={<Navigate to="/partner-hub" replace />} />
         <Route path="seller-enquiry" element={<SellerHubPage />} />
-        <Route path="seller" element={<SellerDashboard />} />
+        <Route path="seller" element={<Navigate to="/partner-dashboard" replace />} />
+        <Route path="partner-dashboard" element={<SellerDashboard />} />
         <Route path="admin" element={<Navigate to="/admin-dashboard" replace />} />
         <Route path="rentals" element={<PlannedModulePage title="Rentals" />} />
         <Route path="real-estate" element={<PlannedModulePage title="Real Estate" />} />

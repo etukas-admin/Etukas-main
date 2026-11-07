@@ -154,7 +154,7 @@ export function PartnerMobileNav({
               </div>
               <div className="mt-3 flex gap-2">
                 <Link
-                  to="/seller"
+                  to="/partner-dashboard"
                   onClick={onClose}
                   className="flex-1 rounded-lg bg-orange-600 px-3 py-2 text-center text-xs font-bold text-white hover:bg-orange-500 transition-colors"
                 >

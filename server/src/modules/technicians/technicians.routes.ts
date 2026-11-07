@@ -572,99 +572,158 @@ export async function findTechnicianForUser(user: { id: string; email?: string; 
   return null;
 }
 
-export function loadBookings(
-  filter?: string | string[] | { id?: string; partnerId?: string; mobile?: string; email?: string }
-): Record<string, unknown>[] {
-  try {
-    const filePaths = getBookingsFilePaths();
-    let allBookings: Record<string, unknown>[] = [];
+export async function loadBookings(
+  filter?: string | string[] | { id?: string; partnerId?: string; mobile?: string; email?: string; name?: string }
+): Promise<Record<string, unknown>[]> {
+  const filePaths = getBookingsFilePaths();
+  let fileBookings: Record<string, unknown>[] = [];
 
-    for (const filePath of filePaths) {
-      if (fs.existsSync(filePath)) {
-        try {
-          const raw = fs.readFileSync(filePath, "utf8");
-          const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            allBookings = parsed;
-            break;
-          }
-        } catch {}
-      }
+  for (const filePath of filePaths) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const raw = fs.readFileSync(filePath, "utf8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          fileBookings = parsed;
+          break;
+        }
+      } catch {}
     }
-
-    if (!Array.isArray(allBookings)) return [];
-
-    // Auto-enrich legacy bookings
-    const techList = loadTechnicians();
-    allBookings = allBookings.map((b) => {
-      const match = techList.find(
-        (t) =>
-          t.id === b.technicianId ||
-          t.partnerId === b.technicianId ||
-          t.partnerId === b.partnerId
-      );
-      const bAddress = String(b.address || b.customerAddress || "");
-      return {
-        ...b,
-        id: b.id || b.bookingId,
-        bookingId: b.bookingId || b.id,
-        partnerId: b.partnerId || match?.partnerId || "",
-        technicianId: b.technicianId || match?.id || "",
-        technicianName: b.technicianName || match?.name || "Technician",
-        technicianPhone: b.technicianPhone || match?.mobile || "",
-        technicianEmail: b.technicianEmail || match?.email || "",
-        address: bAddress || "Location provided upon confirmation",
-        customerAddress: b.customerAddress || bAddress || "Location provided upon confirmation",
-        customerName: b.customerName || "Valued Customer",
-        customerPhone: b.customerPhone || "",
-        status: b.status || "CONFIRMED"
-      };
-    });
-
-    if (!filter) return allBookings;
-
-    const targets = new Set<string>();
-    const phoneTargets = new Set<string>();
-
-    const addTarget = (val?: unknown) => {
-      if (typeof val === "string" && val.trim()) {
-        const lower = val.toLowerCase().trim();
-        targets.add(lower);
-        const digits = val.replace(/\D/g, "");
-        if (digits.length >= 10) phoneTargets.add(digits.slice(-10));
-      }
-    };
-
-    if (typeof filter === "string") {
-      addTarget(filter);
-    } else if (Array.isArray(filter)) {
-      for (const item of filter) addTarget(item);
-    } else if (typeof filter === "object") {
-      addTarget(filter.id);
-      addTarget(filter.partnerId);
-      addTarget(filter.email);
-      addTarget(filter.mobile);
-    }
-
-    return allBookings.filter((b) => {
-      const bTechId = String(b.technicianId || "").toLowerCase().trim();
-      const bPartnerId = String(b.partnerId || "").toLowerCase().trim();
-      const bTechEmail = String(b.technicianEmail || "").toLowerCase().trim();
-      const bPhone = String(b.technicianPhone || "").replace(/\D/g, "").slice(-10);
-
-      if (bTechId && targets.has(bTechId)) return true;
-      if (bPartnerId && targets.has(bPartnerId)) return true;
-      if (bTechEmail && targets.has(bTechEmail)) return true;
-      if (bPhone && phoneTargets.has(bPhone)) return true;
-
-      return false;
-    });
-  } catch {
-    return [];
   }
+
+  let dbBookings: Record<string, unknown>[] = [];
+  try {
+    const notifications = await prisma.adminNotification.findMany({
+      where: { type: AdminNotificationType.PARTNER_ENQUIRY },
+      orderBy: { createdAt: "desc" },
+      take: 200
+    });
+    for (const n of notifications) {
+      if (n.metadata && typeof n.metadata === "object") {
+        const meta = n.metadata as Record<string, unknown>;
+        if (meta.bookingId || meta.technicianId || meta.serviceCategory) {
+          dbBookings.push({
+            ...meta,
+            id: meta.id || meta.bookingId || n.id,
+            bookingId: meta.bookingId || meta.id || n.id,
+            createdAt: meta.createdAt || n.createdAt.toISOString()
+          });
+        }
+      }
+    }
+  } catch {
+    // Non-blocking DB fallback
+  }
+
+  // Merge PostgreSQL persistent bookings + local file bookings
+  const map = new Map<string, Record<string, unknown>>();
+  for (const b of [...dbBookings, ...fileBookings]) {
+    const key = String(b.bookingId || b.id || "");
+    if (key && !map.has(key)) {
+      map.set(key, b);
+    }
+  }
+  let allBookings = Array.from(map.values());
+
+  // Auto-enrich legacy bookings
+  const techList = loadTechnicians();
+  allBookings = allBookings.map((b) => {
+    const match = techList.find(
+      (t) =>
+        t.id === b.technicianId ||
+        t.partnerId === b.technicianId ||
+        t.partnerId === b.partnerId ||
+        (b.technicianName && t.name.toLowerCase() === String(b.technicianName).toLowerCase())
+    );
+    const bAddress = String(b.address || b.customerAddress || "");
+    return {
+      ...b,
+      id: b.id || b.bookingId,
+      bookingId: b.bookingId || b.id,
+      partnerId: b.partnerId || match?.partnerId || "",
+      technicianId: b.technicianId || match?.id || "",
+      technicianName: b.technicianName || match?.name || "Technician Partner",
+      technicianPhone: b.technicianPhone || match?.mobile || "",
+      technicianEmail: b.technicianEmail || match?.email || "",
+      address: bAddress || "Location provided upon confirmation",
+      customerAddress: b.customerAddress || bAddress || "Location provided upon confirmation",
+      customerName: b.customerName || "Valued Customer",
+      customerPhone: b.customerPhone || "",
+      status: b.status || "CONFIRMED"
+    };
+  });
+
+  if (!filter) return allBookings;
+
+  const targets = new Set<string>();
+  const phoneTargets = new Set<string>();
+  const nameTargets = new Set<string>();
+
+  const addTarget = (val?: unknown) => {
+    if (typeof val === "string" && val.trim()) {
+      const lower = val.toLowerCase().trim();
+      targets.add(lower);
+      nameTargets.add(lower);
+      const digits = val.replace(/\D/g, "");
+      if (digits.length >= 10) phoneTargets.add(digits.slice(-10));
+    }
+  };
+
+  if (typeof filter === "string") {
+    addTarget(filter);
+  } else if (Array.isArray(filter)) {
+    for (const item of filter) addTarget(item);
+  } else if (typeof filter === "object") {
+    addTarget(filter.id);
+    addTarget(filter.partnerId);
+    addTarget(filter.email);
+    addTarget(filter.mobile);
+    addTarget(filter.name);
+  }
+
+  return allBookings.filter((b) => {
+    const bTechId = String(b.technicianId || "").toLowerCase().trim();
+    const bPartnerId = String(b.partnerId || "").toLowerCase().trim();
+    const bTechEmail = String(b.technicianEmail || "").toLowerCase().trim();
+    const bTechName = String(b.technicianName || "").toLowerCase().trim();
+    const bPhone = String(b.technicianPhone || "").replace(/\D/g, "").slice(-10);
+
+    if (bTechId && targets.has(bTechId)) return true;
+    if (bPartnerId && targets.has(bPartnerId)) return true;
+    if (bTechEmail && targets.has(bTechEmail)) return true;
+    if (bTechName && nameTargets.has(bTechName)) return true;
+    if (bPhone && phoneTargets.has(bPhone)) return true;
+
+    return false;
+  });
 }
 
-export function saveBooking(booking: Record<string, unknown>): void {
+export async function loadCustomerBookings(
+  customerIdentifiers: string[]
+): Promise<Record<string, unknown>[]> {
+  const all = await loadBookings();
+  const targets = new Set(customerIdentifiers.map((i) => i.toLowerCase().trim()).filter(Boolean));
+  const phoneTargets = new Set(
+    customerIdentifiers
+      .map((i) => i.replace(/\D/g, ""))
+      .filter((p) => p.length >= 10)
+      .map((p) => p.slice(-10))
+  );
+
+  return all.filter((b) => {
+    const bCustomerId = String(b.customerId || "").toLowerCase().trim();
+    const bPhone = String(b.customerPhone || "").replace(/\D/g, "").slice(-10);
+    const bEmail = String(b.customerEmail || "").toLowerCase().trim();
+
+    if (bCustomerId && targets.has(bCustomerId)) return true;
+    if (bPhone && phoneTargets.has(bPhone)) return true;
+    if (bEmail && targets.has(bEmail)) return true;
+
+    return false;
+  });
+}
+
+export async function saveBooking(booking: Record<string, unknown>): Promise<void> {
   try {
     const filePaths = getBookingsFilePaths();
     for (const filePath of filePaths) {
@@ -687,7 +746,20 @@ export function saveBooking(booking: Record<string, unknown>): void {
       fs.writeFileSync(filePath, JSON.stringify(existing, null, 2), "utf8");
     }
   } catch (err) {
-    console.error("Failed to save booking:", err);
+    console.error("Failed to save booking to disk:", err);
+  }
+
+  try {
+    await prisma.adminNotification.create({
+      data: {
+        type: AdminNotificationType.PARTNER_ENQUIRY,
+        title: "New Service Booking Request",
+        body: `${booking.customerName || "Customer"} booked ${booking.technicianName || "Technician"} for ${booking.serviceCategory || "Service"} on ${booking.bookingDate || "scheduled date"}`,
+        metadata: booking as any
+      }
+    });
+  } catch (err) {
+    console.warn("Non-blocking DB booking sync error:", err);
   }
 }
 
@@ -1096,11 +1168,29 @@ techniciansRouter.get("/me/bookings", requireAuth, async (req, res, next) => {
       tech?.partnerId,
       tech?.mobile,
       tech?.email,
+      tech?.name,
       req.user!.id,
       req.user!.email
     ].filter(Boolean) as string[];
 
-    const bookings = loadBookings(identifiers.length > 0 ? identifiers : undefined);
+    const bookings = await loadBookings(identifiers.length > 0 ? identifiers : undefined);
+    return sendOk(res, bookings);
+  } catch (error) {
+    next(error);
+  }
+});
+
+techniciansRouter.get("/customer/bookings", requireAuth, async (req, res, next) => {
+  try {
+    const user = req.user!;
+    let mobile = "";
+    try {
+      const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+      if (dbUser?.mobile) mobile = dbUser.mobile;
+    } catch {}
+
+    const identifiers = [user.id, user.email, mobile].filter(Boolean) as string[];
+    const bookings = await loadCustomerBookings(identifiers);
     return sendOk(res, bookings);
   } catch (error) {
     next(error);
@@ -1134,10 +1224,11 @@ techniciansRouter.get("/:id/bookings", requireAuth, async (req, res, next) => {
       targetTech?.partnerId,
       targetTech?.mobile,
       targetTech?.email,
+      targetTech?.name,
       req.params.id
     ].filter(Boolean) as string[];
 
-    const bookings = loadBookings(identifiers);
+    const bookings = await loadBookings(identifiers);
     return sendOk(res, bookings);
   } catch (error) {
     next(error);
@@ -1232,25 +1323,13 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
           : tech.chargePerHour * (input.estimatedHours || 1),
       address: input.address,
       customerAddress: input.address,
+      customerId: req.user?.id || undefined,
       notes: input.notes || "",
       status: "CONFIRMED",
       createdAt: new Date().toISOString()
     };
 
-    saveBooking(bookingRecord);
-
-    try {
-      await prisma.adminNotification.create({
-        data: {
-          type: AdminNotificationType.PARTNER_ENQUIRY,
-          title: "New Service Booking Request",
-          body: `${input.customerName} booked ${tech.name} for ${input.serviceCategory} on ${input.bookingDate}`,
-          metadata: bookingRecord
-        }
-      });
-    } catch {
-      // Non-blocking
-    }
+    await saveBooking(bookingRecord);
 
     return sendCreated(res, {
       booking: bookingRecord,

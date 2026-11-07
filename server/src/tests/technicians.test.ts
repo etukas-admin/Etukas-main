@@ -59,6 +59,42 @@ describe("Technician Approval & Live Nearest Customer Marketplace", () => {
     expect(typeof foundAfter.distanceKm).toBe("number");
     // Since coords (16.9900, 82.2480) are ~0.1 km from customer (16.9891, 82.2475), they should be at or near the top
     expect(foundAfter.distanceKm).toBeLessThan(5);
+
+    // 5. Customer books a plumbing service appointment
+    const bookRes = await request(app)
+      .post(`/api/v1/technicians/${tech.partnerId}/book`)
+      .send({
+        technicianId: tech.id,
+        customerName: "G. Nagaraju",
+        customerPhone: "9848999888",
+        serviceCategory: "Plumber",
+        bookingDate: "2026-11-08",
+        timeSlot: "Morning (8:30 AM - 12:00 PM)",
+        bookingType: "HOURLY",
+        estimatedHours: 2,
+        address: "Flat 402, Sai Residency, Main Road, Karapa",
+        notes: "Emergency kitchen pipe leakage repair"
+      });
+
+    expect(bookRes.status).toBe(201);
+    expect(bookRes.body.ok).toBe(true);
+    const booking = bookRes.body.data.booking;
+    expect(booking.customerName).toBe("G. Nagaraju");
+    expect(booking.customerPhone).toBe("9848999888");
+    expect(booking.address).toBe("Flat 402, Sai Residency, Main Road, Karapa");
+    expect(booking.customerAddress).toBe("Flat 402, Sai Residency, Main Road, Karapa");
+    expect(booking.estimatedTotal).toBe(600); // 300 * 2 hrs
+    expect(booking.status).toBe("CONFIRMED");
+
+    // 6. Verify technician can load the booking with complete customer details
+    const { loadBookings } = await import("../modules/technicians/technicians.routes.js");
+    const techBookings = await loadBookings(tech.partnerId);
+    expect(techBookings.length).toBeGreaterThan(0);
+    const foundBooking = techBookings.find((b: any) => b.customerPhone === "9848999888");
+    expect(foundBooking).toBeDefined();
+    expect(foundBooking?.customerName).toBe("G. Nagaraju");
+    expect(foundBooking?.address).toBe("Flat 402, Sai Residency, Main Road, Karapa");
+    expect(foundBooking?.serviceCategory).toBe("Plumber");
   });
 });
 
