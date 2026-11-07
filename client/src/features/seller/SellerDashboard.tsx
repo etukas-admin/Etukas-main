@@ -649,16 +649,17 @@ export function SellerDashboard() {
                     <span>← Scroll sideways to view all booking details →</span>
                   </div>
                   <div className="overflow-x-auto w-full" style={{ WebkitOverflowScrolling: "touch" }}>
-                    <table className="min-w-[880px] w-full divide-y divide-gray-200 text-left text-sm">
+                    <table className="min-w-[1040px] w-full divide-y divide-gray-200 text-left text-sm">
                       <thead className="bg-gray-50 font-bold text-gray-700">
                         <tr>
-                          <th className="px-6 py-3.5">Request ID & Customer</th>
-                          <th className="px-6 py-3.5">Service Requested</th>
-                          <th className="px-6 py-3.5">Appointment Slot</th>
-                          <th className="px-6 py-3.5">Customer Service Address</th>
-                          <th className="px-6 py-3.5">Estimated Charge</th>
-                          <th className="px-6 py-3.5">Status</th>
-                          <th className="px-6 py-3.5 text-right">Actions</th>
+                          <th className="px-4 py-3.5 text-xs whitespace-nowrap">Request ID</th>
+                          <th className="px-4 py-3.5">Customer Details</th>
+                          <th className="px-4 py-3.5">Service Requested</th>
+                          <th className="px-4 py-3.5">Appointment Slot</th>
+                          <th className="px-4 py-3.5">Customer Service Address</th>
+                          <th className="px-4 py-3.5">Estimated Charge</th>
+                          <th className="px-4 py-3.5">Status</th>
+                          <th className="px-4 py-3.5 text-right">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 font-medium">
@@ -668,15 +669,19 @@ export function SellerDashboard() {
                           const isPending = b.status === "PENDING";
                           const isConfirmed = b.status === "CONFIRMED";
                           const isCompleted = b.status === "COMPLETED";
+                          const reqId = b.serviceRequestId || b.bookingId || b.id;
 
                           return (
                             <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-1.5 mb-1.5">
-                                  <span className="inline-flex items-center gap-1 rounded bg-orange-100 border border-orange-300 px-2 py-0.5 font-mono text-xs font-black text-orange-800">
-                                    #{b.serviceRequestId || b.bookingId || b.id}
-                                  </span>
-                                </div>
+                              {/* ── Separate Request ID column ── */}
+                              <td className="px-4 py-4 whitespace-nowrap">
+                                <span className="inline-flex items-center rounded-lg bg-orange-100 border border-orange-300 px-2.5 py-1.5 font-mono text-xs font-black text-orange-900 tracking-wide select-all">
+                                  {reqId}
+                                </span>
+                              </td>
+
+                              {/* ── Customer Details ── */}
+                              <td className="px-4 py-4">
                                 <div className="font-bold text-gray-900 text-sm">{b.customerName || "Customer"}</div>
                                 {b.customerPhone ? (
                                   <div className="mt-1 flex items-center gap-2">

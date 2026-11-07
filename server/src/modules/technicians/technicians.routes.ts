@@ -694,11 +694,19 @@ export async function loadBookings(
         (b.technicianName && t.name.toLowerCase() === String(b.technicianName).toLowerCase())
     );
     const bAddress = String(b.address || b.customerAddress || "");
-    const sId = String(b.serviceRequestId || b.bookingId || b.id || "");
+    // If the stored id is a legacy BOOK-timestamp format, re-generate a proper ETXX... ID
+    const rawId = String(b.serviceRequestId || b.bookingId || b.id || "");
+    const isLegacyId = rawId.startsWith("BOOK-") || rawId === "";
+    const sId = isLegacyId
+      ? generateServiceRequestId(
+          String(b.serviceCategory || match?.categories?.[0] || "Service"),
+          String(b.technicianName || match?.name || "Technician")
+        )
+      : rawId;
     return {
       ...b,
-      id: b.id || b.bookingId || sId,
-      bookingId: b.bookingId || b.id || sId,
+      id: rawId || sId,
+      bookingId: rawId || sId,
       serviceRequestId: sId,
       orderId: sId,
       partnerId: b.partnerId || match?.partnerId || "",
