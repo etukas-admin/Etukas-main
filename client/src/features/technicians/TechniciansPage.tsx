@@ -61,6 +61,7 @@ export function TechniciansPage() {
   // Selected technician for booking modal
   const [selectedTechnician, setSelectedTechnician] = useState<Technician | null>(null);
   const [bookingSuccessMsg, setBookingSuccessMsg] = useState<string | null>(null);
+  const [bookedBooking, setBookedBooking] = useState<any | null>(null);
 
   // Sync category param with URL
   useEffect(() => {
@@ -176,8 +177,9 @@ export function TechniciansPage() {
   const bookingMutation = useMutation({
     mutationFn: (values: TechnicianBookingInput) =>
       marketplaceApi.bookTechnician(values.technicianId, values),
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       setBookingSuccessMsg(data.message);
+      setBookedBooking(data.booking);
     }
   });
 
@@ -725,6 +727,7 @@ export function TechniciansPage() {
               onClick={() => {
                 setSelectedTechnician(null);
                 setBookingSuccessMsg(null);
+                setBookedBooking(null);
               }}
               className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
             >
@@ -738,15 +741,38 @@ export function TechniciansPage() {
                 </div>
                 <h3 className="mt-4 text-xl font-extrabold text-gray-900">Service Request Booked!</h3>
                 <p className="mt-2 text-sm text-gray-600">{bookingSuccessMsg}</p>
-                <p className="mt-2 text-xs text-gray-500">
+
+                {(bookedBooking?.serviceRequestId || bookedBooking?.bookingId) && (
+                  <div className="mx-auto mt-4 max-w-xs rounded-xl border border-orange-200 bg-orange-50/90 p-3 text-center shadow-xs">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-orange-700">
+                      Service Request ID
+                    </p>
+                    <p className="mt-1 font-mono text-xl font-black tracking-wider text-orange-950">
+                      {bookedBooking.serviceRequestId || bookedBooking.bookingId}
+                    </p>
+                    <p className="mt-1 text-[11px] text-orange-800">
+                      Save this ID to track your service appointment status.
+                    </p>
+                  </div>
+                )}
+
+                <p className="mt-3 text-xs text-gray-500">
                   Technician <strong>{selectedTechnician.name}</strong> has received your contact details and will call you shortly.
                 </p>
-                <div className="mt-6 flex gap-3">
+
+                <div className="mt-6 flex flex-col sm:flex-row gap-2.5">
+                  <Link
+                    to="/account?tab=services"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition"
+                  >
+                    View in My Bookings
+                  </Link>
                   <Button
-                    className="flex-1 bg-etukas-red text-white"
+                    className="flex-1 bg-etukas-red text-white hover:brightness-110"
                     onClick={() => {
                       setSelectedTechnician(null);
                       setBookingSuccessMsg(null);
+                      setBookedBooking(null);
                     }}
                   >
                     Done

@@ -644,45 +644,54 @@ export function SellerDashboard() {
                   </p>
                 </div>
               ) : (
-                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-                  <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-                    <thead className="bg-gray-50 font-bold text-gray-700">
-                      <tr>
-                        <th className="px-6 py-3.5">Customer Details</th>
-                        <th className="px-6 py-3.5">Service Requested</th>
-                        <th className="px-6 py-3.5">Appointment Slot</th>
-                        <th className="px-6 py-3.5">Customer Service Address</th>
-                        <th className="px-6 py-3.5">Estimated Charge</th>
-                        <th className="px-6 py-3.5">Status</th>
-                        <th className="px-6 py-3.5 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100 font-medium">
-                      {bookings.map((b: any, idx: number) => {
-                        const fullAddress = b.customerAddress || b.address || "Location provided upon confirmation";
-                        const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
-                        const isPending = b.status === "PENDING";
-                        const isConfirmed = b.status === "CONFIRMED";
-                        const isCompleted = b.status === "COMPLETED";
+                <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="sm:hidden flex items-center justify-between bg-orange-50/80 border-b border-orange-100 px-4 py-2 text-[11px] text-orange-900 font-semibold">
+                    <span>← Scroll sideways to view all booking details →</span>
+                  </div>
+                  <div className="overflow-x-auto w-full" style={{ WebkitOverflowScrolling: "touch" }}>
+                    <table className="min-w-[880px] w-full divide-y divide-gray-200 text-left text-sm">
+                      <thead className="bg-gray-50 font-bold text-gray-700">
+                        <tr>
+                          <th className="px-6 py-3.5">Request ID & Customer</th>
+                          <th className="px-6 py-3.5">Service Requested</th>
+                          <th className="px-6 py-3.5">Appointment Slot</th>
+                          <th className="px-6 py-3.5">Customer Service Address</th>
+                          <th className="px-6 py-3.5">Estimated Charge</th>
+                          <th className="px-6 py-3.5">Status</th>
+                          <th className="px-6 py-3.5 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100 font-medium">
+                        {bookings.map((b: any, idx: number) => {
+                          const fullAddress = b.customerAddress || b.address || "Location provided upon confirmation";
+                          const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
+                          const isPending = b.status === "PENDING";
+                          const isConfirmed = b.status === "CONFIRMED";
+                          const isCompleted = b.status === "COMPLETED";
 
-                        return (
-                          <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-gray-900 text-sm">{b.customerName || "Customer"}</div>
-                              {b.customerPhone ? (
-                                <div className="mt-1 flex items-center gap-2">
-                                  <a
-                                    href={`tel:${b.customerPhone}`}
-                                    className="inline-flex items-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 px-2.5 py-1 font-mono text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors"
-                                  >
-                                    <Phone size={13} />
-                                    <span>{b.customerPhone}</span>
-                                  </a>
+                          return (
+                            <tr key={b.bookingId || b.id || idx} className="hover:bg-gray-50/80 transition-colors">
+                              <td className="px-6 py-4">
+                                <div className="flex items-center gap-1.5 mb-1.5">
+                                  <span className="inline-flex items-center gap-1 rounded bg-orange-100 border border-orange-300 px-2 py-0.5 font-mono text-xs font-black text-orange-800">
+                                    #{b.serviceRequestId || b.bookingId || b.id}
+                                  </span>
                                 </div>
-                              ) : (
-                                <span className="text-xs text-gray-400">Phone not provided</span>
-                              )}
-                            </td>
+                                <div className="font-bold text-gray-900 text-sm">{b.customerName || "Customer"}</div>
+                                {b.customerPhone ? (
+                                  <div className="mt-1 flex items-center gap-2">
+                                    <a
+                                      href={`tel:${b.customerPhone}`}
+                                      className="inline-flex items-center gap-1.5 rounded-lg bg-orange-50 border border-orange-200 px-2.5 py-1 font-mono text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors"
+                                    >
+                                      <Phone size={13} />
+                                      <span>{b.customerPhone}</span>
+                                    </a>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-gray-400">Phone not provided</span>
+                                )}
+                              </td>
                             <td className="px-6 py-4">
                               <span className="inline-flex rounded-md bg-orange-100 border border-orange-200 px-2.5 py-1 text-xs font-bold text-orange-900">
                                 {b.serviceCategory || "General Service"}
@@ -767,7 +776,8 @@ export function SellerDashboard() {
                     </tbody>
                   </table>
                 </div>
-              )}
+              </div>
+            )}
             </div>
           )}
 

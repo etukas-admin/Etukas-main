@@ -279,11 +279,30 @@ export function CustomerAccountPage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {serviceBookings.map((booking: any, idx: number) => {
                   const isCompleted = booking.status === "COMPLETED";
+                  const reqId = booking.serviceRequestId || booking.bookingId || booking.id;
                   return (
                     <div
-                      key={booking.bookingId || booking.id || idx}
+                      key={reqId || idx}
                       className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3"
                     >
+                      <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-gray-500 uppercase">Service Request ID:</span>
+                          <span className="font-mono text-xs font-black text-orange-700 bg-orange-100/80 border border-orange-200 px-2 py-0.5 rounded">
+                            #{reqId}
+                          </span>
+                        </div>
+                        <span
+                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                            isCompleted
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {booking.status || "CONFIRMED"}
+                        </span>
+                      </div>
+
                       <div className="flex items-start justify-between">
                         <div>
                           <span className="inline-block rounded-md bg-orange-50 border border-orange-200 px-2 py-0.5 text-[11px] font-bold text-orange-800">
@@ -301,16 +320,6 @@ export function CustomerAccountPage() {
                             </a>
                           )}
                         </div>
-
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                            isCompleted
-                              ? "bg-blue-100 text-blue-800"
-                              : "bg-emerald-100 text-emerald-800"
-                          }`}
-                        >
-                          {booking.status || "CONFIRMED"}
-                        </span>
                       </div>
 
                       <div className="space-y-1.5 text-xs text-gray-600 border-t border-gray-100 pt-2.5">

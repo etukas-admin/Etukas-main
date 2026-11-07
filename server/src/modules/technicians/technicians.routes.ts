@@ -49,6 +49,64 @@ techniciansRouter.patch("/me", requireAuth, requireRole("SELLER"), async (req, r
 
 // ---------- Helpers & Math ----------
 
+/**
+ * Generates an automated Service Request ID following the pattern:
+ * ET<CategoryCode><TechnicianInitial><6RandomDigits>
+ * e.g. "ETPS123456"
+ *   E = Etukas
+ *   T = Technician
+ *   P = Plumber (E = Electrician, M = Mason, P = Painter, W = Welder, C = Carpenter, A = Architect/Civil, S = Service)
+ *   S = Sanjay (first letter of technician name)
+ *   123456 = 6 random digits
+ */
+export function generateServiceRequestId(category: string, technicianName: string): string {
+  const catUpper = (category || "").toUpperCase();
+  let catCode = "S"; // default Service
+  if (catUpper.includes("PLUMB")) catCode = "P";
+  else if (catUpper.includes("ELECTR")) catCode = "E";
+  else if (catUpper.includes("MASON")) catCode = "M";
+  else if (catUpper.includes("PAINT")) catCode = "P";
+  else if (catUpper.includes("WELD")) catCode = "W";
+  else if (catUpper.includes("CARPENT")) catCode = "C";
+  else if (catUpper.includes("CIVIL") || catUpper.includes("ARCHITECT") || catUpper.includes("ENGIN")) catCode = "A";
+  else if (category.trim()) catCode = category.trim()[0].toUpperCase();
+
+  // Strip common honorifics/titles (Mr., Er., Dr., Sri, Smt.) to get the actual first name letter
+  const cleanName = (technicianName || "").replace(/^(Mr\.|Er\.|Dr\.|Sri|Smt)\s+/i, "").trim();
+  const nameInitial = (cleanName[0] || "T").toUpperCase();
+
+  // 6 random digits between 100000 and 999999
+  const randomDigits = Math.floor(100000 + Math.random() * 900000).toString();
+
+  return `ET${catCode}${nameInitial}${randomDigits}`;
+}
+
+export function deduceCategoriesAndAvatar(businessName?: string | null, contactPerson?: string | null, storeName?: string | null): { categories: string[]; primaryCategory: string; avatar: string } {
+  const text = `${businessName || ""} ${contactPerson || ""} ${storeName || ""}`.toLowerCase();
+  if (text.includes("plumb")) {
+    return { categories: ["Plumber"], primaryCategory: "plumber", avatar: "/images/technicians/plumber.webp" };
+  }
+  if (text.includes("electr")) {
+    return { categories: ["Electrician"], primaryCategory: "electrician", avatar: "/images/technicians/electrician.webp" };
+  }
+  if (text.includes("mason")) {
+    return { categories: ["Mason Worker"], primaryCategory: "mason-worker", avatar: "/images/technicians/mason-worker.webp" };
+  }
+  if (text.includes("paint")) {
+    return { categories: ["Painter"], primaryCategory: "painter", avatar: "/images/technicians/painter.webp" };
+  }
+  if (text.includes("weld")) {
+    return { categories: ["Welder"], primaryCategory: "welder", avatar: "/images/technicians/welder.webp" };
+  }
+  if (text.includes("carpent")) {
+    return { categories: ["Carpenter"], primaryCategory: "carpenter", avatar: "/images/technicians/carpenter.webp" };
+  }
+  if (text.includes("civil") || text.includes("engin") || text.includes("architect")) {
+    return { categories: ["Civil Engineer"], primaryCategory: "civil-engineer", avatar: "/images/technicians/civil-engineer.webp" };
+  }
+  return { categories: ["Plumber", "General Technician"], primaryCategory: "plumber", avatar: "/images/technicians/plumber.webp" };
+}
+
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth's radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -636,10 +694,13 @@ export async function loadBookings(
         (b.technicianName && t.name.toLowerCase() === String(b.technicianName).toLowerCase())
     );
     const bAddress = String(b.address || b.customerAddress || "");
+    const sId = String(b.serviceRequestId || b.bookingId || b.id || "");
     return {
       ...b,
-      id: b.id || b.bookingId,
-      bookingId: b.bookingId || b.id,
+      id: b.id || b.bookingId || sId,
+      bookingId: b.bookingId || b.id || sId,
+      serviceRequestId: sId,
+      orderId: sId,
       partnerId: b.partnerId || match?.partnerId || "",
       technicianId: b.technicianId || match?.id || "",
       technicianName: b.technicianName || match?.name || "Technician Partner",
@@ -828,6 +889,7 @@ techniciansRouter.get("/", async (req, res, next) => {
           );
           if (!alreadyInList) {
             const store = p.stores[0];
+            const catInfo = deduceCategoriesAndAvatar(p.businessName, p.contactPerson || p.user?.name, store?.name);
             const techFromDb: Technician = {
               id: p.id,
               partnerId: p.sellerId || generatePartnerId(),
@@ -835,9 +897,9 @@ techniciansRouter.get("/", async (req, res, next) => {
               mobile: p.user?.mobile || store?.phone || "",
               email: p.user?.email || "",
               businessName: p.businessName || store?.name || "Verified Technical Services",
-              categories: ["Technician"],
-              primaryCategory: "others",
-              tagline: `${p.businessName || "Professional"} Services`,
+              categories: catInfo.categories,
+              primaryCategory: catInfo.primaryCategory,
+              tagline: `${p.businessName || catInfo.categories[0]} Services`,
               addressLine1: store?.addressLine1 || "",
               city: store?.city || "Kakinada",
               state: store?.state || "Andhra Pradesh",
@@ -852,9 +914,9 @@ techniciansRouter.get("/", async (req, res, next) => {
               chargePerDay: 1800,
               originalPerHour: 450,
               discountPercent: 22,
-              avatar: "/images/technicians/plumber.webp",
+              avatar: catInfo.avatar,
               experienceYears: 5,
-              bio: `Verified professional technician providing quality services in ${store?.city || "your area"}.`,
+              bio: `Verified professional technician providing quality ${catInfo.categories.join(", ")} services in ${store?.city || "your area"}.`,
               rating: 5.0,
               reviewCount: 1,
               isAssured: true,
@@ -1256,6 +1318,7 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
         });
         if (profile) {
           const store = profile.stores?.[0];
+          const catInfo = deduceCategoriesAndAvatar(profile.businessName, profile.contactPerson || profile.user?.name, store?.name);
           tech = {
             id: profile.id,
             partnerId: profile.sellerId || req.params.id,
@@ -1263,9 +1326,9 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
             mobile: profile.user?.mobile || store?.phone || "",
             email: profile.user?.email || "",
             businessName: profile.businessName || store?.name || "Technical Services",
-            categories: ["Technician"],
-            primaryCategory: "others",
-            tagline: `${profile.businessName || "Professional"} Services`,
+            categories: catInfo.categories,
+            primaryCategory: catInfo.primaryCategory,
+            tagline: `${profile.businessName || catInfo.categories[0]} Services`,
             addressLine1: store?.addressLine1 || "",
             city: store?.city || "Kakinada",
             state: store?.state || "Andhra Pradesh",
@@ -1280,7 +1343,7 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
             chargePerDay: 1800,
             originalPerHour: 450,
             discountPercent: 22,
-            avatar: "/images/technicians/plumber.webp",
+            avatar: catInfo.avatar,
             experienceYears: 5,
             bio: "Verified technician partner.",
             rating: 5.0,
@@ -1301,10 +1364,16 @@ techniciansRouter.post("/:id/book", async (req, res, next) => {
       throw new HttpError(404, "NOT_FOUND", "Technician not found");
     }
 
-    const bookingId = `BOOK-${Date.now()}`;
+    const serviceRequestId = generateServiceRequestId(
+      input.serviceCategory || tech.categories[0] || tech.primaryCategory || "",
+      tech.name
+    );
+    const bookingId = serviceRequestId;
     const bookingRecord = {
       bookingId,
       id: bookingId,
+      serviceRequestId,
+      orderId: serviceRequestId,
       technicianId: tech.id,
       partnerId: tech.partnerId,
       technicianName: tech.name,

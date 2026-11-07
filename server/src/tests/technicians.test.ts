@@ -85,9 +85,14 @@ describe("Technician Approval & Live Nearest Customer Marketplace", () => {
     expect(booking.customerAddress).toBe("Flat 402, Sai Residency, Main Road, Karapa");
     expect(booking.estimatedTotal).toBe(600); // 300 * 2 hrs
     expect(booking.status).toBe("CONFIRMED");
+    // Verify Service Request ID pattern: ET<CategoryCode><TechInitial><6Digits>
+    // Plumber (P) + Prasad (P) -> ETPP...
+    expect(booking.serviceRequestId).toBeDefined();
+    expect(booking.serviceRequestId).toMatch(/^ET[A-Z]{2}\d{6}$/);
+    expect(booking.serviceRequestId.startsWith("ETPP")).toBe(true);
 
     // 6. Verify technician can load the booking with complete customer details
-    const { loadBookings } = await import("../modules/technicians/technicians.routes.js");
+    const { loadBookings, generateServiceRequestId } = await import("../modules/technicians/technicians.routes.js");
     const techBookings = await loadBookings(tech.partnerId);
     expect(techBookings.length).toBeGreaterThan(0);
     const foundBooking = techBookings.find((b: any) => b.customerPhone === "9848999888");
@@ -95,6 +100,17 @@ describe("Technician Approval & Live Nearest Customer Marketplace", () => {
     expect(foundBooking?.customerName).toBe("G. Nagaraju");
     expect(foundBooking?.address).toBe("Flat 402, Sai Residency, Main Road, Karapa");
     expect(foundBooking?.serviceCategory).toBe("Plumber");
+    expect(foundBooking?.serviceRequestId).toBeDefined();
+
+    // 7. Verify automated ID generator pattern for various technicians and trades
+    const sanjayPlumberId = generateServiceRequestId("Plumber", "Sanjay V");
+    expect(sanjayPlumberId).toMatch(/^ETPS\d{6}$/);
+
+    const rameshElectricianId = generateServiceRequestId("Electrician", "Ramesh Kumar");
+    expect(rameshElectricianId).toMatch(/^ETER\d{6}$/);
+
+    const masonId = generateServiceRequestId("Mason Worker", "Appa Rao");
+    expect(masonId).toMatch(/^ETMA\d{6}$/);
   });
 });
 

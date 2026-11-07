@@ -64,6 +64,7 @@ const professionals = [
 
 export function TechniciansGrid() {
   const [userAddress, setUserAddress] = useState(() => getSelectedAddress() || DEFAULT_CONSTRUCTION_SITE);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const userLat = userAddress.latitude || 16.9891;
   const userLng = userAddress.longitude || 82.2475;
 
@@ -76,9 +77,17 @@ export function TechniciansGrid() {
   }, []);
 
   const { data: nearbyTechnicians = [], isLoading } = useQuery({
-    queryKey: ["homepage-nearest-technicians", userLat, userLng],
-    queryFn: () => marketplaceApi.getTechnicians({ lat: userLat, lng: userLng, sort: "nearest" })
+    queryKey: ["homepage-nearest-technicians", userLat, userLng, selectedCategory],
+    queryFn: () =>
+      marketplaceApi.getTechnicians({
+        lat: userLat,
+        lng: userLng,
+        category: selectedCategory === "all" ? undefined : selectedCategory,
+        sort: "nearest"
+      })
   });
+
+  const activePro = professionals.find((p) => p.slug === selectedCategory);
 
   return (
     <section className="mx-auto max-w-7xl px-3 py-3 sm:px-4 sm:py-5 lg:px-6">
@@ -102,52 +111,70 @@ export function TechniciansGrid() {
                 )}
               </div>
               <p className="text-[10px] font-medium text-red-950/85 sm:text-[11px] leading-tight">
-                Hire verified local service experts near you
+                Hire verified local service experts near you • Nearest sorted first
               </p>
             </div>
           </div>
           <Link
-            to="/technicians"
+            to={selectedCategory !== "all" ? `/technicians?category=${selectedCategory}` : "/technicians"}
             className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 rounded-full bg-white px-3 py-1 text-[11px] font-bold text-etukas-red shadow-sm transition-all hover:bg-gray-50 active:scale-95 sm:text-xs"
           >
-            View All <ArrowRight size={13} />
+            {selectedCategory !== "all" ? `View All ${activePro?.name}s` : "View All"} <ArrowRight size={13} />
           </Link>
         </div>
 
-        {/* Scrollable category grid strip */}
+        {/* Scrollable category grid strip with interactive selection */}
         <div className="flex gap-2 overflow-x-auto pb-1 pt-1.5 sm:gap-2.5 no-scrollbar md:grid md:grid-cols-4 lg:grid-cols-8 md:overflow-visible">
-          {professionals.map((pro) => (
-            <Link
-              key={pro.slug}
-              to={`/technicians?category=${pro.slug}`}
-              className="group flex min-w-[124px] max-w-[140px] flex-1 flex-col items-center justify-between rounded-2xl bg-white p-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3"
-            >
-              {/* Image container: clean white, large character */}
-              <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gray-50/50 p-1 transition-transform duration-200 group-hover:scale-105">
-                <img
-                  src={pro.image}
-                  alt={pro.name}
-                  className="h-full w-full object-contain drop-shadow-sm transition-transform duration-200 group-hover:scale-110"
-                  loading="lazy"
-                />
-              </div>
+          {professionals.map((pro) => {
+            const isSelected = selectedCategory === pro.slug;
+            return (
+              <button
+                type="button"
+                key={pro.slug}
+                onClick={() => setSelectedCategory(isSelected ? "all" : pro.slug)}
+                className={`group flex min-w-[124px] max-w-[140px] flex-1 flex-col items-center justify-between rounded-2xl bg-white p-2.5 text-center shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md active:scale-95 sm:min-w-0 sm:max-w-none sm:p-3 relative text-left ${
+                  isSelected ? "ring-3 ring-etukas-red shadow-md scale-[1.02]" : "border border-transparent"
+                }`}
+              >
+                {isSelected && (
+                  <span className="absolute -top-1.5 right-2 rounded-full bg-etukas-red px-1.5 py-0.5 text-[8px] font-black uppercase text-white shadow">
+                    Active
+                  </span>
+                )}
 
-              {/* Title & Tagline */}
-              <div className="mt-1.5 w-full">
-                <span className="line-clamp-1 w-full text-[11px] font-extrabold text-gray-900 transition-colors group-hover:text-etukas-red sm:text-xs">
-                  {pro.name}
-                </span>
-                <span className="mt-0.5 block line-clamp-1 text-[9px] font-medium text-gray-500 sm:text-[10px]">
-                  {pro.tagline}
-                </span>
-              </div>
+                {/* Image container: clean white, large character */}
+                <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-gray-50/50 p-1 transition-transform duration-200 group-hover:scale-105">
+                  <img
+                    src={pro.image}
+                    alt={pro.name}
+                    className="h-full w-full object-contain drop-shadow-sm transition-transform duration-200 group-hover:scale-110"
+                    loading="lazy"
+                  />
+                </div>
 
-              {/* Reduced size Book Service button in Etukas Red */}
-              <span className="mt-1.5 inline-flex items-center justify-center rounded-full bg-etukas-red px-2 py-0.5 text-[9px] font-bold text-white shadow-xs transition-all duration-150 group-hover:brightness-110 sm:text-[10px]">
-                Book Service
-              </span>
-            </Link>
-          ))}
+                {/* Title & Tagline */}
+                <div className="mt-1.5 w-full text-center">
+                  <span className={`line-clamp-1 w-full text-[11px] font-extrabold transition-colors sm:text-xs ${
+                    isSelected ? "text-etukas-red font-black" : "text-gray-900 group-hover:text-etukas-red"
+                  }`}>
+                    {pro.name}
+                  </span>
+                  <span className="mt-0.5 block line-clamp-1 text-[9px] font-medium text-gray-500 sm:text-[10px]">
+                    {pro.tagline}
+                  </span>
+                </div>
+
+                {/* Book Service indicator / button */}
+                <span className={`mt-1.5 inline-flex items-center justify-center rounded-full px-2 py-0.5 text-[9px] font-bold shadow-xs transition-all duration-150 sm:text-[10px] ${
+                  isSelected
+                    ? "bg-emerald-700 text-white"
+                    : "bg-etukas-red text-white group-hover:brightness-110"
+                }`}>
+                  {isSelected ? "Showing Nearest ✓" : "Book Service"}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {/* Live Nearest Technicians Service Cards Section */}
@@ -157,12 +184,24 @@ export function TechniciansGrid() {
               <div className="flex items-center gap-1.5">
                 <ShieldCheck size={15} className="text-emerald-800" />
                 <h3 className="text-xs font-black uppercase tracking-wider text-red-950 sm:text-sm">
-                  Nearest Verified Experts Available Live
+                  {selectedCategory !== "all"
+                    ? `Nearest Verified ${activePro?.name}s Available Live`
+                    : "Nearest Verified Experts Available Live"}
                 </h3>
               </div>
-              <span className="text-[10px] font-bold text-red-900 sm:text-xs">
-                Sorted by distance
-              </span>
+              <div className="flex items-center gap-2">
+                {selectedCategory !== "all" && (
+                  <button
+                    onClick={() => setSelectedCategory("all")}
+                    className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold text-etukas-red hover:bg-white transition"
+                  >
+                    Clear Filter (Show All)
+                  </button>
+                )}
+                <span className="text-[10px] font-bold text-red-900 sm:text-xs">
+                  Sorted by distance
+                </span>
+              </div>
             </div>
 
             <div className="flex gap-2.5 overflow-x-auto pb-1 no-scrollbar sm:grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 sm:overflow-visible">
@@ -224,7 +263,7 @@ export function TechniciansGrid() {
                     </div>
 
                     <Link
-                      to={`/technicians?techId=${encodeURIComponent(tech.id)}`}
+                      to={`/technicians?category=${encodeURIComponent(selectedCategory !== "all" ? selectedCategory : tech.primaryCategory)}&techId=${encodeURIComponent(tech.id)}`}
                       className="inline-flex items-center justify-center rounded-lg bg-etukas-red px-2.5 py-1 text-[10px] font-bold text-white shadow-xs transition hover:brightness-110 active:scale-95"
                     >
                       Book Service

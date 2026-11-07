@@ -24,6 +24,7 @@ import {
   Package,
   ArrowRight,
   RefreshCw,
+  Wrench,
 } from "lucide-react";
 import { SellerGroupSection } from "./SellerGroup";
 import { OrderSummary } from "./OrderSummary";
@@ -245,6 +246,32 @@ export function CartPage() {
               Clear Cart
             </button>
           )}
+        </div>
+
+        {/* Booked Service Requests Tracker Banner */}
+        <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50/70 p-3.5 sm:p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-orange-600">
+                <Wrench size={16} />
+              </span>
+              <div>
+                <p className="text-xs font-bold text-gray-900">
+                  Booked Technicians & Professionals Services
+                </p>
+                <p className="text-[11px] text-gray-600">
+                  Track your booked service requests (e.g. ID <span className="font-mono font-bold text-orange-700">ETPS...</span>), technician appointments, and status.
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/account?tab=services"
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-orange-500 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-orange-600 transition active:scale-95"
+            >
+              <span>View Booked Services</span>
+              <ArrowRight size={13} />
+            </Link>
+          </div>
         </div>
 
         {/* Content area */}
