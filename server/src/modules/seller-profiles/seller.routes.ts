@@ -1,4 +1,4 @@
-import { loadTechnicians } from "../technicians/technicians.routes.js";
+import { loadTechnicians, loadBookings } from "../technicians/technicians.routes.js";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -122,15 +122,33 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
   try {
     const profile = await sellerProfile(req.user!.id, req.user?.email);
     if ((profile as any).isTechnician) {
-      const tech = loadTechnicians().find((t) => t.id === req.user!.id || t.email.toLowerCase() === req.user?.email.toLowerCase());
+      const tech = loadTechnicians().find((t) =>
+        t.id === req.user!.id ||
+        t.partnerId === req.user!.id ||
+        t.partnerId === profile.sellerId ||
+        (req.user?.email && t.email.toLowerCase() === req.user.email.toLowerCase())
+      );
+      const identifiers = [
+        tech?.id,
+        tech?.partnerId,
+        tech?.mobile,
+        tech?.email,
+        profile.sellerId,
+        profile.id,
+        req.user!.id
+      ].filter(Boolean) as string[];
+      const bookings = loadBookings(identifiers);
+      const revenueMinor = bookings
+        .filter((b: any) => b.status === "CONFIRMED" || b.status === "COMPLETED")
+        .reduce((sum: number, b: any) => sum + (Number(b.estimatedTotal) || 0) * 100, 0);
       return sendOk(res, {
         sellerId: profile.sellerId,
         businessName: profile.businessName,
         contactPerson: profile.contactPerson,
-        totalOrders: 0,
+        totalOrders: bookings.length,
         productsListed: tech ? tech.categories.length : 1,
         lowStockProducts: 0,
-        revenueMinor: 0,
+        revenueMinor,
         verificationStatus: profile.verificationStatus
       });
     }
