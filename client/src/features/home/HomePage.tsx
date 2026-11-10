@@ -4,7 +4,7 @@ import { ArrowRight, Check, MapPin, Search, ShoppingBag, Star, X } from "lucide-
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
-import { useProducts, useStores } from "../../hooks/useMarketplace";
+import { useProducts, useStores, usePublicBanners, usePublicAdBanners } from "../../hooks/useMarketplace";
 import { formatMoney } from "../../lib/utils";
 import type { StoreProduct } from "../../services/api";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
@@ -196,8 +196,8 @@ export function HomePage() {
     window.addEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
     return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
   }, []);
-  const banners = useQuery({ queryKey: ["home", "banners"], queryFn: marketplaceApi.publicBanners });
-  const adBanners = useQuery({ queryKey: ["home", "ad-banners"], queryFn: marketplaceApi.publicAdBanners });
+  const banners = usePublicBanners();
+  const adBanners = usePublicAdBanners();
   const sectionOneAds = adBanners.data?.filter((banner) => banner.section === 1) ?? [];
   const sectionTwoAds = adBanners.data?.filter((banner) => banner.section === 2) ?? [];
   const sectionThreeAds = adBanners.data?.filter((banner) => banner.section === 3) ?? [];

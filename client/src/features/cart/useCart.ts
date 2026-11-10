@@ -15,7 +15,7 @@ export const CART_QUERY_KEY = ["cart"] as const;
 export function useCartQuery() {
   return useQuery({
     queryKey: CART_QUERY_KEY,
-    queryFn: marketplaceApi.cart,
+    queryFn: ({ signal }) => marketplaceApi.cart({ signal }),
     retry: false,
   });
 }

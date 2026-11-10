@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import { Handshake, LogOut, MapPin, Menu, Search, ShoppingCart, UserRound } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useMobileScrollState } from "../../hooks/useMobileScrollState";
+import { useCartQuery } from "../../features/cart/useCart";
 import { Logo } from "../common/Logo";
 import { Input } from "../ui/Input";
 import { MobileNav } from "./MobileNav";
@@ -24,12 +24,7 @@ export function Header() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [deliveryLabel, setDeliveryLabel] = useState(getDeliveryLabel);
 
-  const cartQuery = useQuery({
-    queryKey: ["cart"],
-    queryFn: marketplaceApi.cart,
-    enabled: !!currentUser,
-    retry: false
-  });
+  const cartQuery = useCartQuery();
   const cartCount = cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
 
   useEffect(() => {

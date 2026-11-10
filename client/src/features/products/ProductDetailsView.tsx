@@ -1,4 +1,4 @@
-﻿import { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -21,7 +21,7 @@ import { StoreProduct, getProductImageUrl } from "../../services/api";
 import { formatMoney } from "../../lib/utils";
 import { getSelectedAddress } from "../location/locationStore";
 import { useAddToCart } from "../../hooks/useAddToCart";
-import { useQuery } from "@tanstack/react-query";
+import { useCartQuery } from "../cart/useCart";
 import { marketplaceApi } from "../../services/api";
 import { getStoredUser } from "../../services/api";
 
@@ -118,12 +118,7 @@ export function ProductDetailsView({
   const { addToCart, isLoading: isAdding, notice } = useAddToCart();
   const currentUser = getStoredUser();
 
-  const cartQuery = useQuery({
-    queryKey: ["cart"],
-    queryFn: marketplaceApi.cart,
-    enabled: !!currentUser,
-    retry: false
-  });
+  const cartQuery = useCartQuery();
   const cartCount = cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
 
   // Detect category type

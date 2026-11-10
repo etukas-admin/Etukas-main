@@ -101,4 +101,38 @@ describe("api service", () => {
       ).rejects.toThrowError(/Backend API returned an HTML page/);
     });
   });
+
+  describe("AbortSignal and request cancellation", () => {
+    beforeEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("immediately rejects with AbortError when signal is pre-aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(
+        marketplaceApi.categories({ signal: controller.signal })
+      ).rejects.toThrowError(/aborted/);
+    });
+
+    it("forwards AbortSignal to fetch and propagates AbortError when aborted in-flight", async () => {
+      const controller = new AbortController();
+
+      vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            const err = new Error("The operation was aborted");
+            err.name = "AbortError";
+            reject(err);
+          });
+        });
+      });
+
+      const promise = marketplaceApi.products(undefined, { signal: controller.signal });
+      controller.abort();
+
+      await expect(promise).rejects.toThrowError(/aborted/);
+    });
+  });
 });

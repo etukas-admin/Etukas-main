@@ -2,14 +2,15 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock } from "lucide-react";
 import { marketplaceApi } from "../../services/api";
+import { queryKeys } from "../../lib/queryKeys";
 import { OrderConfirmedView } from "./OrderConfirmedView";
 
 export function OrderConfirmedPage() {
   const { orderId } = useParams<{ orderId: string }>();
 
   const { data: order, isLoading, error } = useQuery({
-    queryKey: ["order-details", orderId],
-    queryFn: () => marketplaceApi.getOrder(orderId || ""),
+    queryKey: queryKeys.orders.detail(orderId || ""),
+    queryFn: ({ signal }) => marketplaceApi.getOrder(orderId || "", { signal }),
     enabled: Boolean(orderId)
   });
 

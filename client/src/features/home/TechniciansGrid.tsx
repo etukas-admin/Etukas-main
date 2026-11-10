@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { marketplaceApi, type Technician } from "../../services/api";
 import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, ADDRESS_CHANGE_EVENT } from "../location/locationStore";
 import { createSafeImageHandler, FALLBACK_TECHNICIAN_IMAGE } from "../../utils/imageFallback";
+import { useTechnicians } from "../../hooks/useTechnicians";
 
 /**
  * Professional / technician categories and live nearest verified technician cards
@@ -77,15 +78,11 @@ export function TechniciansGrid() {
     return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, onAddressChange);
   }, []);
 
-  const { data: nearbyTechnicians = [], isLoading } = useQuery({
-    queryKey: ["homepage-nearest-technicians", userLat, userLng, selectedCategory],
-    queryFn: () =>
-      marketplaceApi.getTechnicians({
-        lat: userLat,
-        lng: userLng,
-        category: selectedCategory === "all" ? undefined : selectedCategory,
-        sort: "nearest"
-      })
+  const { data: nearbyTechnicians = [], isLoading } = useTechnicians({
+    lat: userLat,
+    lng: userLng,
+    category: selectedCategory === "all" ? undefined : selectedCategory,
+    sort: "nearest"
   });
 
   const activePro = professionals.find((p) => p.slug === selectedCategory);

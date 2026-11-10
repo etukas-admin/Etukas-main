@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -103,7 +103,7 @@ export function CheckoutPage() {
   const [items, setItems] = useState(initialItems);
 
   // Sync items when cart data arrives
-  useMemo(() => {
+  useEffect(() => {
     if (cartQuery.data && cartQuery.data.items.length > 0) {
       setItems(
         cartQuery.data.items.map((item) => ({
