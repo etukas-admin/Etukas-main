@@ -33,6 +33,7 @@ import {
 } from "../../services/api";
 import { useCartQuery } from "../cart/useCart";
 import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, type DeliveryAddress } from "../location/locationStore";
+import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 import { formatMoney } from "../../lib/utils";
 import { OrderConfirmedView } from "./OrderConfirmedView";
 
@@ -75,7 +76,7 @@ export function CheckoutPage() {
         quantity: item.quantity,
         priceMinor: item.storeProduct.priceMinor,
         originalPriceMinor: Math.round(item.storeProduct.priceMinor * 1.3),
-        imageUrl: item.storeProduct.product.images?.[0]?.url || "/images/categories/cement.webp",
+        imageUrl: item.storeProduct.product.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
         category: item.storeProduct.product.category?.name || "Building Material",
         storeId: item.storeProduct.store.id,
         storeName: "Etukas Verified Partner Store"
@@ -91,7 +92,7 @@ export function CheckoutPage() {
         quantity: 25,
         priceMinor: 38500,
         originalPriceMinor: 48000,
-        imageUrl: "/images/categories/cement.webp",
+        imageUrl: FALLBACK_PRODUCT_IMAGE,
         category: "Cement",
         storeId: "store-kakinada-1",
         storeName: "Sri Lakshmi Building Materials"
@@ -113,7 +114,7 @@ export function CheckoutPage() {
           quantity: item.quantity,
           priceMinor: item.storeProduct.priceMinor,
           originalPriceMinor: Math.round(item.storeProduct.priceMinor * 1.3),
-          imageUrl: item.storeProduct.product.images?.[0]?.url || "/images/categories/cement.webp",
+          imageUrl: item.storeProduct.product.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
           category: item.storeProduct.product.category?.name || "Building Material",
           storeId: item.storeProduct.store.id,
           storeName: "Etukas Verified Partner Store"
@@ -525,9 +526,7 @@ export function CheckoutPage() {
                         src={item.imageUrl}
                         alt={item.productName}
                         className="h-full w-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/images/categories/cement.webp";
-                        }}
+                        onError={createSafeImageHandler(FALLBACK_PRODUCT_IMAGE)}
                       />
                     </div>
 

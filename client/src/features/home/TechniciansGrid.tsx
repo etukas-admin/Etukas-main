@@ -4,6 +4,7 @@ import { ArrowRight, Sparkles, MapPin, Star, BadgeCheck, Clock, ShieldCheck } fr
 import { useQuery } from "@tanstack/react-query";
 import { marketplaceApi, type Technician } from "../../services/api";
 import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, ADDRESS_CHANGE_EVENT } from "../location/locationStore";
+import { createSafeImageHandler, FALLBACK_TECHNICIAN_IMAGE } from "../../utils/imageFallback";
 
 /**
  * Professional / technician categories and live nearest verified technician cards
@@ -214,12 +215,10 @@ export function TechniciansGrid() {
                     {/* Avatar */}
                     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-gray-100 p-1">
                       <img
-                        src={tech.avatar || "/images/technicians/plumber.webp"}
+                        src={tech.avatar || FALLBACK_TECHNICIAN_IMAGE}
                         alt={tech.name}
                         className="h-full w-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/images/technicians/plumber.webp";
-                        }}
+                        onError={createSafeImageHandler(FALLBACK_TECHNICIAN_IMAGE)}
                       />
                       <span className="absolute bottom-0 right-0 rounded-xs bg-emerald-600 px-1 text-[8px] font-extrabold text-white">
                         LIVE
