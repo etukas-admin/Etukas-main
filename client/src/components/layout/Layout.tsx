@@ -7,6 +7,9 @@ import { UserChatWidget } from "../chat/UserChatWidget";
 export function Layout() {
   const location = useLocation();
   const isCategoriesPage = location.pathname === "/categories";
+  const isHomePage = location.pathname === "/";
+  const isCheckoutPage = location.pathname === "/checkout";
+  const isOrderPage = location.pathname.startsWith("/order-confirmed");
   const isPartnerPage =
     location.pathname === "/partner-hub" ||
     location.pathname === "/seller-hub" ||
@@ -14,14 +17,14 @@ export function Layout() {
     location.pathname === "/seller";
 
   return (
-    <div className={`min-h-screen ${isPartnerPage ? "bg-slate-950 pb-0" : "bg-white pb-16 md:pb-0"}`}>
+    <div className={`min-h-screen ${isPartnerPage ? "bg-slate-950 pb-0" : isCheckoutPage || isOrderPage ? "bg-white pb-0 md:pb-0" : "bg-white pb-16 md:pb-0"}`}>
       {/* Dynamic Header: Dedicated PartnerHeader for Partner pages, default Header for Customer store */}
       {isCategoriesPage ? null : isPartnerPage ? <PartnerHeader /> : <Header />}
 
       {/* Page Content */}
       <Outlet />
 
-      {/* Dynamic Footer: Dedicated Partner Footer on Partner pages, regular footer on Customer pages */}
+      {/* Dynamic Footer: Dedicated Partner Footer on Partner pages, regular footer on Homepage only */}
       {isCategoriesPage ? null : isPartnerPage ? (
         <footer className="border-t border-slate-800 bg-slate-950 px-4 py-12 text-slate-400">
           <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
@@ -68,7 +71,7 @@ export function Layout() {
             </div>
           </div>
         </footer>
-      ) : (
+      ) : isHomePage ? (
         <footer className="border-t border-gray-100 bg-etukas-black px-4 py-6 text-white md:py-8">
           <div className="mx-auto max-w-7xl rounded-[18px] border border-white/10 bg-[#0b0b0b] px-4 py-6 sm:px-5 md:px-7 md:py-7 lg:px-8">
             <div className="mb-6">
@@ -127,10 +130,10 @@ export function Layout() {
             </div>
           </div>
         </footer>
-      )}
+      ) : null}
 
-      {/* Customer bottom navigation is shown only on customer pages */}
-      {isPartnerPage ? null : <BottomNav />}
+      {/* Customer bottom navigation is shown only on customer pages (not on checkout or order pages) */}
+      {isPartnerPage || isCheckoutPage || isOrderPage ? null : <BottomNav />}
 
       {/* Floating Chat Widget for direct User/Partner with Admin interaction */}
       <UserChatWidget />

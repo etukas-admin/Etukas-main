@@ -807,7 +807,7 @@ export function CheckoutPage() {
                       type="button"
                       disabled={orderMutation.isPending}
                       onClick={handlePlaceOrder}
-                      className="w-full rounded-2xl bg-[#ffd814] hover:bg-[#f7ca00] text-gray-950 py-3.5 px-6 font-black text-sm sm:text-base shadow-md active:scale-98 transition flex items-center justify-center gap-2"
+                      className="w-full rounded-2xl bg-etukas-red hover:bg-red-700 text-white py-3.5 px-6 font-black text-sm sm:text-base shadow-md active:scale-98 transition flex items-center justify-center gap-2"
                     >
                       {orderMutation.isPending ? (
                         <>
@@ -940,7 +940,7 @@ export function CheckoutPage() {
             <button
               type="button"
               onClick={() => setCurrentStep(3)}
-              className="rounded-2xl bg-[#ffd814] hover:bg-[#f7ca00] text-gray-950 px-8 sm:px-12 py-3 text-sm font-black shadow-md transition active:scale-95"
+              className="rounded-2xl bg-etukas-red hover:bg-red-700 text-white px-8 sm:px-12 py-3 text-sm font-black shadow-md transition active:scale-95"
             >
               Continue
             </button>
