@@ -33,7 +33,7 @@ import { techniciansRouter } from "./modules/technicians/technicians.routes.js";
 import { chatRouter, adminChatRouter } from "./modules/chat/chat.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
-import { requireCsrf } from "./middleware/security.js";
+import { apiLimiter, requireCsrf } from "./middleware/security.js";
 import { HttpError, sendOk } from "./utils/http.js";
 
 export function createApp() {
@@ -163,6 +163,7 @@ export function createApp() {
   app.get("/api/v1/health", (_req, res) => sendOk(res, { status: "ok", service: "etukas-api" }));
   app.get("/health/db", dbHealthHandler);
   app.get("/api/v1/health/db", dbHealthHandler);
+  app.use("/api/v1", apiLimiter);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/categories", categoriesRouter);
   app.use("/api/v1/products", productsRouter);

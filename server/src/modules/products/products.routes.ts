@@ -92,7 +92,23 @@ productsRouter.get("/", async (req, res, next) => {
     const [items, total] = await Promise.all([
       prisma.storeProduct.findMany({
         where,
-        include: { product: { include: { category: true, images: true } }, store: true },
+        include: {
+          product: {
+            include: {
+              category: true,
+              images: {
+                select: {
+                  id: true,
+                  productId: true,
+                  url: true,
+                  altText: true,
+                  sortOrder: true
+                }
+              }
+            }
+          },
+          store: true
+        },
         orderBy,
         skip,
         take: query.pageSize
@@ -113,7 +129,23 @@ productsRouter.get("/:id", async (req, res, next) => {
         isActive: true,
         store: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } }
       },
-      include: { product: { include: { category: true, images: true } }, store: true }
+      include: {
+        product: {
+          include: {
+            category: true,
+            images: {
+              select: {
+                id: true,
+                productId: true,
+                url: true,
+                altText: true,
+                sortOrder: true
+              }
+            }
+          }
+        },
+        store: true
+      }
     });
     if (!item) throw new HttpError(404, "PRODUCT_NOT_FOUND", "Product listing not found");
     return sendOk(res, formatStoreProduct(item));

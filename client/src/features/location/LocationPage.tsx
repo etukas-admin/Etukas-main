@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { useDebounce } from "../../hooks/useDebounce";
 import {
   ArrowLeft,
   ArrowRight,
@@ -70,6 +71,7 @@ export function LocationPage() {
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 400);
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
   const [locating, setLocating] = useState(false);
@@ -109,26 +111,38 @@ export function LocationPage() {
     }));
   };
 
-  // Search places via Nominatim
-  const handleSearch = async (val: string) => {
-    setSearchQuery(val);
-    if (!val.trim() || val.length < 3) {
+  // Debounced search places via Nominatim
+  useEffect(() => {
+    const val = debouncedSearchQuery.trim();
+    if (!val || val.length < 3) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
+
+    const controller = new AbortController();
     setSearching(true);
-    try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&countrycodes=in&limit=5`);
-      if (res.ok) {
-        const data = await res.json();
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}&countrycodes=in&limit=5`, {
+      signal: controller.signal
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
         setSearchResults(data);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setSearching(false);
-    }
-  };
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          // ignore network failure
+        }
+      })
+      .finally(() => {
+        setSearching(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedSearchQuery]);
 
   const selectSearchResult = (item: { display_name: string; lat: string; lon: string }) => {
     const lat = parseFloat(item.lat);
@@ -334,7 +348,7 @@ export function LocationPage() {
                     <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-etukas-red" />
                     <input
                       value={searchQuery}
-                      onChange={(e) => handleSearch(e.target.value)}
+                      onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Search village, city, mandal or PIN code..."
                       className="h-11 w-full rounded-xl border border-etukas-red bg-stone-50/70 pl-10 pr-4 text-xs font-medium outline-none transition focus:border-etukas-red focus:bg-white focus:ring-4 focus:ring-etukas-pink"
                     />

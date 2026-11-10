@@ -12,11 +12,12 @@ export function AdminNotificationsDropdown({ onNavigate }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
 
-  // Poll notifications every 5s
+  // Poll notifications every 15s (disabled in background)
   const { data: notifications = [] } = useQuery<AdminNotification[]>({
     queryKey: ["admin", "notifications"],
-    queryFn: () => marketplaceApi.adminNotifications(),
-    refetchInterval: 5000
+    queryFn: ({ signal }) => marketplaceApi.adminNotifications(undefined, { signal }),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false
   });
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;

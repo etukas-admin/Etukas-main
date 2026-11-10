@@ -225,7 +225,23 @@ sellerRouter.get("/products", async (req, res, next) => {
     const profile = await sellerProfile(req.user!.id);
     const listings = await prisma.storeProduct.findMany({
       where: { store: { sellerProfileId: profile.id } },
-      include: { product: { include: { images: true, category: true } }, store: true },
+      include: {
+        product: {
+          include: {
+            images: {
+              select: {
+                id: true,
+                productId: true,
+                url: true,
+                altText: true,
+                sortOrder: true
+              }
+            },
+            category: true
+          }
+        },
+        store: true
+      },
       orderBy: { updatedAt: "desc" }
     });
     const formattedListings = listings.map((listing) => ({

@@ -119,14 +119,15 @@ export function SellerDashboard() {
   // Queries
   const { data: dashboardData } = useQuery({
     queryKey: ["seller-dashboard"],
-    queryFn: () => marketplaceApi.sellerDashboard().catch(() => null),
-    refetchInterval: 3000
+    queryFn: ({ signal }) => marketplaceApi.sellerDashboard({ signal }).catch(() => null),
+    refetchInterval: 30000,
+    refetchIntervalInBackground: false
   });
 
   const { data: profileData } = useQuery({
     queryKey: ["seller-profile"],
-    queryFn: () => marketplaceApi.sellerProfile().catch(() => null),
-    refetchInterval: 3000
+    queryFn: ({ signal }) => marketplaceApi.sellerProfile({ signal }).catch(() => null),
+    staleTime: 60 * 1000
   });
 
   // Older technician sessions and API responses may not carry the explicit
@@ -140,7 +141,7 @@ export function SellerDashboard() {
 
   const technicianProfileQuery = useQuery({
     queryKey: ["technician-profile", profileData?.sellerId],
-    queryFn: () => marketplaceApi.getTechnician(profileData!.sellerId),
+    queryFn: ({ signal }) => marketplaceApi.getTechnician(profileData!.sellerId, undefined, undefined, { signal }),
     enabled: isTechnician
   });
 
@@ -158,8 +159,9 @@ export function SellerDashboard() {
 
   const partnerOrdersQuery = useQuery({
     queryKey: ["partner-orders"],
-    queryFn: () => marketplaceApi.getSellerOrders().catch(() => []),
-    refetchInterval: 5000
+    queryFn: ({ signal }) => marketplaceApi.getSellerOrders({ signal }).catch(() => []),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false
   });
 
   const partnerOrders = partnerOrdersQuery.data || [];
@@ -183,16 +185,16 @@ export function SellerDashboard() {
 
   const technicianBookingsQuery = useQuery({
     queryKey: ["technician-bookings", profileData?.sellerId],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        const res = await marketplaceApi.getTechnicianMyBookings();
+        const res = await marketplaceApi.getTechnicianMyBookings({ signal });
         if (Array.isArray(res) && res.length > 0) return res;
       } catch (err) {
         console.warn("Could not fetch /me/bookings:", err);
       }
       if (profileData?.sellerId) {
         try {
-          const res = await marketplaceApi.getTechnicianBookings(profileData.sellerId);
+          const res = await marketplaceApi.getTechnicianBookings(profileData.sellerId, { signal });
           if (Array.isArray(res) && res.length > 0) return res;
         } catch (err) {
           console.warn("Could not fetch /bookings by sellerId:", err);
@@ -201,7 +203,8 @@ export function SellerDashboard() {
       return [];
     },
     enabled: isTechnician,
-    refetchInterval: 3000
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false
   });
 
   const updateBookingStatusMutation = useMutation({
@@ -214,7 +217,7 @@ export function SellerDashboard() {
 
   const sellerProductsQuery = useQuery({
     queryKey: ["seller-products"],
-    queryFn: marketplaceApi.sellerProducts
+    queryFn: ({ signal }) => marketplaceApi.sellerProducts({ signal })
   });
 
   const addProductMutation = useMutation({

@@ -187,9 +187,10 @@ export function AdminDashboard() {
 
   const adminOrders = useQuery({
     queryKey: ["admin", "orders"],
-    queryFn: () => marketplaceApi.getAdminOrders().catch(() => []),
+    queryFn: ({ signal }) => marketplaceApi.getAdminOrders({ signal }).catch(() => []),
     enabled: Boolean(sessionUser),
-    refetchInterval: 5000
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false
   });
 
   const updateAdminOrderTracking = useMutation({
@@ -201,20 +202,41 @@ export function AdminDashboard() {
     }
   });
 
-  const me = useQuery({ queryKey: ["admin", "me"], queryFn: marketplaceApi.me, enabled: Boolean(sessionUser), retry: false });
-  const sellers = useQuery({ queryKey: ["admin", "sellers"], queryFn: marketplaceApi.adminSellers, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
-  const banners = useQuery({ queryKey: ["admin", "banners"], queryFn: marketplaceApi.adminBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
-  const adBanners = useQuery({ queryKey: ["admin", "ad-banners"], queryFn: marketplaceApi.adminAdBanners, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
-  const enquiries = useQuery({ queryKey: ["admin", "seller-enquiries"], queryFn: marketplaceApi.adminSellerEnquiries, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
+  const me = useQuery({
+    queryKey: ["admin", "me"],
+    queryFn: ({ signal }) => marketplaceApi.me({ signal }),
+    enabled: Boolean(sessionUser),
+    retry: false
+  });
+  const sellers = useQuery({
+    queryKey: ["admin", "sellers"],
+    queryFn: ({ signal }) => marketplaceApi.adminSellers({ signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN"))
+  });
+  const banners = useQuery({
+    queryKey: ["admin", "banners"],
+    queryFn: ({ signal }) => marketplaceApi.adminBanners({ signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN"))
+  });
+  const adBanners = useQuery({
+    queryKey: ["admin", "ad-banners"],
+    queryFn: ({ signal }) => marketplaceApi.adminAdBanners({ signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN"))
+  });
+  const enquiries = useQuery({
+    queryKey: ["admin", "seller-enquiries"],
+    queryFn: ({ signal }) => marketplaceApi.adminSellerEnquiries({ signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN"))
+  });
   const chatSessions = useQuery({
     queryKey: ["admin", "chat", "sessions"],
-    queryFn: marketplaceApi.adminChatSessions,
+    queryFn: ({ signal }) => marketplaceApi.adminChatSessions({ signal }),
     enabled: Boolean(me.data?.roles.includes("ADMIN")),
-    refetchInterval: 5000
+    staleTime: 30000
   });
   const selectedEnquiry = useQuery({
     queryKey: ["admin", "seller-enquiries", selectedEnquiryId],
-    queryFn: () => marketplaceApi.adminSellerEnquiry(selectedEnquiryId!),
+    queryFn: ({ signal }) => marketplaceApi.adminSellerEnquiry(selectedEnquiryId!, { signal }),
     enabled: Boolean(me.data?.roles.includes("ADMIN") && selectedEnquiryId)
   });
 
