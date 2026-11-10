@@ -27,6 +27,7 @@ import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, ADDRESS_CHANGE_EVENT } f
 import { AVAILABLE_SKILLS, DISTANCE_OPTIONS, TECHNICIAN_AVATARS } from "./technicianAvatars";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
+import { createSafeImageHandler, FALLBACK_TECHNICIAN_IMAGE } from "../../utils/imageFallback";
 
 export function TechniciansPage() {
   const navigate = useNavigate();
@@ -613,14 +614,11 @@ export function TechniciansPage() {
                     {/* Technician Avatar / Illustration */}
                     <div className="flex h-full w-full items-center justify-center">
                       <img
-                        src={tech.avatar || "/images/technicians/plumber.webp"}
+                        src={tech.avatar || FALLBACK_TECHNICIAN_IMAGE}
                         alt={tech.name}
                         className="h-full w-full object-contain drop-shadow-md transition-transform duration-300 group-hover:scale-105"
                         loading="lazy"
-                        onError={(e) => {
-                          // Fallback to default technician icon
-                          (e.target as HTMLImageElement).src = "/images/technicians/plumber.webp";
-                        }}
+                        onError={createSafeImageHandler(FALLBACK_TECHNICIAN_IMAGE)}
                       />
                     </div>
 

@@ -4,6 +4,7 @@ import { CheckCircle2, Copy, Check, MapPin, Phone, ShoppingBag, ArrowRight, Truc
 import type { OrderRecord } from "../../services/api";
 import { DeliveryStepsTracker } from "./DeliveryStepsTracker";
 import { formatMoney } from "../../lib/utils";
+import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 
 export function OrderConfirmedView({ order }: { order: OrderRecord }) {
   const [copied, setCopied] = useState(false);
@@ -79,12 +80,10 @@ export function OrderConfirmedView({ order }: { order: OrderRecord }) {
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-xl bg-gray-50 border border-gray-100 p-1 shrink-0 flex items-center justify-center overflow-hidden">
                   <img
-                    src={item.imageUrl || "/images/categories/cement.webp"}
+                    src={item.imageUrl || FALLBACK_PRODUCT_IMAGE}
                     alt={item.productName}
                     className="h-full w-full object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "/images/categories/cement.webp";
-                    }}
+                    onError={createSafeImageHandler(FALLBACK_PRODUCT_IMAGE)}
                   />
                 </div>
                 <div>

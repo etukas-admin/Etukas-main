@@ -160,7 +160,7 @@ const SEED_ORDERS: OrderRecord[] = [
         quantity: 100,
         priceMinor: 38500,
         totalMinor: 3850000,
-        imageUrl: "/images/categories/cement.webp",
+        imageUrl: "/images/pngimages/cement.webp",
         category: "Cement"
       },
       {
@@ -170,7 +170,7 @@ const SEED_ORDERS: OrderRecord[] = [
         quantity: 2,
         priceMinor: 6500000,
         totalMinor: 13000000,
-        imageUrl: "/images/categories/steel-iron-bars.webp",
+        imageUrl: "/images/pngimages/steel-iron-bars.webp",
         category: "Steel & Iron"
       }
     ],
@@ -223,7 +223,7 @@ const SEED_ORDERS: OrderRecord[] = [
         quantity: 2,
         priceMinor: 550000,
         totalMinor: 1100000,
-        imageUrl: "/images/categories/sand-aggregates.webp",
+        imageUrl: "/images/pngimages/sand.webp",
         category: "Sand"
       },
       {
@@ -233,7 +233,7 @@ const SEED_ORDERS: OrderRecord[] = [
         quantity: 2,
         priceMinor: 250000,
         totalMinor: 500000,
-        imageUrl: "/images/categories/stones-aggregates.webp",
+        imageUrl: "/images/pngimages/stone-aggregates.webp",
         category: "Stones"
       }
     ],
