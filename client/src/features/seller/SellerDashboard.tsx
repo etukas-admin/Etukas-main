@@ -156,6 +156,31 @@ export function SellerDashboard() {
 
   const [techTab, setTechTab] = useState<"overview" | "bookings" | "profile">("overview");
 
+  const partnerOrdersQuery = useQuery({
+    queryKey: ["partner-orders"],
+    queryFn: () => marketplaceApi.getSellerOrders().catch(() => []),
+    refetchInterval: 5000
+  });
+
+  const partnerOrders = partnerOrdersQuery.data || [];
+
+  const [selectedOrderForStatus, setSelectedOrderForStatus] = useState<any | null>(null);
+  const [newStatus, setNewStatus] = useState<string>("CONFIRMED");
+  const [statusVehicleNo, setStatusVehicleNo] = useState("");
+  const [statusDriverName, setStatusDriverName] = useState("");
+  const [statusDriverPhone, setStatusDriverPhone] = useState("");
+  const [statusRejectionReason, setStatusRejectionReason] = useState("");
+  const [statusNote, setStatusNote] = useState("");
+
+  const updateOrderTrackingMutation = useMutation({
+    mutationFn: ({ orderId, data }: { orderId: string; data: any }) =>
+      marketplaceApi.updateSellerOrderTracking(orderId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
+      setSelectedOrderForStatus(null);
+    }
+  });
+
   const technicianBookingsQuery = useQuery({
     queryKey: ["technician-bookings", profileData?.sellerId],
     queryFn: async () => {
@@ -1874,61 +1899,352 @@ export function SellerDashboard() {
         {/* ORDERS TAB */}
         {activeTab === "orders" && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Customer Material Orders</h2>
-              <p className="text-sm text-gray-500">Track and fulfill local site deliveries</p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Customer Material Orders</h2>
+                <p className="text-sm text-gray-500">Track and fulfill local site deliveries in real-time</p>
+              </div>
+              <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-800">
+                {partnerOrders.length} Received Orders
+              </span>
             </div>
 
-            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
-                <thead className="bg-gray-50 font-bold text-gray-700">
-                  <tr>
-                    <th className="px-6 py-3.5">Order ID</th>
-                    <th className="px-6 py-3.5">Customer / Site</th>
-                    <th className="px-6 py-3.5">Material Details</th>
-                    <th className="px-6 py-3.5">Total (₹)</th>
-                    <th className="px-6 py-3.5">Delivery Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 font-medium">
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-mono font-bold text-orange-600">ORD-2024-9481</td>
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-gray-900">Kavitha Constructions</div>
-                      <div className="text-xs text-gray-500">Gachibowli Site #4, Hyderabad</div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700">
-                      100 Bags UltraTech Cement + 2 Tons TMT Rebars
-                    </td>
-                    <td className="px-6 py-4 font-black text-gray-900">₹1,68,500</td>
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-800">
-                        Dispatched
-                      </span>
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-mono font-bold text-orange-600">ORD-2024-9477</td>
-                    <td className="px-6 py-4">
-                      <div className="font-bold text-gray-900">Sri Krishna Developers</div>
-                      <div className="text-xs text-gray-500">Kukatpally Phase 2, Hyderabad</div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-700">
-                      2 Brass River Sand + 2 Brass 20mm Blue Metal
-                    </td>
-                    <td className="px-6 py-4 font-black text-gray-900">₹16,000</td>
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-800">
-                        Delivered
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            {partnerOrders.length === 0 ? (
+              <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
+                  <ShoppingBag size={32} />
+                </div>
+                <h3 className="mt-4 text-lg font-bold text-gray-900">No Orders Received Yet</h3>
+                <p className="mt-1 text-sm text-gray-500 max-w-md mx-auto">
+                  When local construction contractors and homeowners place building material orders, they will appear right here instantly.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                <div className="sm:hidden flex items-center justify-between bg-orange-50/80 border-b border-orange-100 px-4 py-2 text-[11px] text-orange-900 font-semibold">
+                  <span>← Swipe horizontally to view all order columns →</span>
+                </div>
+                <div className="overflow-x-auto w-full" style={{ WebkitOverflowScrolling: "touch" }}>
+                  <table className="min-w-[980px] w-full divide-y divide-gray-200 text-left text-sm">
+                    <thead className="bg-gray-50 font-bold text-gray-700">
+                      <tr>
+                        <th className="px-4 py-3.5">Order ID</th>
+                        <th className="px-4 py-3.5">Customer / Site</th>
+                        <th className="px-4 py-3.5">Material Details</th>
+                        <th className="px-4 py-3.5">Total (₹)</th>
+                        <th className="px-4 py-3.5">Delivery Status</th>
+                        <th className="px-4 py-3.5">Live Vehicle &amp; Driver</th>
+                        <th className="px-4 py-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 font-medium">
+                      {partnerOrders.map((ord: any) => {
+                        const displayId = ord.orderNumber || ord.id;
+                        const isDelivered = ord.status === "DELIVERED";
+                        const isRejected = ord.status === "REJECTED";
+                        return (
+                          <tr key={ord.id} className="hover:bg-gray-50 transition-colors">
+                            {/* Order ID */}
+                            <td className="px-4 py-4 whitespace-nowrap">
+                              <span className="inline-flex rounded-lg bg-orange-100 border border-orange-200 px-2.5 py-1 font-mono text-xs font-black text-orange-900">
+                                #{displayId}
+                              </span>
+                              <div className="text-[10px] text-gray-400 mt-1">
+                                {new Date(ord.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                              </div>
+                            </td>
+
+                            {/* Customer / Site */}
+                            <td className="px-4 py-4">
+                              <div className="font-bold text-gray-900 text-sm">
+                                {ord.customerName || ord.customer?.name || "Customer"}
+                              </div>
+                              <p className="text-xs text-gray-600 line-clamp-2 max-w-xs">
+                                {ord.deliveryAddress?.line1 || ord.address?.line1 || "Delivery Site Address"}
+                                {ord.deliveryAddress?.city ? `, ${ord.deliveryAddress.city}` : ""}
+                              </p>
+                              {(ord.customerPhone || ord.customer?.mobile) && (
+                                <a
+                                  href={`tel:${ord.customerPhone || ord.customer?.mobile}`}
+                                  className="mt-1 inline-flex items-center gap-1 font-mono text-xs font-bold text-orange-700 hover:underline"
+                                >
+                                  <Phone size={12} /> {ord.customerPhone || ord.customer?.mobile}
+                                </a>
+                              )}
+                            </td>
+
+                            {/* Material Details */}
+                            <td className="px-4 py-4 text-xs text-gray-700">
+                              {ord.items && ord.items.length > 0 ? (
+                                <div className="space-y-1">
+                                  {ord.items.map((it: any, i: number) => (
+                                    <div key={it.id || i} className="line-clamp-1">
+                                      <strong className="text-gray-900">{it.quantity} {it.unit}s</strong> • {it.productName}
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span>Bulk Construction Materials</span>
+                              )}
+                            </td>
+
+                            {/* Total */}
+                            <td className="px-4 py-4 font-black text-gray-900">
+                              ₹{((ord.totalMinor || 0) / 100).toLocaleString("en-IN")}
+                              <div className="text-[10px] text-gray-400 font-normal">
+                                {ord.paymentMethod === "COD" ? "Cash on Delivery" : ord.paymentMethod || "COD"}
+                              </div>
+                            </td>
+
+                            {/* Delivery Status Badge */}
+                            <td className="px-4 py-4">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                                isDelivered
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : isRejected
+                                  ? "bg-red-100 text-red-800"
+                                  : ord.status === "ASSIGNED_DRIVER"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : ord.status === "LOADING_VEHICLE"
+                                  ? "bg-purple-100 text-purple-800"
+                                  : "bg-amber-100 text-amber-800"
+                              }`}>
+                                {ord.status || "PLACED"}
+                              </span>
+                            </td>
+
+                            {/* Live Vehicle & Driver Details */}
+                            <td className="px-4 py-4 text-xs text-gray-600">
+                              {ord.vehicleNumber && (
+                                <div>Truck: <strong className="font-mono text-gray-900">{ord.vehicleNumber}</strong></div>
+                              )}
+                              {ord.driverName && (
+                                <div className="mt-0.5">Driver: <strong>{ord.driverName}</strong></div>
+                              )}
+                              {ord.driverPhone && (
+                                <a href={`tel:${ord.driverPhone}`} className="text-[11px] text-blue-600 font-mono hover:underline block">
+                                  📞 {ord.driverPhone}
+                                </a>
+                              )}
+                              {!ord.vehicleNumber && !ord.driverName && (
+                                <span className="text-gray-400 italic">Not assigned yet</span>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-4 text-right">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedOrderForStatus(ord);
+                                  setNewStatus(ord.status || "CONFIRMED");
+                                  setStatusVehicleNo(ord.vehicleNumber || "");
+                                  setStatusDriverName(ord.driverName || "");
+                                  setStatusDriverPhone(ord.driverPhone || "");
+                                  setStatusRejectionReason(ord.rejectionReason || "");
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                              >
+                                <Truck size={13} />
+                                <span>Update Status</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
+
+      {/* Update Live Status Modal */}
+      {selectedOrderForStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                  <Truck className="text-etukas-red" size={20} />
+                  Update Live Delivery Status
+                </h3>
+                <p className="text-xs text-gray-500 font-mono mt-0.5">
+                  Order #{selectedOrderForStatus.orderNumber || selectedOrderForStatus.id}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForStatus(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Customer & Item mini summary */}
+            <div className="mt-4 rounded-xl bg-gray-50 p-3 text-xs text-gray-700 border border-gray-200">
+              <div className="flex justify-between items-center font-bold text-gray-900 mb-1">
+                <span>Customer: {selectedOrderForStatus.customerName || selectedOrderForStatus.customer?.name}</span>
+                <span className="text-etukas-red">₹{((selectedOrderForStatus.totalMinor || 0) / 100).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="text-gray-500 text-[11px] truncate">
+                Site: {selectedOrderForStatus.deliveryAddress?.line1 || "Customer Address"}{selectedOrderForStatus.deliveryAddress?.city ? `, ${selectedOrderForStatus.deliveryAddress.city}` : ""}
+              </div>
+            </div>
+
+            {/* Status options */}
+            <div className="mt-4">
+              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                Select Delivery Stage:
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
+                {[
+                  { id: "CONFIRMED", label: "Confirmed by Seller", icon: CheckCircle2 },
+                  { id: "LOADING_VEHICLE", label: "Loading on Vehicle", icon: PackageCheck },
+                  { id: "ASSIGNED_DRIVER", label: "Assigned Delivery Partner", icon: Truck },
+                  { id: "DELIVERED", label: "Delivered to Site", icon: BadgeCheck },
+                  { id: "REJECTED", label: "Reject Order", icon: AlertTriangle }
+                ].map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    onClick={() => setNewStatus(st.id)}
+                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition ${
+                      newStatus === st.id
+                        ? "border-etukas-red bg-red-50 text-etukas-red ring-2 ring-red-100 font-bold"
+                        : "border-gray-200 bg-white hover:border-gray-300 text-gray-700"
+                    }`}
+                  >
+                    <st.icon size={16} />
+                    <span>{st.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dynamic Conditional Fields */}
+            <div className="mt-4 space-y-3">
+              {(newStatus === "LOADING_VEHICLE" || newStatus === "ASSIGNED_DRIVER") && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Vehicle Number / Registration: <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. AP 05 TX 4589 / TS 09 EA 1234"
+                    value={statusVehicleNo}
+                    onChange={(e) => setStatusVehicleNo(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono uppercase focus:border-etukas-red focus:outline-none"
+                  />
+                </div>
+              )}
+
+              {newStatus === "ASSIGNED_DRIVER" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Driver Name: <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Driver full name"
+                      value={statusDriverName}
+                      onChange={(e) => setStatusDriverName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      Driver Contact Phone: <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="10-digit mobile number"
+                      value={statusDriverPhone}
+                      onChange={(e) => setStatusDriverPhone(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono focus:border-etukas-red focus:outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {newStatus === "REJECTED" && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1">
+                    Rejection Reason: <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Provide reason for rejecting (out of stock, site unserviceable, etc.)"
+                    value={statusRejectionReason}
+                    onChange={(e) => setStatusRejectionReason(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Status Note / Dispatch Note (Optional):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Dispatched from warehouse"
+                  value={statusNote}
+                  onChange={(e) => setStatusNote(e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 px-3 py-1.5 text-xs focus:border-etukas-red focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForStatus(null)}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={updateOrderTrackingMutation.isPending}
+                onClick={() => {
+                  if (newStatus === "LOADING_VEHICLE" && !statusVehicleNo.trim()) {
+                    alert("Please enter the vehicle number for loading status.");
+                    return;
+                  }
+                  if (newStatus === "ASSIGNED_DRIVER" && (!statusDriverName.trim() || !statusDriverPhone.trim())) {
+                    alert("Please enter driver name and contact number.");
+                    return;
+                  }
+                  if (newStatus === "REJECTED" && !statusRejectionReason.trim()) {
+                    alert("Please provide the rejection reason.");
+                    return;
+                  }
+                  updateOrderTrackingMutation.mutate({
+                    orderId: selectedOrderForStatus.id,
+                    data: {
+                      status: newStatus,
+                      vehicleNumber: statusVehicleNo.trim() || undefined,
+                      driverName: statusDriverName.trim() || undefined,
+                      driverPhone: statusDriverPhone.trim() || undefined,
+                      rejectionReason: statusRejectionReason.trim() || undefined,
+                      note: statusNote.trim() || undefined
+                    }
+                  });
+                }}
+                className="rounded-xl bg-etukas-red px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 active:scale-95 disabled:opacity-50"
+              >
+                {updateOrderTrackingMutation.isPending ? "Updating Live Status..." : "Save & Update Live Status"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 1:1 Image Crop Modals */}
       <ImageCropModal

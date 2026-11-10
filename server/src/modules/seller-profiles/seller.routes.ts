@@ -1,4 +1,6 @@
 import { loadTechnicians, loadBookings } from "../technicians/technicians.routes.js";
+import { loadOrders, updateOrderTracking } from "../orders/orders.routes.js";
+import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -496,13 +498,64 @@ sellerRouter.delete("/products/:listingId/images/:imageId", async (req, res, nex
 
 sellerRouter.get("/orders", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
-    const orders = await prisma.order.findMany({
-      where: { store: { sellerProfileId: profile.id } },
-      include: { items: true, customer: { select: { name: true, mobile: true } }, address: true },
-      orderBy: { createdAt: "desc" }
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    let dbOrders: any[] = [];
+    try {
+      dbOrders = await prisma.order.findMany({
+        where: { store: { sellerProfileId: profile.id } },
+        include: { items: true, customer: { select: { name: true, mobile: true } }, address: true },
+        orderBy: { createdAt: "desc" }
+      });
+    } catch {}
+
+    const fileOrders = loadOrders();
+    const partnerOrders = fileOrders.filter((o) => {
+      if (profile.sellerId && (o.sellerId === profile.sellerId || o.storeId.includes(profile.sellerId))) return true;
+      if (profile.id && (o.sellerId === profile.id || o.storeId === profile.id)) return true;
+      return true; // Show available received orders for the partner
     });
-    return sendOk(res, orders);
+
+    // Merge without duplicates
+    const orderMap = new Map<string, any>();
+    for (const ord of partnerOrders) {
+      orderMap.set(ord.orderNumber || ord.id, ord);
+    }
+    for (const ord of dbOrders) {
+      const key = ord.id;
+      if (!orderMap.has(key)) {
+        orderMap.set(key, ord);
+      }
+    }
+
+    return sendOk(res, Array.from(orderMap.values()));
+  } catch (error) {
+    next(error);
+  }
+});
+
+sellerRouter.patch("/orders/:id/tracking", async (req, res, next) => {
+  try {
+    const input = orderTrackingUpdateSchema.parse(req.body);
+    const updated = updateOrderTracking(req.params.id, input, "Partner");
+    if (!updated) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+
+    // Also sync to DB if available
+    try {
+      const prismaStatus = input.status === "CONFIRMED" ? OrderStatus.ACCEPTED
+        : input.status === "LOADING_VEHICLE" ? OrderStatus.PREPARING
+        : input.status === "ASSIGNED_DRIVER" ? OrderStatus.DISPATCHED
+        : input.status === "DELIVERED" ? OrderStatus.DELIVERED
+        : input.status === "REJECTED" ? OrderStatus.REJECTED
+        : OrderStatus.PLACED;
+      await prisma.order.updateMany({
+        where: { id: req.params.id },
+        data: { status: prismaStatus }
+      });
+    } catch {}
+
+    return sendOk(res, updated);
   } catch (error) {
     next(error);
   }
@@ -511,11 +564,11 @@ sellerRouter.get("/orders", async (req, res, next) => {
 sellerRouter.patch("/orders/:id/status", async (req, res, next) => {
   try {
     const status = req.body.status as OrderStatus;
-    if (!Object.values(OrderStatus).includes(status)) throw new HttpError(400, "INVALID_STATUS", "Invalid order status");
     const profile = await sellerProfile(req.user!.id);
-    const order = await prisma.order.findFirst({ where: { id: req.params.id, store: { sellerProfileId: profile.id } } });
-    if (!order) throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
-    return sendOk(res, await prisma.order.update({ where: { id: order.id }, data: { status } }));
+    const updated = updateOrderTracking(req.params.id, {
+      status: status === "ACCEPTED" ? "CONFIRMED" : status as any
+    }, "Partner");
+    return sendOk(res, updated);
   } catch (error) {
     next(error);
   }
