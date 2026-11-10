@@ -28,6 +28,8 @@ import { AVAILABLE_SKILLS, DISTANCE_OPTIONS, TECHNICIAN_AVATARS } from "./techni
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { createSafeImageHandler, FALLBACK_TECHNICIAN_IMAGE } from "../../utils/imageFallback";
+import { useDebounce } from "../../hooks/useDebounce";
+import { queryKeys } from "../../lib/queryKeys";
 
 export function TechniciansPage() {
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export function TechniciansPage() {
   const initialCategory = searchParams.get("category") || "all";
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [selectedMaxDistance, setSelectedMaxDistance] = useState<number | "all">("all");
   const [selectedTimeFilter, setSelectedTimeFilter] = useState<string>("all");
   const [selectedChargeFilter, setSelectedChargeFilter] = useState<string>("all");
@@ -72,19 +75,22 @@ export function TechniciansPage() {
     }
   }, [searchParams]);
 
-  // Query technicians from fullstack backend API
+  const queryParams = {
+    category: selectedCategory === "all" ? undefined : selectedCategory,
+    q: debouncedSearchQuery.trim() || undefined,
+    lat: userLat,
+    lng: userLng,
+    sort: sortBy
+  };
+
+  // Query technicians with debouncing and request cancellation
   const { data: technicians = [], isLoading, refetch } = useQuery({
-    queryKey: ["technicians", userLat, userLng, selectedCategory, searchQuery, sortBy],
-    queryFn: async () => {
-      const res = await marketplaceApi.getTechnicians({
-        category: selectedCategory === "all" ? undefined : selectedCategory,
-        q: searchQuery.trim() || undefined,
-        lat: userLat,
-        lng: userLng,
-        sort: sortBy
-      });
-      return res;
-    }
+    queryKey: queryKeys.technicians.list(queryParams),
+    queryFn: async ({ signal }) => {
+      const res = await marketplaceApi.getTechnicians(queryParams, { signal });
+      return Array.isArray(res) ? res : [];
+    },
+    staleTime: 60 * 1000
   });
 
   // Support ?techId=... parameter to automatically open booking for selected technician

@@ -42,15 +42,16 @@ export function UserChatWidget() {
   // Query existing messages
   const messages = useQuery<ChatMessage[]>({
     queryKey: ["chat", "messages", sessionId],
-    queryFn: () => marketplaceApi.chatMessages(sessionId!),
+    queryFn: ({ signal }) => marketplaceApi.chatMessages(sessionId!, { signal }),
     enabled: Boolean(sessionId && isOpen && user),
-    refetchInterval: pollInterval
+    refetchInterval: pollInterval,
+    refetchIntervalInBackground: false
   });
 
   // Query user's sessions to resume an open one immediately
   const userSessions = useQuery<ChatSession[]>({
     queryKey: ["chat", "my-sessions"],
-    queryFn: marketplaceApi.chatMySessions,
+    queryFn: ({ signal }) => marketplaceApi.chatMySessions({ signal }),
     enabled: Boolean(user && isOpen),
     retry: 1
   });

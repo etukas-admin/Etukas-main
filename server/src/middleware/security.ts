@@ -11,6 +11,14 @@ export const loginLimiter = rateLimit({
   legacyHeaders: false
 });
 
+export const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.path === "/health" || req.path === "/health/db"
+});
+
 export function cookieOptions(maxAgeMs = 30 * 24 * 60 * 60 * 1000, path = "/") {
   return {
     httpOnly: true,

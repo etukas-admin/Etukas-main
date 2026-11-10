@@ -35,11 +35,12 @@ export function AdminLiveChat({ initialSessionId }: Props) {
     }
   }, [initialSessionId]);
 
-  // Fetch all chat sessions (polling every 4s)
+  // Fetch all chat sessions (polling every 8s, disabled in background)
   const { data: sessions = [], isLoading: loadingSessions } = useQuery<ChatSession[]>({
     queryKey: ["admin", "chat", "sessions"],
-    queryFn: () => marketplaceApi.adminChatSessions(),
-    refetchInterval: 4000
+    queryFn: ({ signal }) => marketplaceApi.adminChatSessions({ signal }),
+    refetchInterval: 8000,
+    refetchIntervalInBackground: false
   });
 
   // Auto-select first session if none selected
@@ -49,12 +50,13 @@ export function AdminLiveChat({ initialSessionId }: Props) {
     }
   }, [sessions, selectedSessionId]);
 
-  // Messages in selected session (polling every 3s)
+  // Messages in selected session (polling every 5s, disabled in background)
   const { data: messages = [], isLoading: loadingMessages } = useQuery<ChatMessage[]>({
     queryKey: ["admin", "chat", "messages", selectedSessionId],
-    queryFn: () => marketplaceApi.adminChatMessages(selectedSessionId!),
+    queryFn: ({ signal }) => marketplaceApi.adminChatMessages(selectedSessionId!, { signal }),
     enabled: Boolean(selectedSessionId),
-    refetchInterval: 3000
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false
   });
 
   // Mark session read when opened

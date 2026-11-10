@@ -848,7 +848,13 @@ techniciansRouter.get("/", async (req, res, next) => {
     // 1. Sync with Prisma DB: check if any technicians in Prisma are approved
     try {
       const approvedProfiles = await prisma.sellerProfile.findMany({
-        where: { verificationStatus: "APPROVED" },
+        where: {
+          verificationStatus: "APPROVED",
+          OR: [
+            { sellerId: { startsWith: "TECH", mode: "insensitive" } },
+            { stores: { some: { slug: { startsWith: "tech-" } } } }
+          ]
+        },
         include: { user: true, stores: true }
       });
 
