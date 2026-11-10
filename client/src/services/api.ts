@@ -3,10 +3,18 @@ import type {
   SellerEnquiryInput,
   Technician,
   TechnicianRegistrationInput,
-  TechnicianBookingInput
+  TechnicianBookingInput,
+  CheckoutInput,
+  OrderTrackingUpdateInput
 } from "@etukas/shared";
 
-export type { Technician, TechnicianRegistrationInput, TechnicianBookingInput };
+export type {
+  Technician,
+  TechnicianRegistrationInput,
+  TechnicianBookingInput,
+  CheckoutInput,
+  OrderTrackingUpdateInput
+};
 
 export function normalizeApiBase(rawUrl?: string): string {
   const trimmed = (rawUrl ?? "").trim().replace(/\/+$/, "");
@@ -310,7 +318,25 @@ export const marketplaceApi = {
       method: "PATCH",
       body: JSON.stringify({ status })
     }),
-  getCustomerOrders: () => api<any[]>("/orders"),
+  createOrder: (body: CheckoutInput) =>
+    api<{ order: OrderRecord; orderNumber: string; parentCheckoutId: string; message: string }>("/orders", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getOrder: (id: string) => api<OrderRecord>(`/orders/${encodeURIComponent(id)}`),
+  getCustomerOrders: () => api<OrderRecord[]>("/orders"),
+  getSellerOrders: () => api<OrderRecord[]>("/seller/orders"),
+  updateSellerOrderTracking: (id: string, body: OrderTrackingUpdateInput) =>
+    api<OrderRecord>(`/seller/orders/${encodeURIComponent(id)}/tracking`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
+  getAdminOrders: () => api<OrderRecord[]>("/admin/orders"),
+  updateAdminOrderTracking: (id: string, body: OrderTrackingUpdateInput) =>
+    api<OrderRecord>(`/admin/orders/${encodeURIComponent(id)}/tracking`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
   getCustomerServiceBookings: () => api<Record<string, unknown>[]>("/technicians/customer/bookings"),
   sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
   sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
@@ -626,6 +652,82 @@ export type SellerProductListing = {
     category: Category;
   };
   store: Store;
+};
+
+export type DeliveryStatus =
+  | "PLACED"
+  | "CONFIRMED"
+  | "LOADING_VEHICLE"
+  | "ASSIGNED_DRIVER"
+  | "DELIVERED"
+  | "REJECTED"
+  | "CANCELLED";
+
+export type OrderItemRecord = {
+  id: string;
+  storeProductId?: string;
+  productName: string;
+  sku?: string;
+  unit: string;
+  quantity: number;
+  priceMinor: number;
+  taxMinor?: number;
+  discountMinor?: number;
+  totalMinor: number;
+  imageUrl?: string;
+  category?: string;
+};
+
+export type OrderRecord = {
+  id: string;
+  orderNumber: string;
+  parentCheckoutId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
+  storeId: string;
+  storeName: string;
+  sellerId?: string;
+  sellerPhone?: string;
+  deliveryAddress: {
+    contactName: string;
+    mobile: string;
+    line1: string;
+    line2?: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    landmark?: string;
+    label?: string;
+  };
+  status: DeliveryStatus;
+  subtotalMinor: number;
+  taxMinor: number;
+  discountMinor: number;
+  deliveryChargeMinor: number;
+  protectFeeMinor: number;
+  totalMinor: number;
+  currency: string;
+  paymentMethod: "COD" | "MOCK_ONLINE" | "UPI" | "CARD" | "NET_BANKING" | "EMI";
+  paymentStatus: "PENDING" | "PAID";
+  items: OrderItemRecord[];
+  vehicleNumber?: string;
+  driverName?: string;
+  driverPhone?: string;
+  rejectionReason?: string;
+  deliveryOtp?: string;
+  estimatedDeliveryDate?: string;
+  gstin?: string;
+  notes?: string;
+  statusHistory: Array<{
+    status: DeliveryStatus;
+    timestamp: string;
+    note?: string;
+    actor?: string;
+  }>;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type SellerOrder = {

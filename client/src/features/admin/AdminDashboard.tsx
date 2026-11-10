@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MessageSquareText, PanelsTopLeft, Search, Trash2 } from "lucide-react";
-import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type SellerEnquiry, type User } from "../../services/api";
+import { AlertCircle, AlertTriangle, BadgeAlert, BadgeCheck, CheckCircle2, Clock, ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MapPin, MessageSquareText, PackageCheck, PanelsTopLeft, Phone, Search, ShoppingBag, Trash2, Truck, UserCheck, X } from "lucide-react";
+import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type OrderRecord, type SellerEnquiry, type User } from "../../services/api";
+import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
 import { AdminNotificationsDropdown } from "./AdminNotificationsDropdown";
 import { AdminLiveChat } from "./AdminLiveChat";
 
@@ -17,7 +18,7 @@ const emptyBanner: HomepageBannerInput = {
   isActive: true
 };
 
-const validSections = ["dashboard", "partners", "banners", "enquiries"];
+const validSections = ["dashboard", "partners", "orders", "banners", "enquiries"];
 
 function coordinate(value: AdminSeller["stores"][number]["latitude"]) {
   return value === null || value === undefined ? null : String(value);
@@ -172,6 +173,33 @@ export function AdminDashboard() {
   const [selectedEnquiryId, setSelectedEnquiryId] = useState<string | null>(null);
   const [enquiryTab, setEnquiryTab] = useState<"chat" | "leads">("chat");
   const [chatInitialSessionId, setChatInitialSessionId] = useState<string | null>(null);
+
+  // Orders & live tracking
+  const [orderFilter, setOrderFilter] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>("ALL");
+  const [selectedAdminOrder, setSelectedAdminOrder] = useState<OrderRecord | null>(null);
+  const [adminNewStatus, setAdminNewStatus] = useState<string>("CONFIRMED");
+  const [adminVehicleNo, setAdminVehicleNo] = useState("");
+  const [adminDriverName, setAdminDriverName] = useState("");
+  const [adminDriverPhone, setAdminDriverPhone] = useState("");
+  const [adminRejectionReason, setAdminRejectionReason] = useState("");
+  const [adminNote, setAdminNote] = useState("");
+
+  const adminOrders = useQuery({
+    queryKey: ["admin", "orders"],
+    queryFn: () => marketplaceApi.getAdminOrders().catch(() => []),
+    enabled: Boolean(sessionUser),
+    refetchInterval: 5000
+  });
+
+  const updateAdminOrderTracking = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) =>
+      marketplaceApi.updateAdminOrderTracking(id, data),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      setSelectedAdminOrder(null);
+    }
+  });
 
   const me = useQuery({ queryKey: ["admin", "me"], queryFn: marketplaceApi.me, enabled: Boolean(sessionUser), retry: false });
   const sellers = useQuery({ queryKey: ["admin", "sellers"], queryFn: marketplaceApi.adminSellers, enabled: Boolean(me.data?.roles.includes("ADMIN")) });
@@ -333,12 +361,20 @@ export function AdminDashboard() {
       .toLowerCase()
       .includes(searchTerm)
   );
+  const filteredOrders = (adminOrders.data || []).filter((ord: any) => {
+    if (orderStatusFilter !== "ALL" && ord.status !== orderStatusFilter) return false;
+    if (!orderFilter.trim()) return true;
+    const term = orderFilter.trim().toLowerCase();
+    const ss = [ord.id, ord.orderNumber, ord.customerName, ord.customerPhone, ord.storeName, ord.sellerId, ord.deliveryAddress?.city, ord.deliveryAddress?.line1].filter(Boolean).join(" ").toLowerCase();
+    return ss.includes(term);
+  });
   const approvedPartners = sellers.data?.filter((seller) => seller.verificationStatus === "APPROVED").length ?? 0;
   const pendingPartners = sellers.data?.filter((seller) => seller.verificationStatus === "PENDING").length ?? 0;
   const openChatCount = chatSessions.data?.filter((s) => s.status === "OPEN").length ?? 0;
   const navigation = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "partners", label: "Partners", icon: Handshake },
+    { id: "orders", label: "Orders & Live Tracking", icon: ShoppingBag, badge: (adminOrders.data || []).filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED").length },
     { id: "banners", label: "Homepage banners", icon: PanelsTopLeft },
     { id: "enquiries", label: "Enquiries & Live Chat", icon: MessageSquareText, badge: openChatCount }
   ];
@@ -420,9 +456,11 @@ export function AdminDashboard() {
                 <Handshake size={17} /> Manage partners
               </Link>
             </div>
-            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 xl:grid-cols-6">
               {[
                 { label: "Total partners", value: sellers.data?.length ?? 0, detail: "Registered businesses", icon: Handshake },
+                { label: "Total Orders", value: adminOrders.data?.length ?? 0, detail: "Customer orders", icon: ShoppingBag },
+                { label: "Active Deliveries", value: (adminOrders.data || []).filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED").length, detail: "In transit", icon: Truck },
                 { label: "Live support chats", value: openChatCount, detail: "Customer & partner chats", icon: Headphones },
                 { label: "Awaiting review", value: pendingPartners, detail: "Partner applications", icon: Search },
                 { label: "Seller enquiries", value: enquiries.data?.length ?? 0, detail: "Pre-registration leads", icon: MessageSquareText }
@@ -469,6 +507,185 @@ export function AdminDashboard() {
         </div>
         {sellers.data?.length === 0 || filteredSellers?.length === 0 ? <p className="mt-3 text-sm text-gray-500">No partners match this filter.</p> : null}
       </section> : null}
+
+      {activeSection === "orders" ? (
+        <section id="orders" className="mt-8 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-100 pb-5">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Order Management</p>
+              <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Customer Orders &amp; Live Delivery Tracking</h2>
+              <p className="mt-1 text-sm text-gray-600">Monitor all received customer orders across partner stores. Track live delivery stages and intervene directly.</p>
+            </div>
+            <div className="relative sm:w-72">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Search Order ID, customer, partner..." value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-xs outline-none focus:border-etukas-red" />
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-1.5 border-b border-gray-100 pb-3 text-xs font-semibold">
+            {["ALL","PLACED","CONFIRMED","LOADING_VEHICLE","ASSIGNED_DRIVER","DELIVERED","REJECTED"].map((s) => (
+              <button key={s} type="button" onClick={() => setOrderStatusFilter(s)}
+                className={`rounded-lg px-3 py-1.5 transition ${orderStatusFilter === s ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
+                {s === "ALL" ? "All Orders" : s.replace(/_/g, " ")}
+              </button>
+            ))}
+          </div>
+
+          {adminOrders.isLoading ? (
+            <div className="py-12 text-center text-sm text-gray-500">Loading orders...</div>
+          ) : filteredOrders.length === 0 ? (
+            <div className="py-12 text-center">
+              <ShoppingBag className="mx-auto text-gray-300" size={40} />
+              <h3 className="mt-3 text-sm font-bold text-gray-700">No Orders Found</h3>
+            </div>
+          ) : (
+            <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-gray-50 text-[11px] font-bold uppercase tracking-wider text-gray-600">
+                  <tr>
+                    <th className="px-4 py-3">Order ID / Date</th>
+                    <th className="px-4 py-3">Customer &amp; Site</th>
+                    <th className="px-4 py-3">Partner Store / ID</th>
+                    <th className="px-4 py-3">Items</th>
+                    <th className="px-4 py-3">Total</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Vehicle / Driver</th>
+                    <th className="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 font-medium">
+                  {filteredOrders.map((ord: any) => {
+                    const displayId = ord.orderNumber || ord.id;
+                    const isDelivered = ord.status === "DELIVERED";
+                    const isRejected = ord.status === "REJECTED" || ord.status === "CANCELLED";
+                    return (
+                      <tr key={ord.id} className="hover:bg-gray-50/70 transition-colors">
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className="inline-flex rounded-lg bg-orange-100 border border-orange-200 px-2 py-0.5 font-mono text-xs font-black text-orange-900">#{displayId}</span>
+                          <div className="text-[10px] text-gray-400 mt-1">{new Date(ord.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</div>
+                        </td>
+                        <td className="px-4 py-3.5 max-w-[200px]">
+                          <div className="font-bold text-gray-900">{ord.customerName || "Customer"}</div>
+                          <p className="text-[11px] text-gray-600 truncate">{(ord.deliveryAddress?.line1 || "") + (ord.deliveryAddress?.city ? ", " + ord.deliveryAddress.city : "")}</p>
+                          {ord.customerPhone && (<a href={"tel:" + ord.customerPhone} className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-etukas-red hover:underline"><Phone size={11} /> {ord.customerPhone}</a>)}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <div className="font-bold text-gray-900">{ord.storeName || "Etukas Store"}</div>
+                          <span className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[10px] font-bold text-gray-700">{ord.sellerId || "ETPARTNER001"}</span>
+                        </td>
+                        <td className="px-4 py-3.5 max-w-[160px]">
+                          {(ord.items || []).slice(0, 2).map((it: any, idx: number) => (<div key={idx} className="text-[11px] truncate"><strong>{it.quantity}</strong> {it.unit}s · {it.productName}</div>))}
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap font-black">₹{((ord.totalMinor || 0) / 100).toLocaleString("en-IN")}</td>
+                        <td className="px-4 py-3.5 whitespace-nowrap">
+                          <span className={"inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold " + (isDelivered ? "bg-emerald-100 text-emerald-800" : isRejected ? "bg-red-100 text-red-800" : ord.status === "ASSIGNED_DRIVER" ? "bg-blue-100 text-blue-800" : ord.status === "LOADING_VEHICLE" ? "bg-purple-100 text-purple-800" : "bg-amber-100 text-amber-800")}>
+                            {ord.status || "PLACED"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600">
+                          {ord.vehicleNumber && <div className="font-mono font-bold text-gray-900">🚛 {ord.vehicleNumber}</div>}
+                          {ord.driverName && <div>Driver: <strong>{ord.driverName}</strong></div>}
+                          {ord.driverPhone && (<a href={"tel:" + ord.driverPhone} className="text-blue-600 hover:underline font-mono inline-flex items-center gap-1"><Phone size={10} /> {ord.driverPhone}</a>)}
+                          {!ord.vehicleNumber && !ord.driverName && <span className="text-gray-400 italic">Unassigned</span>}
+                        </td>
+                        <td className="px-4 py-3.5 text-right">
+                          <button type="button" onClick={() => { setSelectedAdminOrder(ord); setAdminNewStatus(ord.status || "CONFIRMED"); setAdminVehicleNo(ord.vehicleNumber || ""); setAdminDriverName(ord.driverName || ""); setAdminDriverPhone(ord.driverPhone || ""); setAdminRejectionReason(ord.rejectionReason || ""); setAdminNote(""); }}
+                            className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-etukas-red transition">
+                            <Truck size={12} /><span>Live Tracking</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {selectedAdminOrder && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
+              <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                  <div>
+                    <h3 className="text-lg font-bold flex items-center gap-2"><Truck className="text-etukas-red" size={20} /> Admin Live Tracking</h3>
+                    <p className="text-xs text-gray-500 font-mono mt-0.5">Order #{selectedAdminOrder.orderNumber || selectedAdminOrder.id} · Partner: {selectedAdminOrder.sellerId}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
+                </div>
+
+                <div className="mt-4"><DeliveryStepsTracker order={selectedAdminOrder} /></div>
+
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <span className="font-bold text-gray-700 block uppercase tracking-wider text-[10px]">Customer Details</span>
+                    <p className="mt-1 font-bold text-gray-900">{selectedAdminOrder.customerName}</p>
+                    <p className="text-gray-600">{selectedAdminOrder.deliveryAddress?.line1}{selectedAdminOrder.deliveryAddress?.city ? ", " + selectedAdminOrder.deliveryAddress.city : ""}</p>
+                    {selectedAdminOrder.customerPhone && (<a href={"tel:" + selectedAdminOrder.customerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-etukas-red hover:underline"><Phone size={11} /> {selectedAdminOrder.customerPhone}</a>)}
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <span className="font-bold text-gray-700 block uppercase tracking-wider text-[10px]">Store &amp; Partner</span>
+                    <p className="mt-1 font-bold text-gray-900">{selectedAdminOrder.storeName || "Etukas Partner Store"}</p>
+                    <p className="font-mono text-gray-600">Partner ID: <strong>{selectedAdminOrder.sellerId}</strong></p>
+                    {selectedAdminOrder.sellerPhone && (<a href={"tel:" + selectedAdminOrder.sellerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-gray-700 hover:underline"><Phone size={11} /> {selectedAdminOrder.sellerPhone}</a>)}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/50 p-4">
+                  <h4 className="text-xs font-bold text-orange-900 uppercase tracking-wider mb-2">Override Delivery Stage (Admin Intervention):</h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+                    {[{ id: "CONFIRMED", label: "Confirmed" }, { id: "LOADING_VEHICLE", label: "Loading Vehicle" }, { id: "ASSIGNED_DRIVER", label: "Assigned Delivery" }, { id: "DELIVERED", label: "Delivered" }, { id: "REJECTED", label: "Rejected" }].map((st) => (
+                      <button key={st.id} type="button" onClick={() => setAdminNewStatus(st.id)}
+                        className={"p-2 rounded-lg border text-center transition " + (adminNewStatus === st.id ? "bg-etukas-red text-white border-etukas-red font-bold" : "bg-white text-gray-700 border-gray-200")}>
+                        {st.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-3 space-y-2 text-xs">
+                    {(adminNewStatus === "LOADING_VEHICLE" || adminNewStatus === "ASSIGNED_DRIVER") && (
+                      <div>
+                        <label className="block font-semibold text-gray-700 mb-0.5">Vehicle Number:</label>
+                        <input type="text" placeholder="e.g. AP 05 TX 4589" value={adminVehicleNo} onChange={(e) => setAdminVehicleNo(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono uppercase focus:border-etukas-red focus:outline-none" />
+                      </div>
+                    )}
+                    {adminNewStatus === "ASSIGNED_DRIVER" && (
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        <div>
+                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Name:</label>
+                          <input type="text" placeholder="Driver Name" value={adminDriverName} onChange={(e) => setAdminDriverName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
+                        </div>
+                        <div>
+                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Phone:</label>
+                          <input type="tel" placeholder="10-digit phone" value={adminDriverPhone} onChange={(e) => setAdminDriverPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono focus:border-etukas-red focus:outline-none" />
+                        </div>
+                      </div>
+                    )}
+                    {adminNewStatus === "REJECTED" && (
+                      <div>
+                        <label className="block font-semibold text-gray-700 mb-0.5">Rejection Reason:</label>
+                        <textarea rows={2} placeholder="Reason" value={adminRejectionReason} onChange={(e) => setAdminRejectionReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
+                      </div>
+                    )}
+                    <div>
+                      <label className="block font-semibold text-gray-700 mb-0.5">Admin Note (Optional):</label>
+                      <input type="text" placeholder="e.g. Issue resolved" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
+                  <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100">Close</button>
+                  <button type="button" disabled={updateAdminOrderTracking.isPending}
+                    onClick={() => { updateAdminOrderTracking.mutate({ id: selectedAdminOrder.id, data: { status: adminNewStatus, vehicleNumber: adminVehicleNo.trim() || undefined, driverName: adminDriverName.trim() || undefined, driverPhone: adminDriverPhone.trim() || undefined, rejectionReason: adminRejectionReason.trim() || undefined, note: adminNote.trim() || undefined } }); }}
+                    className="rounded-lg bg-etukas-red px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 disabled:opacity-50">
+                    {updateAdminOrderTracking.isPending ? "Saving..." : "Save & Update Live Tracking"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {activeSection === "banners" ? <section id="banners" className="mt-6 scroll-mt-32 rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
         <p className="text-xs font-bold uppercase tracking-[0.14em] text-etukas-red">Content</p>

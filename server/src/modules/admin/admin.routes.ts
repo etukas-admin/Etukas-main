@@ -1,8 +1,10 @@
 import { cleanPhone, loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
+import { loadOrders, updateOrderTracking } from "../orders/orders.routes.js";
+import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { del, put } from "@vercel/blob";
 import { Router } from "express";
-import { Role, VerificationStatus } from "@prisma/client";
+import { Role, VerificationStatus, OrderStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
@@ -451,6 +453,101 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
     }
 
     throw new HttpError(404, "SELLER_NOT_FOUND", "Partner profile not found");
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/admin/orders
+ * Returns all received orders across all partners for admin oversight
+ */
+adminRouter.get("/orders", async (_req, res, next) => {
+  try {
+    let dbOrders: any[] = [];
+    try {
+      dbOrders = await prisma.order.findMany({
+        include: {
+          store: { include: { sellerProfile: true } },
+          customer: { select: { name: true, mobile: true, email: true } },
+          address: true,
+          items: true
+        },
+        orderBy: { createdAt: "desc" }
+      });
+    } catch {}
+
+    const fileOrders = loadOrders();
+    const orderMap = new Map<string, any>();
+    for (const ord of fileOrders) {
+      orderMap.set(ord.orderNumber || ord.id, ord);
+    }
+    for (const ord of dbOrders) {
+      const key = ord.id;
+      if (!orderMap.has(key)) {
+        orderMap.set(key, {
+          id: ord.id,
+          orderNumber: ord.id,
+          customerName: ord.customer?.name || "Customer",
+          customerPhone: ord.customer?.mobile || "",
+          customerEmail: ord.customer?.email,
+          storeName: ord.store?.name || "Partner Store",
+          sellerId: ord.store?.sellerProfile?.sellerId || "PARTNER",
+          deliveryAddress: ord.address ? {
+            contactName: ord.address.contactName,
+            mobile: ord.address.mobile,
+            line1: ord.address.line1,
+            city: ord.address.city,
+            state: ord.address.state,
+            postalCode: ord.address.postalCode
+          } : undefined,
+          status: ord.status,
+          totalMinor: ord.totalMinor,
+          items: ord.items?.map((it: any) => ({
+            id: it.id,
+            productName: it.productName,
+            unit: it.unit,
+            quantity: it.quantity,
+            totalMinor: it.totalMinorSnapshot
+          })),
+          createdAt: ord.createdAt.toISOString()
+        });
+      }
+    }
+
+    return sendOk(res, Array.from(orderMap.values()));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * PATCH /api/v1/admin/orders/:id/tracking
+ * Admin live tracking update / intervention for handling delivery issues
+ */
+adminRouter.patch("/orders/:id/tracking", async (req, res, next) => {
+  try {
+    const input = orderTrackingUpdateSchema.parse(req.body);
+    const updated = updateOrderTracking(req.params.id, input, "Admin");
+    if (!updated) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+
+    // Sync status to DB if available
+    try {
+      const prismaStatus = input.status === "CONFIRMED" ? OrderStatus.ACCEPTED
+        : input.status === "LOADING_VEHICLE" ? OrderStatus.PREPARING
+        : input.status === "ASSIGNED_DRIVER" ? OrderStatus.DISPATCHED
+        : input.status === "DELIVERED" ? OrderStatus.DELIVERED
+        : input.status === "REJECTED" ? OrderStatus.REJECTED
+        : OrderStatus.PLACED;
+      await prisma.order.updateMany({
+        where: { id: req.params.id },
+        data: { status: prismaStatus }
+      });
+    } catch {}
+
+    return sendOk(res, updated);
   } catch (error) {
     next(error);
   }

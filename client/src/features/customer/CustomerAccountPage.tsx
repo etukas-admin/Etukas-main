@@ -15,16 +15,19 @@ import {
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  Truck,
   UserRound,
   Wrench
 } from "lucide-react";
-import { Button } from "../../components/ui/Button";
+import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
+import type { OrderRecord } from "../../services/api";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 
 export function CustomerAccountPage() {
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [activeTab, setActiveTab] = useState<"orders" | "services" | "overview">("orders");
+  const [trackingOrder, setTrackingOrder] = useState<OrderRecord | null>(null);
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -190,48 +193,84 @@ export function CustomerAccountPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {customerOrders.map((order: any) => (
-                  <div
-                    key={order.id}
-                    className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-bold text-gray-900">Order #{order.id.slice(0, 8)}</span>
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-                            {order.status || "PLACED"}
-                          </span>
+                {customerOrders.map((order: any) => {
+                  const displayId = order.orderNumber || order.id;
+                  const isDelivered = order.status === "DELIVERED";
+                  return (
+                    <div
+                      key={order.id}
+                      className="overflow-hidden rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-black text-orange-700 bg-orange-100/80 border border-orange-200 px-2 py-0.5 rounded">
+                              #{displayId}
+                            </span>
+                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                              isDelivered
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-blue-100 text-blue-800"
+                            }`}>
+                              {order.status || "PLACED"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-gray-400 mt-1">
+                            Placed on {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                          </div>
                         </div>
-                        <div className="text-[11px] text-gray-400 mt-0.5">
-                          Placed on {new Date(order.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+
+                        <div className="text-right">
+                          <div className="text-sm font-black text-gray-900">
+                            ₹{((order.totalMinor || 0) / 100).toLocaleString("en-IN")}
+                          </div>
+                          <div className="text-[10px] text-gray-400">{order.storeName || order.store?.name || "Verified Store"}</div>
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <div className="text-sm font-black text-gray-900">
-                          ₹{((order.totalMinor || 0) / 100).toLocaleString("en-IN")}
+                      {/* Ordered Items List */}
+                      <div className="divide-y divide-gray-50">
+                        {order.items?.map((item: any, i: number) => (
+                          <div key={item.id || i} className="py-2 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-bold text-gray-800">{item.productName}</span>
+                              <span className="text-gray-400 ml-2">× {item.quantity} {item.unit || "units"}</span>
+                            </div>
+                            <div className="font-mono font-semibold text-gray-700">
+                              ₹{((item.totalMinor || item.totalMinorSnapshot || (item.priceMinor * item.quantity)) / 100).toLocaleString("en-IN")}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Action Bar with Track Delivery Button */}
+                      <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                        <div className="text-xs text-gray-500">
+                          {order.vehicleNumber && (
+                            <span className="font-medium mr-2">Vehicle: <strong className="text-gray-800">{order.vehicleNumber}</strong></span>
+                          )}
+                          {order.driverPhone && (
+                            <a
+                              href={`tel:${order.driverPhone}`}
+                              className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:underline"
+                            >
+                              <Phone size={12} /> Call Driver ({order.driverName || "Driver"})
+                            </a>
+                          )}
                         </div>
-                        <div className="text-[10px] text-gray-400">{order.store?.name || "Verified Seller Store"}</div>
+
+                        <button
+                          type="button"
+                          onClick={() => setTrackingOrder(order)}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                        >
+                          <Truck size={13} />
+                          <span>Track Live Delivery</span>
+                        </button>
                       </div>
                     </div>
-
-                    {/* Ordered Items List */}
-                    <div className="divide-y divide-gray-50">
-                      {order.items?.map((item: any, i: number) => (
-                        <div key={item.id || i} className="py-2 flex items-center justify-between text-xs">
-                          <div>
-                            <span className="font-bold text-gray-800">{item.productName}</span>
-                            <span className="text-gray-400 ml-2">× {item.quantity} {item.unit || "units"}</span>
-                          </div>
-                          <div className="font-mono font-semibold text-gray-700">
-                            ₹{((item.totalMinorSnapshot || (item.priceMinorSnapshot * item.quantity)) / 100).toLocaleString("en-IN")}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -411,6 +450,41 @@ export function CustomerAccountPage() {
           </div>
         )}
       </div>
+
+      {/* Live Order Tracking Modal */}
+      {trackingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+          <div className="relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div>
+                <h3 className="font-black text-gray-900 text-base">
+                  Track Order #{trackingOrder.orderNumber || trackingOrder.id}
+                </h3>
+                <p className="text-xs text-gray-500">Store: {trackingOrder.storeName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTrackingOrder(null)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <DeliveryStepsTracker order={trackingOrder} />
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setTrackingOrder(null)}
+                className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-bold text-white hover:bg-black transition"
+              >
+                Close Tracking
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

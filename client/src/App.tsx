@@ -6,6 +6,8 @@ import { RegisterPage } from "./features/auth/RegisterPage";
 import { CustomerAccountPage } from "./features/customer/CustomerAccountPage";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { CartPage } from "./features/cart/CartPage";
+import { CheckoutPage } from "./features/checkout/CheckoutPage";
+import { OrderConfirmedPage } from "./features/checkout/OrderConfirmedPage";
 import { CategoriesPage } from "./features/categories/CategoriesPage";
 import { PlannedModulePage } from "./features/common/PlannedModulePage";
 import { HomePage } from "./features/home/HomePage";
@@ -41,8 +43,9 @@ export default function App() {
         <Route path="technicians/:category" element={<TechniciansPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="cart" element={<CartPage />} />
-        <Route path="orders" element={<PlannedModulePage title="Orders" />} />
-        <Route path="checkout" element={<PlannedModulePage title="Checkout" />} />
+        <Route path="checkout" element={<CheckoutPage />} />
+        <Route path="order-confirmed/:orderId" element={<OrderConfirmedPage />} />
+        <Route path="orders" element={<CustomerAccountPage />} />
         <Route path="customer" element={<CustomerAccountPage />} />
         <Route path="partner-hub" element={<PartnerHubPage />} />
         <Route path="seller-hub" element={<Navigate to="/partner-hub" replace />} />
