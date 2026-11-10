@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronDown,
@@ -22,8 +23,9 @@ import { formatMoney } from "../../lib/utils";
 import { getSelectedAddress } from "../location/locationStore";
 import { useAddToCart } from "../../hooks/useAddToCart";
 import { useCartQuery } from "../cart/useCart";
-import { marketplaceApi } from "../../services/api";
-import { getStoredUser } from "../../services/api";
+import { marketplaceApi, getStoredUser } from "../../services/api";
+import { queryKeys } from "../../lib/queryKeys";
+import { FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 
 interface ProductDetailsViewProps {
   product: StoreProduct;
@@ -115,7 +117,9 @@ export function ProductDetailsView({
   onSelectProduct
 }: ProductDetailsViewProps) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { addToCart, isLoading: isAdding, notice } = useAddToCart();
+  const [isBuying, setIsBuying] = useState(false);
   const currentUser = getStoredUser();
 
   const cartQuery = useCartQuery();
@@ -222,6 +226,36 @@ export function ProductDetailsView({
       navigator.clipboard?.writeText(window.location.href);
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2000);
+    }
+  };
+
+  // Instant Buy Now handler (navigates directly to Checkout)
+  const handleBuyNow = async () => {
+    setIsBuying(true);
+    const directItem = {
+      id: `direct-${product.id}`,
+      storeProductId: product.id,
+      productName: product.product.name,
+      unit: product.product.unit || "piece",
+      quantity: effectiveQuantity,
+      priceMinor: adjustedUnitBasePrice,
+      originalPriceMinor: originalUnitPrice,
+      imageUrl: product.product.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
+      category: product.product.category?.name || "Building Material",
+      storeId: product.store.id,
+      storeName: product.store.name || "Etukas Verified Partner Store"
+    };
+
+    try {
+      if (currentUser) {
+        await marketplaceApi.addToCart(product.id, effectiveQuantity);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
+      }
+    } catch (err) {
+      console.warn("Could not sync backend cart prior to checkout:", err);
+    } finally {
+      setIsBuying(false);
+      navigate("/checkout", { state: { directItem } });
     }
   };
 
@@ -774,13 +808,11 @@ export function ProductDetailsView({
 
             <button
               type="button"
-              onClick={() => {
-                addToCart(product.id, effectiveQuantity);
-                navigate("/cart");
-              }}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-5 sm:px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-red-700 active:scale-95"
+              onClick={handleBuyNow}
+              disabled={isBuying || isAdding}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-5 sm:px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-red-700 active:scale-95 disabled:opacity-75"
             >
-              Buy now
+              {isBuying ? "Proceeding..." : "Buy now"}
             </button>
           </div>
         </div>

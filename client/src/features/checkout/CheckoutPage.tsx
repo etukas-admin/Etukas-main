@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -39,6 +39,8 @@ import { OrderConfirmedView } from "./OrderConfirmedView";
 
 export function CheckoutPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const directItem = (location.state as any)?.directItem;
   const queryClient = useQueryClient();
   const cartQuery = useCartQuery();
   const storedUser = getStoredUser();
@@ -67,6 +69,9 @@ export function CheckoutPage() {
 
   // ─── Item Quantities State ───
   const initialItems = useMemo(() => {
+    if (directItem) {
+      return [directItem];
+    }
     if (cartQuery.data && cartQuery.data.items.length > 0) {
       return cartQuery.data.items.map((item) => ({
         id: item.id,
@@ -98,12 +103,16 @@ export function CheckoutPage() {
         storeName: "Sri Lakshmi Building Materials"
       }
     ];
-  }, [cartQuery.data]);
+  }, [cartQuery.data, directItem]);
 
   const [items, setItems] = useState(initialItems);
 
-  // Sync items when cart data arrives
+  // Sync items when cart data arrives (unless direct buy item was provided)
   useEffect(() => {
+    if (directItem) {
+      setItems([directItem]);
+      return;
+    }
     if (cartQuery.data && cartQuery.data.items.length > 0) {
       setItems(
         cartQuery.data.items.map((item) => ({
@@ -121,7 +130,7 @@ export function CheckoutPage() {
         }))
       );
     }
-  }, [cartQuery.data]);
+  }, [cartQuery.data, directItem]);
 
   const updateItemQty = (id: string, newQty: number) => {
     if (newQty < 1) return;
