@@ -39,15 +39,15 @@ export function CustomerAccountPage() {
 
   const { data: customerOrders = [], isLoading: loadingOrders } = useQuery({
     queryKey: ["customer-orders"],
-    queryFn: () => marketplaceApi.getCustomerOrders().catch(() => []),
+    queryFn: ({ signal }) => marketplaceApi.getCustomerOrders({ signal }).catch(() => []),
     enabled: Boolean(currentUser)
   });
 
   const { data: serviceBookings = [], isLoading: loadingServices } = useQuery({
     queryKey: ["customer-service-bookings"],
-    queryFn: () => marketplaceApi.getCustomerServiceBookings().catch(() => []),
+    queryFn: ({ signal }) => marketplaceApi.getCustomerServiceBookings({ signal }).catch(() => []),
     enabled: Boolean(currentUser),
-    refetchInterval: 5000
+    refetchInterval: 15000
   });
 
   const handleLogout = async () => {

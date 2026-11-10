@@ -181,7 +181,17 @@ export function clearSession() {
   }
 }
 
+export interface RequestOptions {
+  signal?: AbortSignal;
+}
+
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (init.signal?.aborted) {
+    const abortError = new Error("Request was aborted");
+    abortError.name = "AbortError";
+    throw abortError;
+  }
+
   const method = (init.method ?? "GET").toUpperCase();
   const requiresCsrf = !["GET", "HEAD", "OPTIONS"].includes(method);
   const isAuthOrPublic =
@@ -206,11 +216,19 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (csrfToken && method !== "GET") headers.set("x-csrf-token", csrfToken);
 
   const url = `${API_BASE}${path}`;
-  let response = await fetch(url, {
-    ...init,
-    headers,
-    credentials: "include"
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers,
+      credentials: "include"
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw err;
+    }
+    throw err;
+  }
   let payload = await parseJsonResponse<T>(response, url);
 
   if (requiresCsrf && !payload.ok && payload.error?.code === "CSRF_FAILED") {
@@ -240,21 +258,24 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const marketplaceApi = {
-  categories: () => api<Category[]>("/categories"),
-  products: (params?: { category?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number }) => {
+  categories: (options?: RequestOptions) => api<Category[]>("/categories", { signal: options?.signal }),
+  products: (
+    params?: { category?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number },
+    options?: RequestOptions
+  ) => {
     const query = new URLSearchParams();
     query.set("pageSize", String(params?.pageSize ?? 24));
     if (params?.category) query.set("category", params.category);
     if (params?.q) query.set("q", params.q);
     if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
     if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
-    return api<StoreProduct[]>(`/products?${query.toString()}`);
+    return api<StoreProduct[]>(`/products?${query.toString()}`, { signal: options?.signal });
   },
-  stores: (params?: { city?: string }) => {
+  stores: (params?: { city?: string }, options?: RequestOptions) => {
     const query = new URLSearchParams();
     if (params?.city) query.set("city", params.city);
     const qs = query.toString();
-    return api<Store[]>(qs ? `/stores/nearby?${qs}` : "/stores/nearby");
+    return api<Store[]>(qs ? `/stores/nearby?${qs}` : "/stores/nearby", { signal: options?.signal });
   },
   login: async (body: { email?: string; identifier?: string; password: string }) => {
     const result = await api<{ accessToken: string; csrfToken: string; user: User }>("/auth/login", { method: "POST", body: JSON.stringify(body) });
@@ -269,24 +290,24 @@ export const marketplaceApi = {
     } catch {}
     clearSession();
   },
-  me: () => api<User>("/auth/me"),
+  me: (options?: RequestOptions) => api<User>("/auth/me", { signal: options?.signal }),
   register: (body: { name: string; email: string; mobile: string; password: string }) => api<User>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   submitSellerEnquiry: (body: SellerEnquiryInput) => api<SellerEnquiry>("/seller-enquiries", { method: "POST", body: JSON.stringify(body) }),
-  adminSellerEnquiries: () => api<SellerEnquiry[]>("/admin/seller-enquiries"),
-  adminSellerEnquiry: (id: string) => api<SellerEnquiry>(`/admin/seller-enquiries/${encodeURIComponent(id)}`),
-  adminSellers: () => api<AdminSeller[]>("/admin/sellers"),
+  adminSellerEnquiries: (options?: RequestOptions) => api<SellerEnquiry[]>("/admin/seller-enquiries", { signal: options?.signal }),
+  adminSellerEnquiry: (id: string, options?: RequestOptions) => api<SellerEnquiry>(`/admin/seller-enquiries/${encodeURIComponent(id)}`, { signal: options?.signal }),
+  adminSellers: (options?: RequestOptions) => api<AdminSeller[]>("/admin/sellers", { signal: options?.signal }),
   adminUpdateSellerStatus: (id: string, status: "PENDING" | "APPROVED" | "REJECTED", rejectionReason?: string) =>
     api<AdminSeller>(`/admin/sellers/${encodeURIComponent(id)}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status, rejectionReason })
     }),
-  publicBanners: () => api<HomepageBanner[]>("/banners"),
-  publicAdBanners: async () => (await api<AdBannerImage[]>("/banners/ad-banners")).map((image) => ({
+  publicBanners: (options?: RequestOptions) => api<HomepageBanner[]>("/banners", { signal: options?.signal }),
+  publicAdBanners: async (options?: RequestOptions) => (await api<AdBannerImage[]>("/banners/ad-banners", { signal: options?.signal })).map((image) => ({
     ...image,
     imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
   })),
-  adminBanners: () => api<HomepageBanner[]>("/admin/banners"),
-  adminAdBanners: async () => (await api<AdBannerImage[]>("/admin/ad-banners")).map((image) => ({
+  adminBanners: (options?: RequestOptions) => api<HomepageBanner[]>("/admin/banners", { signal: options?.signal }),
+  adminAdBanners: async (options?: RequestOptions) => (await api<AdBannerImage[]>("/admin/ad-banners", { signal: options?.signal })).map((image) => ({
     ...image,
     imageUrl: image.imageUrl || `${API_BASE}/banners/ad-banners/${encodeURIComponent(image.id)}/image`
   })),
@@ -302,17 +323,17 @@ export const marketplaceApi = {
     api<HomepageBanner>(`/admin/banners/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   adminDeleteBanner: (id: string) =>
     api<{ id: string }>(`/admin/banners/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  cart: () => api<Cart>("/cart"),
+  cart: (options?: RequestOptions) => api<Cart>("/cart", { signal: options?.signal }),
   addToCart: (storeProductId: string, quantity: number) => api("/cart/items", { method: "POST", body: JSON.stringify({ storeProductId, quantity }) }),
   sellerRegStep1: (body: { contactPerson: string; mobile: string; email: string }) =>
     api<SellerRegistrationResult>("/seller-registration/step1", { method: "POST", body: JSON.stringify(body) }),
   sellerRegStep2: (body: Record<string, unknown>) =>
     api<SellerRegistrationResult>("/seller-registration/step2", { method: "POST", body: JSON.stringify(body) }),
-  sellerDashboard: () => api<SellerDashboardData>("/seller/dashboard"),
-  sellerProfile: () => api<SellerProfileFull>("/seller/profile"),
-    updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
-  getTechnicianMyBookings: () => api<Record<string, unknown>[]>("/technicians/me/bookings"),
-  getTechnicianBookings: (id: string) => api<Record<string, unknown>[]>(`/technicians/${encodeURIComponent(id)}/bookings`),
+  sellerDashboard: (options?: RequestOptions) => api<SellerDashboardData>("/seller/dashboard", { signal: options?.signal }),
+  sellerProfile: (options?: RequestOptions) => api<SellerProfileFull>("/seller/profile", { signal: options?.signal }),
+  updateTechnicianProfile: (body: Record<string, unknown>) => api<Technician>("/technicians/me", { method: "PATCH", body: JSON.stringify(body) }),
+  getTechnicianMyBookings: (options?: RequestOptions) => api<Record<string, unknown>[]>("/technicians/me/bookings", { signal: options?.signal }),
+  getTechnicianBookings: (id: string, options?: RequestOptions) => api<Record<string, unknown>[]>(`/technicians/${encodeURIComponent(id)}/bookings`, { signal: options?.signal }),
   updateTechnicianBookingStatus: (id: string, status: string) =>
     api<Record<string, unknown>>(`/technicians/bookings/${encodeURIComponent(id)}/status`, {
       method: "PATCH",
@@ -323,22 +344,22 @@ export const marketplaceApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
-  getOrder: (id: string) => api<OrderRecord>(`/orders/${encodeURIComponent(id)}`),
-  getCustomerOrders: () => api<OrderRecord[]>("/orders"),
-  getSellerOrders: () => api<OrderRecord[]>("/seller/orders"),
+  getOrder: (id: string, options?: RequestOptions) => api<OrderRecord>(`/orders/${encodeURIComponent(id)}`, { signal: options?.signal }),
+  getCustomerOrders: (options?: RequestOptions) => api<OrderRecord[]>("/orders", { signal: options?.signal }),
+  getSellerOrders: (options?: RequestOptions) => api<OrderRecord[]>("/seller/orders", { signal: options?.signal }),
   updateSellerOrderTracking: (id: string, body: OrderTrackingUpdateInput) =>
     api<OrderRecord>(`/seller/orders/${encodeURIComponent(id)}/tracking`, {
       method: "PATCH",
       body: JSON.stringify(body)
     }),
-  getAdminOrders: () => api<OrderRecord[]>("/admin/orders"),
+  getAdminOrders: (options?: RequestOptions) => api<OrderRecord[]>("/admin/orders", { signal: options?.signal }),
   updateAdminOrderTracking: (id: string, body: OrderTrackingUpdateInput) =>
     api<OrderRecord>(`/admin/orders/${encodeURIComponent(id)}/tracking`, {
       method: "PATCH",
       body: JSON.stringify(body)
     }),
-  getCustomerServiceBookings: () => api<Record<string, unknown>[]>("/technicians/customer/bookings"),
-  sellerProducts: () => api<SellerProductListing[]>("/seller/products"),
+  getCustomerServiceBookings: (options?: RequestOptions) => api<Record<string, unknown>[]>("/technicians/customer/bookings", { signal: options?.signal }),
+  sellerProducts: (options?: RequestOptions) => api<SellerProductListing[]>("/seller/products", { signal: options?.signal }),
   sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
   sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number; name?: string; unit?: string; description?: string }) =>
@@ -356,9 +377,9 @@ export const marketplaceApi = {
   // ─── Chat (User) ───────────────────────────────────────────────────────────
   chatStartSession: (subject?: string) =>
     api<ChatSession>("/chat/sessions", { method: "POST", body: JSON.stringify({ subject }) }),
-  chatMySessions: () => api<ChatSession[]>("/chat/sessions"),
-  chatMessages: (sessionId: string) =>
-    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
+  chatMySessions: (options?: RequestOptions) => api<ChatSession[]>("/chat/sessions", { signal: options?.signal }),
+  chatMessages: (sessionId: string, options?: RequestOptions) =>
+    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, { signal: options?.signal }),
   chatSendMessage: (sessionId: string, content: string) =>
     api<ChatMessage>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: "POST",
@@ -366,9 +387,9 @@ export const marketplaceApi = {
     }),
 
   // ─── Admin chat ────────────────────────────────────────────────────────────
-  adminChatSessions: () => api<ChatSession[]>("/admin/chat/sessions"),
-  adminChatMessages: (sessionId: string) =>
-    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`),
+  adminChatSessions: (options?: RequestOptions) => api<ChatSession[]>("/admin/chat/sessions", { signal: options?.signal }),
+  adminChatMessages: (sessionId: string, options?: RequestOptions) =>
+    api<ChatMessage[]>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, { signal: options?.signal }),
   adminChatSendMessage: (sessionId: string, content: string) =>
     api<ChatMessage>(`/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
       method: "POST",
@@ -380,9 +401,9 @@ export const marketplaceApi = {
     api<{ success: boolean }>(`/admin/chat/sessions/${encodeURIComponent(sessionId)}/read`, { method: "PATCH" }),
 
   // ─── Admin notifications ───────────────────────────────────────────────────
-  adminNotifications: (unreadOnly?: boolean) =>
-    api<AdminNotification[]>(`/admin/chat/notifications${unreadOnly ? "?unread=true" : ""}`),
-  adminNotificationCount: () => api<{ count: number }>("/admin/chat/notifications/count"),
+  adminNotifications: (unreadOnly?: boolean, options?: RequestOptions) =>
+    api<AdminNotification[]>(`/admin/chat/notifications${unreadOnly ? "?unread=true" : ""}`, { signal: options?.signal }),
+  adminNotificationCount: (options?: RequestOptions) => api<{ count: number }>("/admin/chat/notifications/count", { signal: options?.signal }),
   // ─── Technicians & Professionals ───────────────────────────────────────────
   getTechnicians: (params?: {
     category?: string;
@@ -392,7 +413,7 @@ export const marketplaceApi = {
     maxDistance?: number;
     maxCharge?: number;
     sort?: string;
-  }) => {
+  }, options?: RequestOptions) => {
     const query = new URLSearchParams();
     if (params?.category) query.set("category", params.category);
     if (params?.q) query.set("q", params.q);
@@ -402,14 +423,14 @@ export const marketplaceApi = {
     if (params?.maxCharge) query.set("maxCharge", String(params.maxCharge));
     if (params?.sort) query.set("sort", params.sort);
     const qs = query.toString();
-    return api<Technician[]>(`/technicians${qs ? `?${qs}` : ""}`);
+    return api<Technician[]>(`/technicians${qs ? `?${qs}` : ""}`, { signal: options?.signal });
   },
-  getTechnician: (id: string, lat?: number, lng?: number) => {
+  getTechnician: (id: string, lat?: number, lng?: number, options?: RequestOptions) => {
     const query = new URLSearchParams();
     if (lat !== undefined) query.set("lat", String(lat));
     if (lng !== undefined) query.set("lng", String(lng));
     const qs = query.toString();
-    return api<Technician>(`/technicians/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`);
+    return api<Technician>(`/technicians/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`, { signal: options?.signal });
   },
   registerTechnician: (body: TechnicianRegistrationInput) =>
     api<{
