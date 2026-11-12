@@ -10,7 +10,7 @@ import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
 
 export const sellerRouter = Router();
-sellerRouter.use(requireAuth, requireRole(Role.SELLER, Role.MANUFACTURER));
+sellerRouter.use(requireAuth, requireRole(Role.SELLER, Role.MANUFACTURER, Role.ADMIN));
 
 const MAX_IMAGE_SIZE_BYTES = 512 * 1024; // 500 KB
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -552,24 +552,10 @@ sellerRouter.get("/orders", async (req, res, next) => {
 sellerRouter.patch("/orders/:id/tracking", async (req, res, next) => {
   try {
     const input = orderTrackingUpdateSchema.parse(req.body);
-    const updated = updateOrderTracking(req.params.id, input, "Partner");
+    const updated = await updateOrderTracking(req.params.id, input, "Partner");
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
-
-    // Also sync to DB if available
-    try {
-      const prismaStatus = input.status === "CONFIRMED" ? OrderStatus.ACCEPTED
-        : input.status === "LOADING_VEHICLE" ? OrderStatus.PREPARING
-        : input.status === "ASSIGNED_DRIVER" ? OrderStatus.DISPATCHED
-        : input.status === "DELIVERED" ? OrderStatus.DELIVERED
-        : input.status === "REJECTED" ? OrderStatus.REJECTED
-        : OrderStatus.PLACED;
-      await prisma.order.updateMany({
-        where: { id: req.params.id },
-        data: { status: prismaStatus }
-      });
-    } catch {}
 
     return sendOk(res, updated);
   } catch (error) {
@@ -581,8 +567,8 @@ sellerRouter.patch("/orders/:id/status", async (req, res, next) => {
   try {
     const status = req.body.status as OrderStatus;
     const profile = await sellerProfile(req.user!.id);
-    const updated = updateOrderTracking(req.params.id, {
-      status: status === "ACCEPTED" ? "CONFIRMED" : status as any
+    const updated = await updateOrderTracking(req.params.id, {
+      status: (status === "ACCEPTED" ? "CONFIRMED" : status) as any
     }, "Partner");
     return sendOk(res, updated);
   } catch (error) {

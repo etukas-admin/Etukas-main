@@ -198,7 +198,12 @@ export function AdminDashboard() {
       marketplaceApi.updateAdminOrderTracking(id, data),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
       setSelectedAdminOrder(null);
+    },
+    onError: (err: any) => {
+      alert(`Could not update live tracking: ${err?.message || "Please check details and try again."}`);
     }
   });
 
@@ -612,7 +617,19 @@ export function AdminDashboard() {
                           {!ord.vehicleNumber && !ord.driverName && <span className="text-gray-400 italic">Unassigned</span>}
                         </td>
                         <td className="px-4 py-3.5 text-right">
-                          <button type="button" onClick={() => { setSelectedAdminOrder(ord); setAdminNewStatus(ord.status || "CONFIRMED"); setAdminVehicleNo(ord.vehicleNumber || ""); setAdminDriverName(ord.driverName || ""); setAdminDriverPhone(ord.driverPhone || ""); setAdminRejectionReason(ord.rejectionReason || ""); setAdminNote(""); }}
+                          <button type="button" onClick={() => { 
+                            setSelectedAdminOrder(ord); 
+                            const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
+                              : ord.status === "PREPARING" ? "LOADING_VEHICLE"
+                              : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
+                              : ord.status || "CONFIRMED";
+                            setAdminNewStatus(normalized); 
+                            setAdminVehicleNo(ord.vehicleNumber || ""); 
+                            setAdminDriverName(ord.driverName || ""); 
+                            setAdminDriverPhone(ord.driverPhone || ""); 
+                            setAdminRejectionReason(ord.rejectionReason || ""); 
+                            setAdminNote(""); 
+                          }}
                             className="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-etukas-red transition">
                             <Truck size={12} /><span>Live Tracking</span>
                           </button>

@@ -10,7 +10,8 @@
  */
 
 import { useState } from "react";
-import { Trash2, Store, Package2, Truck, AlertCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, Store, Package2, Truck, AlertCircle, ArrowRight } from "lucide-react";
 import { QuantityControl } from "./QuantityControl";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useUpdateCartItem, useRemoveCartItem } from "./useCart";
@@ -27,6 +28,7 @@ const FALLBACK_IMG =
   "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=700&q=80";
 
 export function CartItemCard({ item }: CartItemCardProps) {
+  const navigate = useNavigate();
   const [showConfirm, setShowConfirm] = useState(false);
   const updateMutation = useUpdateCartItem();
   const removeMutation = useRemoveCartItem();
@@ -162,14 +164,44 @@ export function CartItemCard({ item }: CartItemCardProps) {
             />
           </div>
 
-          {/* Price block */}
-          <div className="text-right">
-            <p className="text-xs text-gray-400">
-              {fmtMoney(priceMinor)} × {quantity}
-            </p>
-            <p className="text-xl font-extrabold text-etukas-black">
-              {fmtMoney(subtotal)}
-            </p>
+          {/* Price & Checkout CTA */}
+          <div className="flex flex-col sm:items-end gap-2 text-right">
+            <div>
+              <p className="text-xs text-gray-400">
+                {fmtMoney(priceMinor)} × {quantity}
+              </p>
+              <p className="text-xl font-extrabold text-etukas-black">
+                {fmtMoney(subtotal)}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              disabled={isMutating || isOutOfStock}
+              onClick={() => {
+                navigate("/checkout", {
+                  state: {
+                    directItem: {
+                      id: item.id,
+                      storeProductId: storeProduct.id,
+                      productName: product.name,
+                      unit: product.unit || "piece",
+                      quantity: quantity,
+                      priceMinor: priceMinor,
+                      originalPriceMinor: Math.round(priceMinor * 1.3),
+                      imageUrl: getProductImageUrl(product.images[0], product.id, FALLBACK_IMG),
+                      category: product.category?.name || "Building Material",
+                      storeId: store.id,
+                      storeName: store.name
+                    }
+                  }
+                });
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition disabled:opacity-50"
+            >
+              <span>Order Now</span>
+              <ArrowRight size={13} />
+            </button>
           </div>
         </div>
 

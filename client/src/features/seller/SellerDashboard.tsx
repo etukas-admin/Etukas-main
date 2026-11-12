@@ -178,8 +178,13 @@ export function SellerDashboard() {
     mutationFn: ({ orderId, data }: { orderId: string; data: any }) =>
       marketplaceApi.updateSellerOrderTracking(orderId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
       setSelectedOrderForStatus(null);
+    },
+    onError: (err: any) => {
+      alert(`Could not update order status: ${err?.message || "Please check details and try again."}`);
     }
   });
 
@@ -2040,7 +2045,11 @@ export function SellerDashboard() {
                                 type="button"
                                 onClick={() => {
                                   setSelectedOrderForStatus(ord);
-                                  setNewStatus(ord.status || "CONFIRMED");
+                                  const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
+                                    : ord.status === "PREPARING" ? "LOADING_VEHICLE"
+                                    : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
+                                    : ord.status || "CONFIRMED";
+                                  setNewStatus(normalized);
                                   setStatusVehicleNo(ord.vehicleNumber || "");
                                   setStatusDriverName(ord.driverName || "");
                                   setStatusDriverPhone(ord.driverPhone || "");

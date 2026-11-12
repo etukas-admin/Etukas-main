@@ -305,24 +305,132 @@ export function saveOrder(order: OrderRecord): void {
   saveOrders(current);
 }
 
-export function findOrderById(id: string): OrderRecord | null {
+export function normalizeDeliveryStatus(st: string): DeliveryStatus {
+  if (st === "ACCEPTED" || st === "CONFIRMED") return "CONFIRMED";
+  if (st === "PREPARING" || st === "LOADING_VEHICLE") return "LOADING_VEHICLE";
+  if (st === "DISPATCHED" || st === "ASSIGNED_DRIVER") return "ASSIGNED_DRIVER";
+  if (st === "DELIVERED") return "DELIVERED";
+  if (st === "REJECTED") return "REJECTED";
+  if (st === "CANCELLED") return "CANCELLED";
+  return "PLACED";
+}
+
+export function toPrismaOrderStatus(st: string): OrderStatus {
+  if (st === "CONFIRMED" || st === "ACCEPTED") return OrderStatus.ACCEPTED;
+  if (st === "LOADING_VEHICLE" || st === "PREPARING") return OrderStatus.PREPARING;
+  if (st === "ASSIGNED_DRIVER" || st === "DISPATCHED") return OrderStatus.DISPATCHED;
+  if (st === "DELIVERED") return OrderStatus.DELIVERED;
+  if (st === "REJECTED") return OrderStatus.REJECTED;
+  if (st === "CANCELLED") return OrderStatus.CANCELLED;
+  return OrderStatus.PLACED;
+}
+
+export async function findOrderById(id: string): Promise<OrderRecord | null> {
   const clean = id.trim().toLowerCase();
   const current = loadOrders();
   const match = current.find(
-    (o) => o.id.toLowerCase() === clean || o.orderNumber.toLowerCase() === clean
+    (o) => o.id.toLowerCase() === clean || o.orderNumber.toLowerCase() === clean || (o.parentCheckoutId && o.parentCheckoutId.toLowerCase() === clean)
   );
-  return match || null;
+  if (match) return match;
+
+  // Search Prisma DB if not found in file store
+  try {
+    const dbOrder = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: id },
+          { id: { equals: id, mode: "insensitive" } },
+          { parentCheckoutId: id }
+        ]
+      },
+      include: {
+        store: { include: { sellerProfile: true } },
+        customer: { select: { id: true, name: true, mobile: true, email: true } },
+        address: true,
+        items: true
+      }
+    });
+
+    if (dbOrder) {
+      const mapped: OrderRecord = {
+        id: dbOrder.id,
+        orderNumber: dbOrder.id,
+        parentCheckoutId: dbOrder.parentCheckoutId,
+        customerId: dbOrder.customerId,
+        customerName: dbOrder.address?.contactName || dbOrder.customer?.name || "Customer",
+        customerPhone: dbOrder.address?.mobile || dbOrder.customer?.mobile || "",
+        customerEmail: dbOrder.customer?.email,
+        storeId: dbOrder.storeId,
+        storeName: dbOrder.store?.name || "Etukas Partner Store",
+        sellerId: dbOrder.store?.sellerProfile?.sellerId || "PARTNER",
+        sellerPhone: (dbOrder.store?.sellerProfile as any)?.user?.mobile || "",
+        deliveryAddress: dbOrder.address ? {
+          contactName: dbOrder.address.contactName,
+          mobile: dbOrder.address.mobile,
+          line1: dbOrder.address.line1,
+          line2: dbOrder.address.line2 || undefined,
+          city: dbOrder.address.city,
+          state: dbOrder.address.state,
+          postalCode: dbOrder.address.postalCode,
+          label: dbOrder.address.label || undefined
+        } : {
+          contactName: "Customer",
+          mobile: "9848012345",
+          line1: "Delivery Address",
+          city: "Hyderabad",
+          state: "Telangana",
+          postalCode: "500001"
+        },
+        status: normalizeDeliveryStatus(dbOrder.status),
+        subtotalMinor: dbOrder.subtotalMinor,
+        taxMinor: dbOrder.taxMinor,
+        discountMinor: dbOrder.discountMinor,
+        deliveryChargeMinor: dbOrder.deliveryChargeMinor,
+        protectFeeMinor: 4900,
+        totalMinor: dbOrder.totalMinor,
+        currency: dbOrder.currency || "INR",
+        paymentMethod: "COD",
+        paymentStatus: "PENDING",
+        items: dbOrder.items?.map((it: any) => ({
+          id: it.id,
+          storeProductId: it.storeProductId,
+          productName: it.productName,
+          sku: it.sku,
+          unit: it.unit,
+          quantity: it.quantity,
+          priceMinor: it.priceMinorSnapshot,
+          totalMinor: it.totalMinorSnapshot
+        })) || [],
+        statusHistory: [
+          {
+            status: normalizeDeliveryStatus(dbOrder.status),
+            timestamp: dbOrder.updatedAt ? dbOrder.updatedAt.toISOString() : new Date().toISOString(),
+            note: "Order recorded in database"
+          }
+        ],
+        createdAt: dbOrder.createdAt.toISOString(),
+        updatedAt: dbOrder.updatedAt.toISOString()
+      };
+      saveOrder(mapped);
+      return mapped;
+    }
+  } catch (err) {
+    console.warn("DB order lookup error:", err);
+  }
+
+  return null;
 }
 
-export function updateOrderTracking(
+export async function updateOrderTracking(
   id: string,
   update: OrderTrackingUpdateInput,
   actor = "Partner"
-): OrderRecord | null {
-  const order = findOrderById(id);
+): Promise<OrderRecord | null> {
+  const order = await findOrderById(id);
   if (!order) return null;
 
-  order.status = update.status as DeliveryStatus;
+  const normalizedStatus = normalizeDeliveryStatus(update.status);
+  order.status = normalizedStatus;
   if (update.vehicleNumber !== undefined) order.vehicleNumber = update.vehicleNumber;
   if (update.driverName !== undefined) order.driverName = update.driverName;
   if (update.driverPhone !== undefined) order.driverPhone = update.driverPhone;
@@ -330,20 +438,20 @@ export function updateOrderTracking(
 
   const defaultNote =
     update.note ||
-    (update.status === "CONFIRMED"
+    (normalizedStatus === "CONFIRMED"
       ? "Order confirmed by seller store"
-      : update.status === "LOADING_VEHICLE"
+      : normalizedStatus === "LOADING_VEHICLE"
       ? `Material loading in vehicle ${update.vehicleNumber || order.vehicleNumber || ""}`.trim()
-      : update.status === "ASSIGNED_DRIVER"
+      : normalizedStatus === "ASSIGNED_DRIVER"
       ? `Delivery partner ${update.driverName || order.driverName || "driver"} assigned`.trim()
-      : update.status === "DELIVERED"
+      : normalizedStatus === "DELIVERED"
       ? "Order successfully delivered at site"
-      : update.status === "REJECTED"
+      : normalizedStatus === "REJECTED"
       ? `Order rejected by seller: ${update.rejectionReason || "Store unavailable"}`
       : "Order status updated");
 
   order.statusHistory.push({
-    status: update.status as DeliveryStatus,
+    status: normalizedStatus,
     timestamp: new Date().toISOString(),
     note: defaultNote,
     actor
@@ -351,6 +459,24 @@ export function updateOrderTracking(
 
   order.updatedAt = new Date().toISOString();
   saveOrder(order);
+
+  // Sync status to DB if available
+  try {
+    const prismaStatus = toPrismaOrderStatus(update.status);
+    await prisma.order.updateMany({
+      where: {
+        OR: [
+          { id: order.id },
+          { id: id },
+          { parentCheckoutId: order.parentCheckoutId || id }
+        ]
+      },
+      data: { status: prismaStatus }
+    });
+  } catch (err) {
+    console.warn("Prisma order status sync skipped:", err);
+  }
+
   return order;
 }
 
@@ -585,24 +711,87 @@ ordersRouter.post("/", async (req, res, next) => {
 
 /**
  * GET /api/v1/orders
- * Returns customer's placed orders
+ * Returns customer's placed orders only (never returns demo orders to customers)
  */
 ordersRouter.get("/", async (req, res, next) => {
   try {
     const user = req.user!;
-    const all = loadOrders();
     const userPhoneClean = ((user as any).mobile || "").replace(/\D/g, "");
     const userEmailLower = (user.email || "").toLowerCase();
 
-    const customerOrders = all.filter((o) => {
+    // 1. Fetch from Prisma DB
+    let dbOrders: any[] = [];
+    try {
+      dbOrders = await prisma.order.findMany({
+        where: { customerId: user.id },
+        include: {
+          store: { include: { sellerProfile: true } },
+          address: true,
+          items: true
+        },
+        orderBy: { createdAt: "desc" }
+      });
+    } catch {}
+
+    // 2. Fetch from persistent file storage (excluding demo orders)
+    const all = loadOrders();
+    const fileCustomerOrders = all.filter((o) => {
       if (o.customerId === user.id) return true;
+      if (o.customerId === "cust-demo-1" || o.customerId === "cust-demo-2") return false;
       if (userPhoneClean && (o.customerPhone || "").replace(/\D/g, "").includes(userPhoneClean)) return true;
       if (userEmailLower && (o.customerEmail || "").toLowerCase() === userEmailLower) return true;
       return false;
     });
 
-    // If user has no orders yet, return the list (or seed orders for demo purposes)
-    return sendOk(res, customerOrders.length > 0 ? customerOrders : all.slice(0, 3));
+    // 3. Merge both sources without duplicates
+    const orderMap = new Map<string, any>();
+    for (const ord of fileCustomerOrders) {
+      orderMap.set(ord.orderNumber || ord.id, ord);
+    }
+    for (const ord of dbOrders) {
+      const key = ord.id;
+      if (!orderMap.has(key)) {
+        orderMap.set(key, {
+          id: ord.id,
+          orderNumber: ord.id,
+          parentCheckoutId: ord.parentCheckoutId,
+          customerId: ord.customerId,
+          customerName: ord.address?.contactName || user.email,
+          customerPhone: ord.address?.mobile || "",
+          customerEmail: user.email,
+          storeName: ord.store?.name || "Etukas Partner Store",
+          sellerId: ord.store?.sellerProfile?.sellerId || "PARTNER",
+          deliveryAddress: ord.address ? {
+            contactName: ord.address.contactName,
+            mobile: ord.address.mobile,
+            line1: ord.address.line1,
+            line2: ord.address.line2 || undefined,
+            city: ord.address.city,
+            state: ord.address.state,
+            postalCode: ord.address.postalCode,
+            label: ord.address.label || undefined
+          } : undefined,
+          status: normalizeDeliveryStatus(ord.status),
+          totalMinor: ord.totalMinor,
+          items: ord.items?.map((it: any) => ({
+            id: it.id,
+            productName: it.productName,
+            unit: it.unit,
+            quantity: it.quantity,
+            totalMinor: it.totalMinorSnapshot,
+            priceMinor: it.priceMinorSnapshot
+          })) || [],
+          createdAt: ord.createdAt.toISOString()
+        });
+      }
+    }
+
+    const result = Array.from(orderMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    // Return ONLY the customer's actual placed orders (empty array if none)
+    return sendOk(res, result);
   } catch (error) {
     next(error);
   }
@@ -614,7 +803,7 @@ ordersRouter.get("/", async (req, res, next) => {
  */
 ordersRouter.get("/:id", async (req, res, next) => {
   try {
-    const order = findOrderById(req.params.id);
+    const order = await findOrderById(req.params.id);
     if (!order) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
@@ -631,7 +820,7 @@ ordersRouter.get("/:id", async (req, res, next) => {
 ordersRouter.patch("/:id/tracking", async (req, res, next) => {
   try {
     const updateInput = orderTrackingUpdateSchema.parse(req.body);
-    const updated = updateOrderTracking(req.params.id, updateInput, req.user?.roles?.includes("ADMIN") ? "Admin" : "Store Partner");
+    const updated = await updateOrderTracking(req.params.id, updateInput, req.user?.roles?.includes("ADMIN") ? "Admin" : "Store Partner");
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
