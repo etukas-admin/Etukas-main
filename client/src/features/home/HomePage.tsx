@@ -53,13 +53,6 @@ const homeCategories: readonly HomeCategory[] = [
     bg: "from-red-50 to-rose-100/70 border-red-200/60",
   },
   {
-    name: "Iron Bars",
-    slug: "steel-iron-bars",
-    image: "/images/pngimages/steel-iron-bars.webp",
-    icon: IronBarsIcon,
-    bg: "from-sky-50 to-blue-100/70 border-blue-200/60",
-  },
-  {
     name: "Sand",
     slug: "sand-aggregates",
     image: "/images/pngimages/sand.webp",
@@ -72,6 +65,13 @@ const homeCategories: readonly HomeCategory[] = [
     image: "/images/pngimages/stone-aggregates.webp",
     icon: StoneAggregateIcon,
     bg: "from-stone-100 to-slate-200/70 border-stone-300/60",
+  },
+  {
+    name: "Iron Bars",
+    slug: "steel-iron-bars",
+    image: "/images/pngimages/steel-iron-bars.webp",
+    icon: IronBarsIcon,
+    bg: "from-sky-50 to-blue-100/70 border-blue-200/60",
   },
   {
     name: "Tiles/Marbles",
@@ -359,7 +359,7 @@ export function HomePage() {
         <div className="mb-4 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-xl font-extrabold text-gray-900 sm:text-2xl">Nearby Stores & Yards</h2>
+              <h2 className="text-lg font-extrabold text-gray-900 sm:text-xl">Nearby Stores & Yards</h2>
               {activeAddress.city && (
                 <span className="rounded-full bg-etukas-pink px-2.5 py-0.5 text-xs font-bold text-etukas-red border border-etukas-red/20">
                   near {activeAddress.city}
@@ -370,9 +370,9 @@ export function HomePage() {
           </div>
           <Link to="/stores" className="text-xs font-bold text-etukas-red sm:text-sm hover:underline">View All Stores &rarr;</Link>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+        <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 sm:gap-4">
           {stores.data?.map((store) => (
-            <article key={store.id} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow transition-shadow">
+            <article key={store.id} className="w-[min(82vw,300px)] shrink-0 snap-start rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition-shadow hover:shadow">
               <div className="flex items-center justify-between">
                 <span className="rounded bg-etukas-green/10 px-2 py-0.5 text-xs font-bold text-etukas-green">Verified Yard</span>
                 <span className="text-[11px] text-gray-400">Radius {store.serviceRadiusKm} km</span>
