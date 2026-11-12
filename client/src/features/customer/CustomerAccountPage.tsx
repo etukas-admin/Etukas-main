@@ -22,6 +22,7 @@ import {
 import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
 import type { OrderRecord } from "../../services/api";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
+import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 
 export function CustomerAccountPage() {
   const navigate = useNavigate();
@@ -40,7 +41,9 @@ export function CustomerAccountPage() {
   const { data: customerOrders = [], isLoading: loadingOrders } = useQuery({
     queryKey: ["customer-orders"],
     queryFn: ({ signal }) => marketplaceApi.getCustomerOrders({ signal }).catch(() => []),
-    enabled: Boolean(currentUser)
+    enabled: Boolean(currentUser),
+    refetchInterval: 15000,
+    refetchIntervalInBackground: false
   });
 
   const { data: serviceBookings = [], isLoading: loadingServices } = useQuery({
@@ -228,19 +231,33 @@ export function CustomerAccountPage() {
                         </div>
                       </div>
 
-                      {/* Ordered Items List */}
-                      <div className="divide-y divide-gray-50">
-                        {order.items?.map((item: any, i: number) => (
-                          <div key={item.id || i} className="py-2 flex items-center justify-between text-xs">
-                            <div>
-                              <span className="font-bold text-gray-800">{item.productName}</span>
-                              <span className="text-gray-400 ml-2">× {item.quantity} {item.unit || "units"}</span>
+                      {/* Ordered Items List with Small Product Image */}
+                      <div className="divide-y divide-gray-100">
+                        {order.items?.map((item: any, i: number) => {
+                          const itemImg = item.imageUrl || FALLBACK_PRODUCT_IMAGE;
+                          const itemTotal = item.totalMinor || item.totalMinorSnapshot || (item.priceMinor * item.quantity) || 0;
+                          return (
+                            <div key={item.id || i} className="py-2.5 flex items-center justify-between gap-3 text-xs">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="h-12 w-12 rounded-xl bg-gray-50 border border-gray-200/80 p-1 shrink-0 flex items-center justify-center overflow-hidden">
+                                  <img
+                                    src={itemImg}
+                                    alt={item.productName}
+                                    className="h-full w-full object-contain"
+                                    onError={createSafeImageHandler(FALLBACK_PRODUCT_IMAGE)}
+                                  />
+                                </div>
+                                <div className="min-w-0">
+                                  <span className="font-bold text-gray-800 block truncate">{item.productName}</span>
+                                  <span className="text-gray-500 text-[11px]">Qty: {item.quantity} {item.unit || "units"}</span>
+                                </div>
+                              </div>
+                              <div className="font-mono font-bold text-gray-800 text-xs sm:text-sm shrink-0">
+                                ₹{(itemTotal / 100).toLocaleString("en-IN")}
+                              </div>
                             </div>
-                            <div className="font-mono font-semibold text-gray-700">
-                              ₹{((item.totalMinor || item.totalMinorSnapshot || (item.priceMinor * item.quantity)) / 100).toLocaleString("en-IN")}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Action Bar with Track Delivery Button */}

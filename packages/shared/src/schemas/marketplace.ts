@@ -15,11 +15,11 @@ export const productQuerySchema = paginationSchema.extend({
 
 export const addCartItemSchema = z.object({
   storeProductId: z.string().cuid(),
-  quantity: z.coerce.number().int().positive().max(9999)
+  quantity: z.coerce.number().int().positive().max(1_000_000)
 });
 
 export const updateCartItemSchema = z.object({
-  quantity: z.coerce.number().int().positive().max(9999)
+  quantity: z.coerce.number().int().positive().max(1_000_000)
 });
 
 export const deliveryAddressSchema = z.object({
@@ -60,8 +60,11 @@ export const orderTrackingUpdateSchema = z.object({
   status: z.enum([
     "PLACED",
     "CONFIRMED",
+    "ACCEPTED",
     "LOADING_VEHICLE",
+    "PREPARING",
     "ASSIGNED_DRIVER",
+    "DISPATCHED",
     "DELIVERED",
     "REJECTED",
     "CANCELLED"

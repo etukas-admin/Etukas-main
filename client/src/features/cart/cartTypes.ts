@@ -144,13 +144,12 @@ export function deriveQuantityConfig(storeProduct: StoreProduct): QuantityConfig
   switch (category) {
     case "steel":
     case "iron":
-      // Steel products should ideally have variants from the backend.
-      // Until then, render as step-type with a note.
       return {
-        type: "step",
-        unit,
-        step: 1,
+        type: "bulk",
+        unit: unit.includes("ton") ? "tonne" : "rod",
+        quickOptions: [1, 2, 5, 10, 25, 50],
         min,
+        step: 1,
         max: storeProduct.stockQuantity || undefined,
       };
 
@@ -158,8 +157,7 @@ export function deriveQuantityConfig(storeProduct: StoreProduct): QuantityConfig
       return {
         type: "bulk",
         unit: "brick",
-        // Seller-configurable: default quick options for bricks
-        quickOptions: [2000, 5000, 10000, 15000, 20000],
+        quickOptions: [1000, 2000, 5000, 10000, 20000],
         min: min < 100 ? 500 : min,
         step: min < 100 ? 500 : min,
         max: storeProduct.stockQuantity || undefined,
@@ -167,10 +165,11 @@ export function deriveQuantityConfig(storeProduct: StoreProduct): QuantityConfig
 
     case "cement":
       return {
-        type: "step",
-        unit: "bag (50 kg)",
-        step: 1,
+        type: "bulk",
+        unit: "bag",
+        quickOptions: [10, 25, 50, 100, 200, 500],
         min,
+        step: 1,
         max: storeProduct.stockQuantity || undefined,
       };
 
@@ -178,7 +177,7 @@ export function deriveQuantityConfig(storeProduct: StoreProduct): QuantityConfig
     case "aggregates":
       return {
         type: "bulk",
-        unit: unit.includes("ton") ? "tonne" : "cubic feet",
+        unit: unit.includes("ton") ? "tonne" : unit.includes("brass") ? "brass" : "cubic feet",
         quickOptions: [1, 2, 5, 10, 20],
         min,
         step: min,
@@ -187,10 +186,11 @@ export function deriveQuantityConfig(storeProduct: StoreProduct): QuantityConfig
 
     case "tiles":
       return {
-        type: "step",
+        type: "bulk",
         unit: unit.includes("sq") ? "sq. ft." : "box",
-        step: 1,
+        quickOptions: [10, 20, 50, 100, 200],
         min,
+        step: 1,
         max: storeProduct.stockQuantity || undefined,
       };
 

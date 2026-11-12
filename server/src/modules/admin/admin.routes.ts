@@ -528,24 +528,10 @@ adminRouter.get("/orders", async (_req, res, next) => {
 adminRouter.patch("/orders/:id/tracking", async (req, res, next) => {
   try {
     const input = orderTrackingUpdateSchema.parse(req.body);
-    const updated = updateOrderTracking(req.params.id, input, "Admin");
+    const updated = await updateOrderTracking(req.params.id, input, "Admin");
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
-
-    // Sync status to DB if available
-    try {
-      const prismaStatus = input.status === "CONFIRMED" ? OrderStatus.ACCEPTED
-        : input.status === "LOADING_VEHICLE" ? OrderStatus.PREPARING
-        : input.status === "ASSIGNED_DRIVER" ? OrderStatus.DISPATCHED
-        : input.status === "DELIVERED" ? OrderStatus.DELIVERED
-        : input.status === "REJECTED" ? OrderStatus.REJECTED
-        : OrderStatus.PLACED;
-      await prisma.order.updateMany({
-        where: { id: req.params.id },
-        data: { status: prismaStatus }
-      });
-    } catch {}
 
     return sendOk(res, updated);
   } catch (error) {

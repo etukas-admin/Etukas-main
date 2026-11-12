@@ -41,6 +41,7 @@ export function CheckoutPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const directItem = (location.state as any)?.directItem;
+  const stateCartItems = (location.state as any)?.cartItems;
   const queryClient = useQueryClient();
   const cartQuery = useCartQuery();
   const storedUser = getStoredUser();
@@ -71,6 +72,21 @@ export function CheckoutPage() {
   const initialItems = useMemo(() => {
     if (directItem) {
       return [directItem];
+    }
+    if (stateCartItems && Array.isArray(stateCartItems) && stateCartItems.length > 0) {
+      return stateCartItems.map((item: any) => ({
+        id: item.id || `cart-${item.storeProduct?.id || Date.now()}`,
+        storeProductId: item.storeProductId || item.storeProduct?.id,
+        productName: item.productName || item.storeProduct?.product?.name || "Material",
+        unit: item.unit || item.storeProduct?.product?.unit || "piece",
+        quantity: item.quantity,
+        priceMinor: item.priceMinor || item.storeProduct?.priceMinor,
+        originalPriceMinor: item.originalPriceMinor || Math.round((item.priceMinor || item.storeProduct?.priceMinor || 0) * 1.3),
+        imageUrl: item.imageUrl || item.storeProduct?.product?.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
+        category: item.category || item.storeProduct?.product?.category?.name || "Building Material",
+        storeId: item.storeId || item.storeProduct?.store?.id || "store-kakinada-1",
+        storeName: item.storeName || item.storeProduct?.store?.name || "Etukas Verified Partner Store"
+      }));
     }
     if (cartQuery.data && cartQuery.data.items.length > 0) {
       return cartQuery.data.items.map((item) => ({
@@ -103,14 +119,17 @@ export function CheckoutPage() {
         storeName: "Sri Lakshmi Building Materials"
       }
     ];
-  }, [cartQuery.data, directItem]);
+  }, [cartQuery.data, directItem, stateCartItems]);
 
   const [items, setItems] = useState(initialItems);
 
-  // Sync items when cart data arrives (unless direct buy item was provided)
+  // Sync items when cart data arrives (unless direct buy item or passed cart items were provided)
   useEffect(() => {
     if (directItem) {
       setItems([directItem]);
+      return;
+    }
+    if (stateCartItems && Array.isArray(stateCartItems) && stateCartItems.length > 0) {
       return;
     }
     if (cartQuery.data && cartQuery.data.items.length > 0) {
@@ -130,7 +149,7 @@ export function CheckoutPage() {
         }))
       );
     }
-  }, [cartQuery.data, directItem]);
+  }, [cartQuery.data, directItem, stateCartItems]);
 
   const updateItemQty = (id: string, newQty: number) => {
     if (newQty < 1) return;
@@ -176,7 +195,9 @@ export function CheckoutPage() {
     },
     onSuccess: (data) => {
       setPlacedOrder(data.order);
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      void queryClient.invalidateQueries({ queryKey: ["cart"] });
+      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });

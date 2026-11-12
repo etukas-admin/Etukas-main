@@ -201,7 +201,7 @@ export function CartPage() {
   );
 
   const handleCheckout = () => {
-    navigate("/checkout");
+    navigate("/checkout", { state: { cartItems: enrichedItems } });
   };
 
   const handleClearCart = () => {
