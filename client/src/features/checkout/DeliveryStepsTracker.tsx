@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Truck, UserCheck, PackageCheck, Phone, AlertCircle } from "lucide-react";
+import { CheckCircle2, Clock, Truck, UserCheck, PackageCheck, Phone, AlertCircle, RefreshCw, FileText } from "lucide-react";
 import type { OrderRecord, DeliveryStatus } from "../../services/api";
 
 const STEPS: { status: DeliveryStatus; label: string; desc: string }[] = [
@@ -29,7 +29,15 @@ function getStepIndex(status: DeliveryStatus): number {
   }
 }
 
-export function DeliveryStepsTracker({ order }: { order: OrderRecord }) {
+export function DeliveryStepsTracker({
+  order,
+  onRefresh,
+  isRefreshing
+}: {
+  order: OrderRecord;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}) {
   const isRejected = order.status === "REJECTED" || order.status === "CANCELLED";
   const currentStepIdx = getStepIndex(order.status);
 
@@ -56,23 +64,37 @@ export function DeliveryStepsTracker({ order }: { order: OrderRecord }) {
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6 shadow-xs">
-      <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-4">
         <div>
           <h3 className="text-sm font-extrabold text-gray-900 sm:text-base">Live Delivery Status</h3>
           <p className="text-xs text-gray-500">Real-time status updates from {order.storeName}</p>
         </div>
-        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
-          order.status === "DELIVERED"
-            ? "bg-emerald-100 text-emerald-800"
-            : order.status === "ASSIGNED_DRIVER"
-            ? "bg-blue-100 text-blue-800"
-            : order.status === "LOADING_VEHICLE"
-            ? "bg-purple-100 text-purple-800"
-            : "bg-amber-100 text-amber-800"
-        }`}>
-          <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-          {STEPS.find((s) => s.status === order.status)?.label || order.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-bold text-gray-700 hover:border-etukas-red hover:bg-red-50 hover:text-etukas-red transition active:scale-95 disabled:opacity-50"
+              title="Refresh live tracking"
+            >
+              <RefreshCw size={12} className={isRefreshing ? "animate-spin text-etukas-red" : ""} />
+              <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          )}
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
+            order.status === "DELIVERED"
+              ? "bg-emerald-100 text-emerald-800"
+              : order.status === "ASSIGNED_DRIVER"
+              ? "bg-blue-100 text-blue-800"
+              : order.status === "LOADING_VEHICLE"
+              ? "bg-purple-100 text-purple-800"
+              : "bg-amber-100 text-amber-800"
+          }`}>
+            <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+            {STEPS.find((s) => s.status === order.status)?.label || order.status}
+          </span>
+        </div>
       </div>
 
       {/* Stepper Timeline */}
@@ -170,6 +192,30 @@ export function DeliveryStepsTracker({ order }: { order: OrderRecord }) {
           );
         })}
       </div>
+
+      {/* Live Status Note from Store Partner / Admin (Task 4) */}
+      {(order.statusNote || (order.statusHistory && order.statusHistory.slice().reverse().find(h => h.note && h.actor !== "Customer")?.note)) && (
+        <div className="mt-6 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50/90 to-amber-50/90 p-4 text-xs shadow-xs">
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
+              <FileText size={15} />
+            </div>
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-orange-950 uppercase tracking-wider text-[10px]">
+                  Status Note from Store Partner / Admin:
+                </span>
+                <span className="rounded-full bg-orange-200/70 px-2 py-0.5 text-[9px] font-bold text-orange-800">
+                  Live Dispatch Update
+                </span>
+              </div>
+              <p className="text-orange-950 font-bold text-xs sm:text-sm leading-relaxed">
+                "{order.statusNote || order.statusHistory.slice().reverse().find(h => h.note && h.actor !== "Customer")?.note}"
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

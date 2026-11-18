@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, AlertTriangle, BadgeAlert, BadgeCheck, CheckCircle2, Clock, ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MapPin, MessageSquareText, PackageCheck, PanelsTopLeft, Phone, Search, ShoppingBag, Trash2, Truck, UserCheck, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, BadgeAlert, BadgeCheck, CheckCircle2, Clock, ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MapPin, MessageSquareText, PackageCheck, PanelsTopLeft, Phone, RefreshCw, Search, ShoppingBag, Trash2, Truck, UserCheck, X } from "lucide-react";
 import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type OrderRecord, type SellerEnquiry, type User } from "../../services/api";
 import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
 import { AdminNotificationsDropdown } from "./AdminNotificationsDropdown";
@@ -185,13 +185,41 @@ export function AdminDashboard() {
   const [adminRejectionReason, setAdminRejectionReason] = useState("");
   const [adminNote, setAdminNote] = useState("");
 
+  const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
+
   const adminOrders = useQuery({
     queryKey: ["admin", "orders"],
     queryFn: ({ signal }) => marketplaceApi.getAdminOrders({ signal }).catch(() => []),
     enabled: Boolean(sessionUser),
-    refetchInterval: 15000,
-    refetchIntervalInBackground: false
+    refetchInterval: false,
+    refetchOnWindowFocus: false
   });
+
+  const handleRefreshAdminOrder = async () => {
+    if (!selectedAdminOrder) return;
+    setIsRefreshingTracking(true);
+    try {
+      const updated = await marketplaceApi.getOrder(selectedAdminOrder.orderNumber || selectedAdminOrder.id);
+      if (updated) {
+        setSelectedAdminOrder(updated);
+        const currentStatus = String(updated.status || "");
+        const normalized = currentStatus === "ACCEPTED" ? "CONFIRMED"
+          : currentStatus === "PREPARING" ? "LOADING_VEHICLE"
+          : currentStatus === "DISPATCHED" ? "ASSIGNED_DRIVER"
+          : updated.status || "CONFIRMED";
+        setAdminNewStatus(normalized);
+        setAdminVehicleNo(updated.vehicleNumber || "");
+        setAdminDriverName(updated.driverName || "");
+        setAdminDriverPhone(updated.driverPhone || "");
+        setAdminRejectionReason(updated.rejectionReason || "");
+      }
+      await adminOrders.refetch();
+    } catch (err) {
+      console.warn("Could not refresh order:", err);
+    } finally {
+      setIsRefreshingTracking(false);
+    }
+  };
 
   const updateAdminOrderTracking = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
@@ -543,10 +571,22 @@ export function AdminDashboard() {
               <h2 className="mt-1 text-xl font-extrabold sm:text-2xl">Customer Orders &amp; Live Delivery Tracking</h2>
               <p className="mt-1 text-sm text-gray-600">Monitor all received customer orders across partner stores. Track live delivery stages and intervene directly.</p>
             </div>
-            <div className="relative sm:w-72">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Search Order ID, customer, partner..." value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-xs outline-none focus:border-etukas-red" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void adminOrders.refetch()}
+                disabled={adminOrders.isFetching}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-bold text-gray-700 shadow-xs hover:border-etukas-red hover:text-etukas-red active:scale-95 transition"
+                title="Refresh orders list"
+              >
+                <RefreshCw size={13} className={adminOrders.isFetching ? "animate-spin text-etukas-red" : ""} />
+                <span>{adminOrders.isFetching ? "Refreshing..." : "Refresh Orders"}</span>
+              </button>
+              <div className="relative sm:w-72">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input type="text" placeholder="Search Order ID, customer, partner..." value={orderFilter} onChange={(e) => setOrderFilter(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-xs outline-none focus:border-etukas-red" />
+              </div>
             </div>
           </div>
 
@@ -650,10 +690,28 @@ export function AdminDashboard() {
                     <h3 className="text-lg font-bold flex items-center gap-2"><Truck className="text-etukas-red" size={20} /> Admin Live Tracking</h3>
                     <p className="text-xs text-gray-500 font-mono mt-0.5">Order #{selectedAdminOrder.orderNumber || selectedAdminOrder.id} · Partner: {selectedAdminOrder.sellerId}</p>
                   </div>
-                  <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleRefreshAdminOrder()}
+                      disabled={isRefreshingTracking}
+                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-700 hover:border-etukas-red hover:text-etukas-red shadow-2xs"
+                      title="Fetch latest tracking details"
+                    >
+                      <RefreshCw size={12} className={isRefreshingTracking ? "animate-spin text-etukas-red" : ""} />
+                      <span>{isRefreshingTracking ? "Refreshing..." : "Refresh"}</span>
+                    </button>
+                    <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
+                  </div>
                 </div>
 
-                <div className="mt-4"><DeliveryStepsTracker order={selectedAdminOrder} /></div>
+                <div className="mt-4">
+                  <DeliveryStepsTracker
+                    order={selectedAdminOrder}
+                    onRefresh={handleRefreshAdminOrder}
+                    isRefreshing={isRefreshingTracking}
+                  />
+                </div>
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -706,8 +764,8 @@ export function AdminDashboard() {
                       </div>
                     )}
                     <div>
-                      <label className="block font-semibold text-gray-700 mb-0.5">Admin Note (Optional):</label>
-                      <input type="text" placeholder="e.g. Issue resolved" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
+                      <label className="block font-semibold text-gray-700 mb-0.5">Status Note / Customer Update (Visible to customer in live tracking):</label>
+                      <input type="text" placeholder="e.g. Loading completed, truck departing facility shortly" value={adminNote} onChange={(e) => setAdminNote(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
                     </div>
                   </div>
                 </div>

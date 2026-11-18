@@ -157,11 +157,13 @@ export function SellerDashboard() {
 
   const [techTab, setTechTab] = useState<"overview" | "bookings" | "profile">("overview");
 
+  const [isRefreshingPartnerTracking, setIsRefreshingPartnerTracking] = useState(false);
+
   const partnerOrdersQuery = useQuery({
     queryKey: ["partner-orders"],
     queryFn: ({ signal }) => marketplaceApi.getSellerOrders({ signal }).catch(() => []),
-    refetchInterval: 15000,
-    refetchIntervalInBackground: false
+    refetchInterval: false,
+    refetchOnWindowFocus: false
   });
 
   const partnerOrders = partnerOrdersQuery.data || [];
@@ -173,6 +175,32 @@ export function SellerDashboard() {
   const [statusDriverPhone, setStatusDriverPhone] = useState("");
   const [statusRejectionReason, setStatusRejectionReason] = useState("");
   const [statusNote, setStatusNote] = useState("");
+
+  const handleRefreshPartnerOrder = async () => {
+    if (!selectedOrderForStatus) return;
+    setIsRefreshingPartnerTracking(true);
+    try {
+      const updated = await marketplaceApi.getOrder(selectedOrderForStatus.orderNumber || selectedOrderForStatus.id);
+      if (updated) {
+        setSelectedOrderForStatus(updated);
+        const currentStatus = String(updated.status || "");
+        const normalized = currentStatus === "ACCEPTED" ? "CONFIRMED"
+          : currentStatus === "PREPARING" ? "LOADING_VEHICLE"
+          : currentStatus === "DISPATCHED" ? "ASSIGNED_DRIVER"
+          : updated.status || "CONFIRMED";
+        setNewStatus(normalized);
+        setStatusVehicleNo(updated.vehicleNumber || "");
+        setStatusDriverName(updated.driverName || "");
+        setStatusDriverPhone(updated.driverPhone || "");
+        setStatusRejectionReason(updated.rejectionReason || "");
+      }
+      await partnerOrdersQuery.refetch();
+    } catch (err) {
+      console.warn("Could not refresh order:", err);
+    } finally {
+      setIsRefreshingPartnerTracking(false);
+    }
+  };
 
   const updateOrderTrackingMutation = useMutation({
     mutationFn: ({ orderId, data }: { orderId: string; data: any }) =>
@@ -1912,9 +1940,21 @@ export function SellerDashboard() {
                 <h2 className="text-2xl font-bold text-gray-900">Customer Material Orders</h2>
                 <p className="text-sm text-gray-500">Track and fulfill local site deliveries in real-time</p>
               </div>
-              <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-800">
-                {partnerOrders.length} Received Orders
-              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void partnerOrdersQuery.refetch()}
+                  disabled={partnerOrdersQuery.isFetching}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 shadow-xs hover:border-orange-500 hover:text-orange-600 active:scale-95 transition"
+                  title="Click to fetch latest customer orders"
+                >
+                  <RefreshCw size={13} className={partnerOrdersQuery.isFetching ? "animate-spin text-orange-600" : ""} />
+                  <span>{partnerOrdersQuery.isFetching ? "Refreshing..." : "Refresh Orders"}</span>
+                </button>
+                <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-800">
+                  {partnerOrders.length} Received Orders
+                </span>
+              </div>
             </div>
 
             {partnerOrders.length === 0 ? (
@@ -2087,13 +2127,25 @@ export function SellerDashboard() {
                   Order #{selectedOrderForStatus.orderNumber || selectedOrderForStatus.id}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedOrderForStatus(null)}
-                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-              >
-                <X size={18} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleRefreshPartnerOrder()}
+                  disabled={isRefreshingPartnerTracking}
+                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-700 hover:border-etukas-red hover:text-etukas-red shadow-2xs"
+                  title="Fetch latest tracking details"
+                >
+                  <RefreshCw size={12} className={isRefreshingPartnerTracking ? "animate-spin text-etukas-red" : ""} />
+                  <span>{isRefreshingPartnerTracking ? "Refreshing..." : "Refresh"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedOrderForStatus(null)}
+                  className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Customer & Item mini summary */}
@@ -2199,8 +2251,8 @@ export function SellerDashboard() {
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">
-                  Status Note / Dispatch Note (Optional):
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Status Note / Dispatch Note (Visible to customer in live tracking):
                 </label>
                 <input
                   type="text"

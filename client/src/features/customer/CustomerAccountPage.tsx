@@ -17,7 +17,8 @@ import {
   ShoppingCart,
   Truck,
   UserRound,
-  Wrench
+  Wrench,
+  RefreshCw
 } from "lucide-react";
 import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
 import type { OrderRecord } from "../../services/api";
@@ -29,6 +30,7 @@ export function CustomerAccountPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [activeTab, setActiveTab] = useState<"orders" | "services" | "overview">("orders");
   const [trackingOrder, setTrackingOrder] = useState<OrderRecord | null>(null);
+  const [isRefreshingLive, setIsRefreshingLive] = useState(false);
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -38,13 +40,34 @@ export function CustomerAccountPage() {
     return () => window.removeEventListener("etukas_auth_change", handleAuthChange);
   }, []);
 
-  const { data: customerOrders = [], isLoading: loadingOrders } = useQuery({
+  const {
+    data: customerOrders = [],
+    isLoading: loadingOrders,
+    isFetching: isRefetchingOrders,
+    refetch: refetchOrders
+  } = useQuery({
     queryKey: ["customer-orders"],
     queryFn: ({ signal }) => marketplaceApi.getCustomerOrders({ signal }).catch(() => []),
     enabled: Boolean(currentUser),
-    refetchInterval: 15000,
-    refetchIntervalInBackground: false
+    refetchInterval: false,
+    refetchOnWindowFocus: false
   });
+
+  const handleRefreshLiveTracking = async () => {
+    if (!trackingOrder) return;
+    setIsRefreshingLive(true);
+    try {
+      const updated = await marketplaceApi.getOrder(trackingOrder.orderNumber || trackingOrder.id);
+      if (updated) {
+        setTrackingOrder(updated);
+      }
+      await refetchOrders();
+    } catch (err) {
+      console.warn("Could not refresh live tracking:", err);
+    } finally {
+      setIsRefreshingLive(false);
+    }
+  };
 
   const { data: serviceBookings = [], isLoading: loadingServices } = useQuery({
     queryKey: ["customer-service-bookings"],
@@ -159,18 +182,30 @@ export function CustomerAccountPage() {
         {/* TAB 1: ORDERED PRODUCTS */}
         {activeTab === "orders" && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Your Ordered Building Materials</h2>
                 <p className="text-xs text-gray-500">Track shipments, view supplier stores, and download invoices</p>
               </div>
-              <Link
-                to="/"
-                className="text-xs font-bold text-etukas-red hover:underline flex items-center gap-1"
-              >
-                <span>Browse Products</span>
-                <ExternalLink size={12} />
-              </Link>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void refetchOrders()}
+                  disabled={isRefetchingOrders}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 shadow-xs hover:border-etukas-red hover:text-etukas-red active:scale-95 transition"
+                  title="Click to refresh latest order tracking"
+                >
+                  <RefreshCw size={13} className={isRefetchingOrders ? "animate-spin text-etukas-red" : ""} />
+                  <span>{isRefetchingOrders ? "Refreshing..." : "Refresh Tracking"}</span>
+                </button>
+                <Link
+                  to="/"
+                  className="text-xs font-bold text-etukas-red hover:underline flex items-center gap-1"
+                >
+                  <span>Browse Products</span>
+                  <ExternalLink size={12} />
+                </Link>
+              </div>
             </div>
 
             {loadingOrders ? (
@@ -488,7 +523,11 @@ export function CustomerAccountPage() {
               </button>
             </div>
 
-            <DeliveryStepsTracker order={trackingOrder} />
+            <DeliveryStepsTracker
+              order={trackingOrder}
+              onRefresh={handleRefreshLiveTracking}
+              isRefreshing={isRefreshingLive}
+            />
 
             <div className="pt-2">
               <button
