@@ -741,6 +741,7 @@ export type OrderRecord = {
   estimatedDeliveryDate?: string;
   gstin?: string;
   notes?: string;
+  statusNote?: string;
   statusHistory: Array<{
     status: DeliveryStatus;
     timestamp: string;

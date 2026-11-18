@@ -1,5 +1,5 @@
 import { loadTechnicians, loadBookings } from "../technicians/technicians.routes.js";
-import { loadOrders, updateOrderTracking } from "../orders/orders.routes.js";
+import { loadOrders, updateOrderTracking, normalizeDeliveryStatus } from "../orders/orders.routes.js";
 import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
@@ -531,19 +531,49 @@ sellerRouter.get("/orders", async (req, res, next) => {
       return true; // Show available received orders for the partner
     });
 
-    // Merge without duplicates
+    // Merge without duplicates, prioritizing memory/file tracking info
     const orderMap = new Map<string, any>();
     for (const ord of partnerOrders) {
-      orderMap.set(ord.orderNumber || ord.id, ord);
+      ord.status = normalizeDeliveryStatus(ord.status);
+      orderMap.set(ord.id, ord);
+      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
     }
     for (const ord of dbOrders) {
-      const key = ord.id;
-      if (!orderMap.has(key)) {
-        orderMap.set(key, ord);
+      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
+      if (!existing) {
+        orderMap.set(ord.id, {
+          id: ord.id,
+          orderNumber: ord.id,
+          parentCheckoutId: ord.parentCheckoutId,
+          customerId: ord.customerId,
+          customerName: ord.customer?.name || "Customer",
+          customerPhone: ord.customer?.mobile || "",
+          customerEmail: ord.customer?.email,
+          storeName: ord.store?.name || "Partner Store",
+          sellerId: profile.sellerId || "PARTNER",
+          deliveryAddress: ord.address ? {
+            contactName: ord.address.contactName,
+            mobile: ord.address.mobile,
+            line1: ord.address.line1,
+            city: ord.address.city,
+            state: ord.address.state,
+            postalCode: ord.address.postalCode
+          } : undefined,
+          status: normalizeDeliveryStatus(ord.status),
+          totalMinor: ord.totalMinor,
+          items: ord.items?.map((it: any) => ({
+            id: it.id,
+            productName: it.productName,
+            unit: it.unit,
+            quantity: it.quantity,
+            totalMinor: it.totalMinorSnapshot
+          })),
+          createdAt: ord.createdAt.toISOString()
+        });
       }
     }
 
-    return sendOk(res, Array.from(orderMap.values()));
+    return sendOk(res, Array.from(new Set(orderMap.values())));
   } catch (error) {
     next(error);
   }

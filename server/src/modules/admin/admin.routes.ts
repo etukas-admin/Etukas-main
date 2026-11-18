@@ -1,5 +1,5 @@
 import { cleanPhone, loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
-import { loadOrders, updateOrderTracking } from "../orders/orders.routes.js";
+import { loadOrders, updateOrderTracking, normalizeDeliveryStatus } from "../orders/orders.routes.js";
 import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { del, put } from "@vercel/blob";
@@ -480,12 +480,14 @@ adminRouter.get("/orders", async (_req, res, next) => {
     const fileOrders = loadOrders();
     const orderMap = new Map<string, any>();
     for (const ord of fileOrders) {
-      orderMap.set(ord.orderNumber || ord.id, ord);
+      ord.status = normalizeDeliveryStatus(ord.status);
+      orderMap.set(ord.id, ord);
+      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
     }
     for (const ord of dbOrders) {
-      const key = ord.id;
-      if (!orderMap.has(key)) {
-        orderMap.set(key, {
+      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
+      if (!existing) {
+        orderMap.set(ord.id, {
           id: ord.id,
           orderNumber: ord.id,
           customerName: ord.customer?.name || "Customer",
@@ -501,7 +503,7 @@ adminRouter.get("/orders", async (_req, res, next) => {
             state: ord.address.state,
             postalCode: ord.address.postalCode
           } : undefined,
-          status: ord.status,
+          status: normalizeDeliveryStatus(ord.status),
           totalMinor: ord.totalMinor,
           items: ord.items?.map((it: any) => ({
             id: it.id,
@@ -515,7 +517,7 @@ adminRouter.get("/orders", async (_req, res, next) => {
       }
     }
 
-    return sendOk(res, Array.from(orderMap.values()));
+    return sendOk(res, Array.from(new Set(orderMap.values())));
   } catch (error) {
     next(error);
   }

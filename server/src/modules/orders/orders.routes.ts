@@ -89,6 +89,7 @@ export interface OrderRecord {
   estimatedDeliveryDate?: string;
   gstin?: string;
   notes?: string;
+  statusNote?: string;
   statusHistory: Array<{
     status: DeliveryStatus;
     timestamp: string;
@@ -106,17 +107,7 @@ export function generateOrderId(): string {
   return `ETORD${randomDigits}`;
 }
 
-const DATA_DIR = path.resolve(__dirname, "../../../data");
-const SERVER_DATA_DIR = path.resolve(__dirname, "../../data");
-
-function getOrdersFilePaths(): string[] {
-  return [
-    path.join(DATA_DIR, "orders.json"),
-    path.join(SERVER_DATA_DIR, "orders.json"),
-    path.resolve(process.cwd(), "data", "orders.json"),
-    path.resolve(process.cwd(), "server", "data", "orders.json")
-  ];
-}
+const ORDERS_FILE_PATH = path.resolve(process.cwd(), "data", "orders.json");
 
 const SEED_ORDERS: OrderRecord[] = [
   {
@@ -252,57 +243,68 @@ const SEED_ORDERS: OrderRecord[] = [
   }
 ];
 
-export function loadOrders(): OrderRecord[] {
-  const filePaths = getOrdersFilePaths();
-  for (const filePath of filePaths) {
-    if (fs.existsSync(filePath)) {
-      try {
-        const raw = fs.readFileSync(filePath, "utf8");
-        const list = JSON.parse(raw);
-        if (Array.isArray(list) && list.length > 0) {
-          return list;
+// In-memory single source of truth for all active orders
+const ordersMemoryStore = new Map<string, OrderRecord>();
+
+function initOrdersStore(): void {
+  try {
+    const dir = path.dirname(ORDERS_FILE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (fs.existsSync(ORDERS_FILE_PATH)) {
+      const raw = fs.readFileSync(ORDERS_FILE_PATH, "utf8");
+      const list = JSON.parse(raw);
+      if (Array.isArray(list) && list.length > 0) {
+        for (const ord of list) {
+          ordersMemoryStore.set(ord.id, ord);
+          if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
+          if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
         }
-      } catch {
-        // Fall through to next file
+        return;
       }
     }
+  } catch (err) {
+    console.warn("Failed to read orders.json:", err);
   }
 
-  // If no file exists, initialize seed
-  try {
-    const targetPath = filePaths[0];
-    const dir = path.dirname(targetPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(targetPath, JSON.stringify(SEED_ORDERS, null, 2), "utf8");
-  } catch {}
+  // Fallback to seed orders if file is missing or empty
+  for (const ord of SEED_ORDERS) {
+    ordersMemoryStore.set(ord.id, ord);
+    if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
+  }
+  persistOrdersToDisk();
+}
 
-  return SEED_ORDERS;
+function persistOrdersToDisk(): void {
+  try {
+    const uniqueOrders = Array.from(new Set(ordersMemoryStore.values()));
+    const dir = path.dirname(ORDERS_FILE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(ORDERS_FILE_PATH, JSON.stringify(uniqueOrders, null, 2), "utf8");
+  } catch (err) {
+    console.warn("Failed to persist orders to disk:", err);
+  }
+}
+
+initOrdersStore();
+
+export function loadOrders(): OrderRecord[] {
+  return Array.from(new Set(ordersMemoryStore.values()));
 }
 
 export function saveOrders(orders: OrderRecord[]): void {
-  const filePaths = getOrdersFilePaths();
-  for (const filePath of filePaths) {
-    try {
-      const dir = path.dirname(filePath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(filePath, JSON.stringify(orders, null, 2), "utf8");
-    } catch {
-      // Non-blocking
-    }
+  for (const ord of orders) {
+    ordersMemoryStore.set(ord.id, ord);
+    if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
+    if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
   }
+  persistOrdersToDisk();
 }
 
 export function saveOrder(order: OrderRecord): void {
-  const current = loadOrders();
-  const index = current.findIndex(
-    (o) => o.id === order.id || o.orderNumber === order.orderNumber
-  );
-  if (index >= 0) {
-    current[index] = { ...current[index], ...order, updatedAt: new Date().toISOString() };
-  } else {
-    current.unshift(order);
-  }
-  saveOrders(current);
+  ordersMemoryStore.set(order.id, order);
+  if (order.orderNumber) ordersMemoryStore.set(order.orderNumber, order);
+  if (order.parentCheckoutId) ordersMemoryStore.set(order.parentCheckoutId, order);
+  persistOrdersToDisk();
 }
 
 export function normalizeDeliveryStatus(st: string): DeliveryStatus {
@@ -327,13 +329,17 @@ export function toPrismaOrderStatus(st: string): OrderStatus {
 
 export async function findOrderById(id: string): Promise<OrderRecord | null> {
   const clean = id.trim().toLowerCase();
-  const current = loadOrders();
-  const match = current.find(
-    (o) => o.id.toLowerCase() === clean || o.orderNumber.toLowerCase() === clean || (o.parentCheckoutId && o.parentCheckoutId.toLowerCase() === clean)
-  );
-  if (match) return match;
+  for (const ord of ordersMemoryStore.values()) {
+    if (
+      ord.id.toLowerCase() === clean ||
+      (ord.orderNumber && ord.orderNumber.toLowerCase() === clean) ||
+      (ord.parentCheckoutId && ord.parentCheckoutId.toLowerCase() === clean)
+    ) {
+      return ord;
+    }
+  }
 
-  // Search Prisma DB if not found in file store
+  // Search Prisma DB if not found in memory store
   try {
     const dbOrder = await prisma.order.findFirst({
       where: {
@@ -435,9 +441,12 @@ export async function updateOrderTracking(
   if (update.driverName !== undefined) order.driverName = update.driverName;
   if (update.driverPhone !== undefined) order.driverPhone = update.driverPhone;
   if (update.rejectionReason !== undefined) order.rejectionReason = update.rejectionReason;
+  if (update.note !== undefined && update.note.trim()) {
+    order.statusNote = update.note.trim();
+  }
 
   const defaultNote =
-    update.note ||
+    (update.note && update.note.trim()) ||
     (normalizedStatus === "CONFIRMED"
       ? "Order confirmed by seller store"
       : normalizedStatus === "LOADING_VEHICLE"
@@ -462,7 +471,7 @@ export async function updateOrderTracking(
 
   // Sync status to DB if available
   try {
-    const prismaStatus = toPrismaOrderStatus(update.status);
+    const prismaStatus = toPrismaOrderStatus(normalizedStatus);
     await prisma.order.updateMany({
       where: {
         OR: [
@@ -746,12 +755,14 @@ ordersRouter.get("/", async (req, res, next) => {
     // 3. Merge both sources without duplicates
     const orderMap = new Map<string, any>();
     for (const ord of fileCustomerOrders) {
-      orderMap.set(ord.orderNumber || ord.id, ord);
+      ord.status = normalizeDeliveryStatus(ord.status);
+      orderMap.set(ord.id, ord);
+      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
     }
     for (const ord of dbOrders) {
-      const key = ord.id;
-      if (!orderMap.has(key)) {
-        orderMap.set(key, {
+      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
+      if (!existing) {
+        orderMap.set(ord.id, {
           id: ord.id,
           orderNumber: ord.id,
           parentCheckoutId: ord.parentCheckoutId,
@@ -786,7 +797,7 @@ ordersRouter.get("/", async (req, res, next) => {
       }
     }
 
-    const result = Array.from(orderMap.values()).sort(
+    const result = Array.from(new Set(orderMap.values())).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
