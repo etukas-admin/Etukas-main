@@ -203,7 +203,7 @@ export function DeliveryStepsTracker({
             <div className="space-y-1 min-w-0">
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-orange-950 uppercase tracking-wider text-[10px]">
-                  Status Note from Store Partner / Admin:
+                  Latest Update / Dispatch Note:
                 </span>
                 <span className="rounded-full bg-orange-200/70 px-2 py-0.5 text-[9px] font-bold text-orange-800">
                   Live Dispatch Update
