@@ -107,16 +107,31 @@ export function generateOrderId(): string {
   return `ETORD${randomDigits}`;
 }
 
+// Canonical data directory: CWD/data is the primary (most reliable across dev & prod)
+const CWD_DATA_DIR = path.resolve(process.cwd(), "data");
 const ROOT_DATA_DIR = path.resolve(__dirname, "../../../../data");
 const SERVER_DATA_DIR = path.resolve(__dirname, "../../../data");
-const CWD_DATA_DIR = path.resolve(process.cwd(), "data");
 const CWD_SERVER_DATA_DIR = path.resolve(process.cwd(), "server", "data");
 
+// PRIMARY orders file - always write here first
+const PRIMARY_ORDERS_FILE = path.join(CWD_DATA_DIR, "orders.json");
+
+// Ensure the primary data dir exists immediately at module load (before any reads/writes)
+try {
+  if (!fs.existsSync(CWD_DATA_DIR)) {
+    fs.mkdirSync(CWD_DATA_DIR, { recursive: true });
+    console.log("[orders] Created data directory:", CWD_DATA_DIR);
+  }
+} catch (e) {
+  console.warn("[orders] Could not ensure data directory exists:", e);
+}
+
 function getCandidateOrdersFilePaths(): string[] {
+  // Primary path first - always read/write to CWD/data/orders.json primarily
   return [
+    PRIMARY_ORDERS_FILE,
     path.join(ROOT_DATA_DIR, "orders.json"),
     path.join(SERVER_DATA_DIR, "orders.json"),
-    path.join(CWD_DATA_DIR, "orders.json"),
     path.join(CWD_SERVER_DATA_DIR, "orders.json")
   ];
 }
@@ -258,7 +273,26 @@ const SEED_ORDERS: OrderRecord[] = [
 // In-memory single source of truth for all active orders
 const ordersMemoryStore = new Map<string, OrderRecord>();
 
+// Guard: prevent re-initialization if memory store already has live data
+let _ordersStoreInitialized = false;
+
+function indexOrder(ord: OrderRecord): void {
+  ordersMemoryStore.set(ord.id, ord);
+  if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
+  if (ord.orderNumber) {
+    ordersMemoryStore.set(ord.orderNumber, ord);
+    ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
+  }
+  if (ord.parentCheckoutId) {
+    ordersMemoryStore.set(ord.parentCheckoutId, ord);
+    ordersMemoryStore.set(ord.parentCheckoutId.toLowerCase(), ord);
+  }
+}
+
 function initOrdersStore(): void {
+  // If already initialized and store has data, do NOT re-initialize (prevents status reset)
+  if (_ordersStoreInitialized && ordersMemoryStore.size > 0) return;
+
   try {
     const candidatePaths = getCandidateOrdersFilePaths();
     for (const filePath of candidatePaths) {
@@ -268,17 +302,10 @@ function initOrdersStore(): void {
           const list = JSON.parse(raw);
           if (Array.isArray(list) && list.length > 0) {
             for (const ord of list) {
-              ordersMemoryStore.set(ord.id, ord);
-              if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
-              if (ord.orderNumber) {
-                ordersMemoryStore.set(ord.orderNumber, ord);
-                ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
-              }
-              if (ord.parentCheckoutId) {
-                ordersMemoryStore.set(ord.parentCheckoutId, ord);
-                ordersMemoryStore.set(ord.parentCheckoutId.toLowerCase(), ord);
-              }
+              indexOrder(ord);
             }
+            _ordersStoreInitialized = true;
+            console.log(`[orders] Loaded ${list.length} orders from ${filePath}`);
             return;
           }
         } catch {
@@ -287,44 +314,59 @@ function initOrdersStore(): void {
       }
     }
   } catch (err) {
-    console.warn("Failed to read orders.json:", err);
+    console.warn("[orders] Failed to read orders.json:", err);
   }
 
-  // Fallback to seed orders if file is missing or empty
+  // Fallback: seed orders only (file will be written after)
   for (const ord of SEED_ORDERS) {
-    ordersMemoryStore.set(ord.id, ord);
-    if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
-    if (ord.orderNumber) {
-      ordersMemoryStore.set(ord.orderNumber, ord);
-      ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
-    }
+    indexOrder(ord);
   }
-  persistOrdersToDisk();
+  _ordersStoreInitialized = true;
+  persistOrdersToDisk(); // Write seed data to disk so next restart picks it up
+  console.log("[orders] Initialized with seed orders, wrote to disk");
 }
 
 function persistOrdersToDisk(): void {
   try {
-    const uniqueOrders = Array.from(new Set(ordersMemoryStore.values()));
+    // De-duplicate: Map values may have multiple keys pointing to same object
+    const seen = new Set<string>();
+    const uniqueOrders: OrderRecord[] = [];
+    for (const ord of ordersMemoryStore.values()) {
+      if (!seen.has(ord.id)) {
+        seen.add(ord.id);
+        uniqueOrders.push(ord);
+      }
+    }
     const payload = JSON.stringify(uniqueOrders, null, 2);
-    const candidatePaths = getCandidateOrdersFilePaths();
-    for (const filePath of candidatePaths) {
-      try {
-        const dir = path.dirname(filePath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(filePath, payload, "utf8");
-      } catch {
-        // Continue writing to next candidate path
+
+    // Always write to primary path first
+    try {
+      if (!fs.existsSync(CWD_DATA_DIR)) fs.mkdirSync(CWD_DATA_DIR, { recursive: true });
+      fs.writeFileSync(PRIMARY_ORDERS_FILE, payload, "utf8");
+    } catch (err) {
+      console.warn("[orders] Could not write to primary path:", PRIMARY_ORDERS_FILE, err);
+      // Fallback to other candidate paths
+      const candidatePaths = getCandidateOrdersFilePaths().slice(1);
+      for (const filePath of candidatePaths) {
+        try {
+          const dir = path.dirname(filePath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(filePath, payload, "utf8");
+          break; // Stop after first successful write
+        } catch {
+          // Continue to next candidate
+        }
       }
     }
   } catch (err) {
-    console.warn("Failed to persist orders to disk:", err);
+    console.warn("[orders] Failed to persist orders to disk:", err);
   }
 }
 
 initOrdersStore();
 
 export function loadOrders(): OrderRecord[] {
-  if (ordersMemoryStore.size === 0) {
+  if (!_ordersStoreInitialized || ordersMemoryStore.size === 0) {
     initOrdersStore();
   }
   return Array.from(new Set(ordersMemoryStore.values()));
@@ -332,31 +374,13 @@ export function loadOrders(): OrderRecord[] {
 
 export function saveOrders(orders: OrderRecord[]): void {
   for (const ord of orders) {
-    ordersMemoryStore.set(ord.id, ord);
-    if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
-    if (ord.orderNumber) {
-      ordersMemoryStore.set(ord.orderNumber, ord);
-      ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
-    }
-    if (ord.parentCheckoutId) {
-      ordersMemoryStore.set(ord.parentCheckoutId, ord);
-      ordersMemoryStore.set(ord.parentCheckoutId.toLowerCase(), ord);
-    }
+    indexOrder(ord);
   }
   persistOrdersToDisk();
 }
 
 export function saveOrder(order: OrderRecord): void {
-  ordersMemoryStore.set(order.id, order);
-  if (order.id) ordersMemoryStore.set(order.id.toLowerCase(), order);
-  if (order.orderNumber) {
-    ordersMemoryStore.set(order.orderNumber, order);
-    ordersMemoryStore.set(order.orderNumber.toLowerCase(), order);
-  }
-  if (order.parentCheckoutId) {
-    ordersMemoryStore.set(order.parentCheckoutId, order);
-    ordersMemoryStore.set(order.parentCheckoutId.toLowerCase(), order);
-  }
+  indexOrder(order);
   persistOrdersToDisk();
 }
 
