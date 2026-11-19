@@ -451,19 +451,6 @@ export async function updateOrderTracking(
     order.statusNote = update.note.trim();
   }
 
-  // Ensure delivered and dispatched orders always retain and show vehicle and delivery partner details
-  if (normalizedStatus === "DELIVERED" || normalizedStatus === "ASSIGNED_DRIVER") {
-    if (!order.vehicleNumber) {
-      order.vehicleNumber = "AP 05 TX 4589";
-    }
-    if (!order.driverName) {
-      order.driverName = "S. Appa Rao";
-    }
-    if (!order.driverPhone) {
-      order.driverPhone = "9848999888";
-    }
-  }
-
   const defaultNote =
     (update.note && update.note.trim()) ||
     (normalizedStatus === "CONFIRMED"
@@ -775,18 +762,12 @@ ordersRouter.get("/", async (req, res, next) => {
     const orderMap = new Map<string, any>();
     for (const ord of fileCustomerOrders) {
       ord.status = normalizeDeliveryStatus(ord.status);
-      if (ord.status === "DELIVERED" || ord.status === "ASSIGNED_DRIVER") {
-        if (!ord.vehicleNumber) ord.vehicleNumber = "AP 05 TX 4589";
-        if (!ord.driverName) ord.driverName = "S. Appa Rao";
-        if (!ord.driverPhone) ord.driverPhone = "9848999888";
-      }
       orderMap.set(ord.id, ord);
       if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
     }
     for (const ord of dbOrders) {
       const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
       if (!existing) {
-        const isDeliveredOrDispatched = ord.status === "DELIVERED" || ord.status === "DISPATCHED";
         orderMap.set(ord.id, {
           id: ord.id,
           orderNumber: ord.id,
@@ -808,9 +789,6 @@ ordersRouter.get("/", async (req, res, next) => {
             label: ord.address.label || undefined
           } : undefined,
           status: normalizeDeliveryStatus(ord.status),
-          vehicleNumber: isDeliveredOrDispatched ? "AP 05 TX 4589" : undefined,
-          driverName: isDeliveredOrDispatched ? "S. Appa Rao" : undefined,
-          driverPhone: isDeliveredOrDispatched ? "9848999888" : undefined,
           totalMinor: ord.totalMinor,
           items: ord.items?.map((it: any) => ({
             id: it.id,
