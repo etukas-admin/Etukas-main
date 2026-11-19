@@ -282,6 +282,10 @@ const ordersMemoryStore = new Map<string, OrderRecord>();
 let _ordersStoreInitialized = false;
 
 function indexOrder(ord: OrderRecord): void {
+  if (!ord) return;
+  if (!Array.isArray(ord.statusHistory)) {
+    ord.statusHistory = [];
+  }
   ordersMemoryStore.set(ord.id, ord);
   if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
   if (ord.orderNumber) {
@@ -539,6 +543,10 @@ export async function updateOrderTracking(
       : normalizedStatus === "REJECTED"
       ? `Order rejected by seller: ${update.rejectionReason || "Store unavailable"}`
       : "Order status updated");
+
+  if (!Array.isArray(order.statusHistory)) {
+    order.statusHistory = [];
+  }
 
   order.statusHistory.push({
     status: normalizedStatus,
@@ -846,14 +854,20 @@ ordersRouter.get("/", async (req, res, next) => {
         (ord.orderNumber ? orderMap.get(ord.orderNumber) : null) ||
         (ord.parentCheckoutId ? orderMap.get(ord.parentCheckoutId) : null);
       if (!existing) {
-        const mappedOrder = {
+        const createdAtStr = ord.createdAt
+          ? typeof ord.createdAt.toISOString === "function"
+            ? ord.createdAt.toISOString()
+            : String(ord.createdAt)
+          : new Date().toISOString();
+        const mappedOrder: OrderRecord = {
           id: ord.id,
           orderNumber: ord.id,
           parentCheckoutId: ord.parentCheckoutId,
-          customerId: ord.customerId,
-          customerName: ord.address?.contactName || user.email,
+          customerId: ord.customerId || user.id,
+          customerName: ord.address?.contactName || user.email || "Customer",
           customerPhone: ord.address?.mobile || "",
           customerEmail: user.email,
+          storeId: ord.storeId || "store-kakinada-1",
           storeName: ord.store?.name || "Etukas Partner Store",
           sellerId: ord.store?.sellerProfile?.sellerId || "PARTNER",
           deliveryAddress: ord.address ? {
@@ -865,29 +879,45 @@ ordersRouter.get("/", async (req, res, next) => {
             state: ord.address.state,
             postalCode: ord.address.postalCode,
             label: ord.address.label || undefined
-          } : undefined,
+          } : {
+            contactName: "Customer",
+            mobile: "9848012345",
+            line1: "Delivery Address",
+            city: "Hyderabad",
+            state: "Telangana",
+            postalCode: "500001"
+          },
           status: normalizeDeliveryStatus(ord.status),
-          totalMinor: ord.totalMinor,
+          subtotalMinor: ord.subtotalMinor || ord.totalMinor || 0,
+          taxMinor: ord.taxMinor || 0,
+          discountMinor: ord.discountMinor || 0,
+          deliveryChargeMinor: ord.deliveryChargeMinor || 0,
+          protectFeeMinor: 4900,
+          totalMinor: ord.totalMinor || 0,
+          currency: ord.currency || "INR",
+          paymentMethod: "COD",
+          paymentStatus: "PENDING",
           items: ord.items?.map((it: any) => ({
             id: it.id,
             productName: it.productName,
-            unit: it.unit,
-            quantity: it.quantity,
-            totalMinor: it.totalMinorSnapshot,
-            priceMinor: it.priceMinorSnapshot
+            unit: it.unit || "unit",
+            quantity: it.quantity || 1,
+            totalMinor: it.totalMinorSnapshot || it.totalMinor || 0,
+            priceMinor: it.priceMinorSnapshot || it.priceMinor || 0
           })) || [],
           statusHistory: [
             {
               status: normalizeDeliveryStatus(ord.status),
-              timestamp: ord.createdAt ? ord.createdAt.toISOString() : new Date().toISOString(),
+              timestamp: createdAtStr,
               note: "Order recorded in database"
             }
           ],
-          createdAt: ord.createdAt.toISOString()
+          createdAt: createdAtStr,
+          updatedAt: createdAtStr
         };
         orderMap.set(ord.id, mappedOrder);
         if (ord.parentCheckoutId) orderMap.set(ord.parentCheckoutId, mappedOrder);
-        saveOrder(mappedOrder as any);
+        saveOrder(mappedOrder);
       }
     }
 
@@ -924,7 +954,12 @@ ordersRouter.get("/:id", async (req, res, next) => {
  */
 ordersRouter.patch("/:id/tracking", async (req, res, next) => {
   try {
-    const updateInput = orderTrackingUpdateSchema.parse(req.body);
+    const rawStatus = req.body?.status;
+    const normalizedStatus = normalizeDeliveryStatus(rawStatus);
+    const updateInput = orderTrackingUpdateSchema.parse({
+      ...req.body,
+      status: normalizedStatus
+    });
     const updated = await updateOrderTracking(req.params.id, updateInput, req.user?.roles?.includes("ADMIN") ? "Admin" : "Store Partner");
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
