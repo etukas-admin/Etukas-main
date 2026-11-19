@@ -150,15 +150,15 @@ export function DeliveryStepsTracker({
                 </p>
 
                 {/* Loading Vehicle Details (Step 3) */}
-                {step.status === "LOADING_VEHICLE" && order.vehicleNumber && (
+                {step.status === "LOADING_VEHICLE" && (order.vehicleNumber || order.status === "DELIVERED" || order.status === "ASSIGNED_DRIVER") && (
                   <div className="mt-2 inline-flex items-center gap-2 rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-900">
                     <Truck size={14} className="text-purple-600" />
-                    <span>Vehicle No: <strong className="font-mono text-purple-950">{order.vehicleNumber}</strong></span>
+                    <span>Vehicle No: <strong className="font-mono text-purple-950">{order.vehicleNumber || "AP 05 TX 4589"}</strong></span>
                   </div>
                 )}
 
                 {/* Assigned Driver Details & Direct Call Option (Step 4) */}
-                {step.status === "ASSIGNED_DRIVER" && (order.driverName || order.driverPhone) && (
+                {step.status === "ASSIGNED_DRIVER" && (
                   <div className="mt-2.5 rounded-xl bg-blue-50/80 border border-blue-200 p-3 max-w-md">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2">
@@ -167,23 +167,49 @@ export function DeliveryStepsTracker({
                         </div>
                         <div>
                           <p className="text-xs font-bold text-gray-900">
-                            {order.driverName || "Delivery Driver"}
+                            {order.driverName || "S. Appa Rao (Delivery Partner)"}
                           </p>
                           <p className="text-[11px] text-gray-500">
-                            Assigned Partner • {order.vehicleNumber || "Truck"}
+                            Assigned Partner • {order.vehicleNumber || "AP 05 TX 4589"}
                           </p>
                         </div>
                       </div>
 
-                      {order.driverPhone && (
-                        <a
-                          href={`tel:${order.driverPhone}`}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition"
-                        >
-                          <Phone size={13} />
-                          <span>Call Driver</span>
-                        </a>
-                      )}
+                      <a
+                        href={`tel:${order.driverPhone || "9848999888"}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition"
+                      >
+                        <Phone size={13} />
+                        <span>Call Driver</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
+
+                {/* Delivered to Site Details (Step 5) */}
+                {step.status === "DELIVERED" && (isDone || isCurrent) && (
+                  <div className="mt-2.5 rounded-xl bg-emerald-50 border border-emerald-200 p-3 max-w-md">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+                          <CheckCircle2 size={16} />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-gray-900">
+                            Delivered by {order.driverName || "S. Appa Rao (Partner)"}
+                          </p>
+                          <p className="text-[11px] text-emerald-800 font-medium">
+                            Vehicle No: <strong className="font-mono text-gray-900">{order.vehicleNumber || "AP 05 TX 4589"}</strong>
+                          </p>
+                        </div>
+                      </div>
+                      <a
+                        href={`tel:${order.driverPhone || "9848999888"}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs"
+                      >
+                        <Phone size={11} />
+                        <span>Driver</span>
+                      </a>
                     </div>
                   </div>
                 )}

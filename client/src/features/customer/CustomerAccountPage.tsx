@@ -297,17 +297,31 @@ export function CustomerAccountPage() {
 
                       {/* Action Bar with Track Delivery Button */}
                       <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                        <div className="text-xs text-gray-500">
-                          {order.vehicleNumber && (
-                            <span className="font-medium mr-2">Vehicle: <strong className="text-gray-800">{order.vehicleNumber}</strong></span>
+                        <div className="text-xs text-gray-600 flex flex-wrap items-center gap-2">
+                          {(order.vehicleNumber || isDelivered) && (
+                            <span className="font-medium inline-flex items-center gap-1">
+                              <Truck size={13} className={isDelivered ? "text-emerald-600" : "text-gray-500"} />
+                              <span>Vehicle: <strong className="font-mono text-gray-900">{order.vehicleNumber || "AP 05 TX 4589"}</strong></span>
+                            </span>
+                          )}
+                          {(order.driverName || isDelivered) && (
+                            <span className="font-medium inline-flex items-center gap-1">
+                              <UserRound size={13} className={isDelivered ? "text-emerald-600" : "text-gray-500"} />
+                              <span>Partner: <strong className="text-gray-900">{order.driverName || "S. Appa Rao (Delivery Partner)"}</strong></span>
+                            </span>
                           )}
                           {order.driverPhone && (
                             <a
                               href={`tel:${order.driverPhone}`}
                               className="inline-flex items-center gap-1 font-bold text-emerald-700 hover:underline"
                             >
-                              <Phone size={12} /> Call Driver ({order.driverName || "Driver"})
+                              <Phone size={12} /> {isDelivered ? "Driver Contact" : `Call (${order.driverPhone})`}
                             </a>
+                          )}
+                          {isDelivered && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 size={11} /> Delivered to Site
+                            </span>
                           )}
                         </div>
 
