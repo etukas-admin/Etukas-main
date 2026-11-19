@@ -6,7 +6,15 @@ import { DeliveryStepsTracker } from "./DeliveryStepsTracker";
 import { formatMoney } from "../../lib/utils";
 import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 
-export function OrderConfirmedView({ order }: { order: OrderRecord }) {
+export function OrderConfirmedView({
+  order,
+  onRefresh,
+  isRefreshing
+}: {
+  order: OrderRecord;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copyOrderId = () => {
@@ -64,7 +72,7 @@ export function OrderConfirmedView({ order }: { order: OrderRecord }) {
       </div>
 
       {/* ─── Live Delivery Process Steps Tracker ─── */}
-      <DeliveryStepsTracker order={order} />
+      <DeliveryStepsTracker order={order} onRefresh={onRefresh} isRefreshing={isRefreshing} />
 
       {/* ─── Order Details Card ─── */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-xs space-y-4">

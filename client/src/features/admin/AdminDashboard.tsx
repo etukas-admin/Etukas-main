@@ -224,10 +224,14 @@ export function AdminDashboard() {
   const updateAdminOrderTracking = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       marketplaceApi.updateAdminOrderTracking(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["partner-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["orders"] })
+      ]);
+      await adminOrders.refetch();
       setSelectedAdminOrder(null);
     },
     onError: (err: any) => {

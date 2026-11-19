@@ -8,10 +8,12 @@ import { OrderConfirmedView } from "./OrderConfirmedView";
 export function OrderConfirmedPage() {
   const { orderId } = useParams<{ orderId: string }>();
 
-  const { data: order, isLoading, error } = useQuery({
+  const { data: order, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: queryKeys.orders.detail(orderId || ""),
     queryFn: ({ signal }) => marketplaceApi.getOrder(orderId || "", { signal }),
-    enabled: Boolean(orderId)
+    enabled: Boolean(orderId),
+    refetchInterval: false,
+    refetchOnWindowFocus: false
   });
 
   if (isLoading) {
@@ -40,6 +42,6 @@ export function OrderConfirmedPage() {
     );
   }
 
-  return <OrderConfirmedView order={order} />;
+  return <OrderConfirmedView order={order} onRefresh={() => void refetch()} isRefreshing={isFetching} />;
 }
 

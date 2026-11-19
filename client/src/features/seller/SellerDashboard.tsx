@@ -205,10 +205,14 @@ export function SellerDashboard() {
   const updateOrderTrackingMutation = useMutation({
     mutationFn: ({ orderId, data }: { orderId: string; data: any }) =>
       marketplaceApi.updateSellerOrderTracking(orderId, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["partner-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin", "orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["customer-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["orders"] })
+      ]);
+      await partnerOrdersQuery.refetch();
       setSelectedOrderForStatus(null);
     },
     onError: (err: any) => {

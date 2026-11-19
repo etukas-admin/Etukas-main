@@ -313,7 +313,15 @@ export function CustomerAccountPage() {
 
                         <button
                           type="button"
-                          onClick={() => setTrackingOrder(order)}
+                          onClick={async () => {
+                            setTrackingOrder(order);
+                            try {
+                              const latest = await marketplaceApi.getOrder(order.orderNumber || order.id);
+                              if (latest) {
+                                setTrackingOrder(latest);
+                              }
+                            } catch {}
+                          }}
                           className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
                         >
                           <Truck size={13} />

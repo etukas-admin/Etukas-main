@@ -1,5 +1,5 @@
 import { loadTechnicians, loadBookings } from "../technicians/technicians.routes.js";
-import { loadOrders, updateOrderTracking, normalizeDeliveryStatus } from "../orders/orders.routes.js";
+import { loadOrders, updateOrderTracking, normalizeDeliveryStatus, saveOrder } from "../orders/orders.routes.js";
 import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
@@ -537,11 +537,14 @@ sellerRouter.get("/orders", async (req, res, next) => {
       ord.status = normalizeDeliveryStatus(ord.status);
       orderMap.set(ord.id, ord);
       if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
+      if (ord.parentCheckoutId) orderMap.set(ord.parentCheckoutId, ord);
     }
     for (const ord of dbOrders) {
-      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
+      const existing = orderMap.get(ord.id) ||
+        (ord.orderNumber ? orderMap.get(ord.orderNumber) : null) ||
+        (ord.parentCheckoutId ? orderMap.get(ord.parentCheckoutId) : null);
       if (!existing) {
-        orderMap.set(ord.id, {
+        const mappedOrder = {
           id: ord.id,
           orderNumber: ord.id,
           parentCheckoutId: ord.parentCheckoutId,
@@ -569,7 +572,10 @@ sellerRouter.get("/orders", async (req, res, next) => {
             totalMinor: it.totalMinorSnapshot
           })),
           createdAt: ord.createdAt.toISOString()
-        });
+        };
+        orderMap.set(ord.id, mappedOrder);
+        if (ord.parentCheckoutId) orderMap.set(ord.parentCheckoutId, mappedOrder);
+        saveOrder(mappedOrder as any);
       }
     }
 

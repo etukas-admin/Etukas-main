@@ -107,7 +107,19 @@ export function generateOrderId(): string {
   return `ETORD${randomDigits}`;
 }
 
-const ORDERS_FILE_PATH = path.resolve(process.cwd(), "data", "orders.json");
+const ROOT_DATA_DIR = path.resolve(__dirname, "../../../../data");
+const SERVER_DATA_DIR = path.resolve(__dirname, "../../../data");
+const CWD_DATA_DIR = path.resolve(process.cwd(), "data");
+const CWD_SERVER_DATA_DIR = path.resolve(process.cwd(), "server", "data");
+
+function getCandidateOrdersFilePaths(): string[] {
+  return [
+    path.join(ROOT_DATA_DIR, "orders.json"),
+    path.join(SERVER_DATA_DIR, "orders.json"),
+    path.join(CWD_DATA_DIR, "orders.json"),
+    path.join(CWD_SERVER_DATA_DIR, "orders.json")
+  ];
+}
 
 const SEED_ORDERS: OrderRecord[] = [
   {
@@ -248,18 +260,30 @@ const ordersMemoryStore = new Map<string, OrderRecord>();
 
 function initOrdersStore(): void {
   try {
-    const dir = path.dirname(ORDERS_FILE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    if (fs.existsSync(ORDERS_FILE_PATH)) {
-      const raw = fs.readFileSync(ORDERS_FILE_PATH, "utf8");
-      const list = JSON.parse(raw);
-      if (Array.isArray(list) && list.length > 0) {
-        for (const ord of list) {
-          ordersMemoryStore.set(ord.id, ord);
-          if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
-          if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
+    const candidatePaths = getCandidateOrdersFilePaths();
+    for (const filePath of candidatePaths) {
+      if (fs.existsSync(filePath)) {
+        try {
+          const raw = fs.readFileSync(filePath, "utf8");
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            for (const ord of list) {
+              ordersMemoryStore.set(ord.id, ord);
+              if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
+              if (ord.orderNumber) {
+                ordersMemoryStore.set(ord.orderNumber, ord);
+                ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
+              }
+              if (ord.parentCheckoutId) {
+                ordersMemoryStore.set(ord.parentCheckoutId, ord);
+                ordersMemoryStore.set(ord.parentCheckoutId.toLowerCase(), ord);
+              }
+            }
+            return;
+          }
+        } catch {
+          // Continue to next candidate path
         }
-        return;
       }
     }
   } catch (err) {
@@ -269,7 +293,11 @@ function initOrdersStore(): void {
   // Fallback to seed orders if file is missing or empty
   for (const ord of SEED_ORDERS) {
     ordersMemoryStore.set(ord.id, ord);
-    if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
+    if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
+    if (ord.orderNumber) {
+      ordersMemoryStore.set(ord.orderNumber, ord);
+      ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
+    }
   }
   persistOrdersToDisk();
 }
@@ -277,9 +305,17 @@ function initOrdersStore(): void {
 function persistOrdersToDisk(): void {
   try {
     const uniqueOrders = Array.from(new Set(ordersMemoryStore.values()));
-    const dir = path.dirname(ORDERS_FILE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(ORDERS_FILE_PATH, JSON.stringify(uniqueOrders, null, 2), "utf8");
+    const payload = JSON.stringify(uniqueOrders, null, 2);
+    const candidatePaths = getCandidateOrdersFilePaths();
+    for (const filePath of candidatePaths) {
+      try {
+        const dir = path.dirname(filePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(filePath, payload, "utf8");
+      } catch {
+        // Continue writing to next candidate path
+      }
+    }
   } catch (err) {
     console.warn("Failed to persist orders to disk:", err);
   }
@@ -288,50 +324,74 @@ function persistOrdersToDisk(): void {
 initOrdersStore();
 
 export function loadOrders(): OrderRecord[] {
+  if (ordersMemoryStore.size === 0) {
+    initOrdersStore();
+  }
   return Array.from(new Set(ordersMemoryStore.values()));
 }
 
 export function saveOrders(orders: OrderRecord[]): void {
   for (const ord of orders) {
     ordersMemoryStore.set(ord.id, ord);
-    if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
-    if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
+    if (ord.id) ordersMemoryStore.set(ord.id.toLowerCase(), ord);
+    if (ord.orderNumber) {
+      ordersMemoryStore.set(ord.orderNumber, ord);
+      ordersMemoryStore.set(ord.orderNumber.toLowerCase(), ord);
+    }
+    if (ord.parentCheckoutId) {
+      ordersMemoryStore.set(ord.parentCheckoutId, ord);
+      ordersMemoryStore.set(ord.parentCheckoutId.toLowerCase(), ord);
+    }
   }
   persistOrdersToDisk();
 }
 
 export function saveOrder(order: OrderRecord): void {
   ordersMemoryStore.set(order.id, order);
-  if (order.orderNumber) ordersMemoryStore.set(order.orderNumber, order);
-  if (order.parentCheckoutId) ordersMemoryStore.set(order.parentCheckoutId, order);
+  if (order.id) ordersMemoryStore.set(order.id.toLowerCase(), order);
+  if (order.orderNumber) {
+    ordersMemoryStore.set(order.orderNumber, order);
+    ordersMemoryStore.set(order.orderNumber.toLowerCase(), order);
+  }
+  if (order.parentCheckoutId) {
+    ordersMemoryStore.set(order.parentCheckoutId, order);
+    ordersMemoryStore.set(order.parentCheckoutId.toLowerCase(), order);
+  }
   persistOrdersToDisk();
 }
 
-export function normalizeDeliveryStatus(st: string): DeliveryStatus {
-  if (st === "ACCEPTED" || st === "CONFIRMED") return "CONFIRMED";
-  if (st === "PREPARING" || st === "LOADING_VEHICLE") return "LOADING_VEHICLE";
-  if (st === "DISPATCHED" || st === "ASSIGNED_DRIVER") return "ASSIGNED_DRIVER";
-  if (st === "DELIVERED") return "DELIVERED";
-  if (st === "REJECTED") return "REJECTED";
-  if (st === "CANCELLED") return "CANCELLED";
+export function normalizeDeliveryStatus(st: string | undefined | null): DeliveryStatus {
+  if (!st) return "PLACED";
+  const upper = String(st).trim().toUpperCase();
+  if (upper === "ACCEPTED" || upper === "CONFIRMED") return "CONFIRMED";
+  if (upper === "PREPARING" || upper === "LOADING_VEHICLE" || upper === "LOADING") return "LOADING_VEHICLE";
+  if (upper === "DISPATCHED" || upper === "ASSIGNED_DRIVER" || upper === "OUT_FOR_DELIVERY" || upper === "DRIVER_ASSIGNED") return "ASSIGNED_DRIVER";
+  if (upper === "DELIVERED" || upper === "COMPLETED") return "DELIVERED";
+  if (upper === "REJECTED") return "REJECTED";
+  if (upper === "CANCELLED") return "CANCELLED";
   return "PLACED";
 }
 
-export function toPrismaOrderStatus(st: string): OrderStatus {
-  if (st === "CONFIRMED" || st === "ACCEPTED") return OrderStatus.ACCEPTED;
-  if (st === "LOADING_VEHICLE" || st === "PREPARING") return OrderStatus.PREPARING;
-  if (st === "ASSIGNED_DRIVER" || st === "DISPATCHED") return OrderStatus.DISPATCHED;
-  if (st === "DELIVERED") return OrderStatus.DELIVERED;
-  if (st === "REJECTED") return OrderStatus.REJECTED;
-  if (st === "CANCELLED") return OrderStatus.CANCELLED;
+export function toPrismaOrderStatus(st: string | undefined | null): OrderStatus {
+  if (!st) return OrderStatus.PLACED;
+  const upper = String(st).trim().toUpperCase();
+  if (upper === "CONFIRMED" || upper === "ACCEPTED") return OrderStatus.ACCEPTED;
+  if (upper === "LOADING_VEHICLE" || upper === "PREPARING" || upper === "LOADING") return OrderStatus.PREPARING;
+  if (upper === "ASSIGNED_DRIVER" || upper === "DISPATCHED" || upper === "OUT_FOR_DELIVERY") return OrderStatus.DISPATCHED;
+  if (upper === "DELIVERED" || upper === "COMPLETED") return OrderStatus.DELIVERED;
+  if (upper === "REJECTED") return OrderStatus.REJECTED;
+  if (upper === "CANCELLED") return OrderStatus.CANCELLED;
   return OrderStatus.PLACED;
 }
 
 export async function findOrderById(id: string): Promise<OrderRecord | null> {
   const clean = id.trim().toLowerCase();
+  const direct = ordersMemoryStore.get(id) || ordersMemoryStore.get(clean);
+  if (direct) return direct;
+
   for (const ord of ordersMemoryStore.values()) {
     if (
-      ord.id.toLowerCase() === clean ||
+      (ord.id && ord.id.toLowerCase() === clean) ||
       (ord.orderNumber && ord.orderNumber.toLowerCase() === clean) ||
       (ord.parentCheckoutId && ord.parentCheckoutId.toLowerCase() === clean)
     ) {
@@ -758,11 +818,14 @@ ordersRouter.get("/", async (req, res, next) => {
       ord.status = normalizeDeliveryStatus(ord.status);
       orderMap.set(ord.id, ord);
       if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
+      if (ord.parentCheckoutId) orderMap.set(ord.parentCheckoutId, ord);
     }
     for (const ord of dbOrders) {
-      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
+      const existing = orderMap.get(ord.id) ||
+        (ord.orderNumber ? orderMap.get(ord.orderNumber) : null) ||
+        (ord.parentCheckoutId ? orderMap.get(ord.parentCheckoutId) : null);
       if (!existing) {
-        orderMap.set(ord.id, {
+        const mappedOrder = {
           id: ord.id,
           orderNumber: ord.id,
           parentCheckoutId: ord.parentCheckoutId,
@@ -792,8 +855,18 @@ ordersRouter.get("/", async (req, res, next) => {
             totalMinor: it.totalMinorSnapshot,
             priceMinor: it.priceMinorSnapshot
           })) || [],
+          statusHistory: [
+            {
+              status: normalizeDeliveryStatus(ord.status),
+              timestamp: ord.createdAt ? ord.createdAt.toISOString() : new Date().toISOString(),
+              note: "Order recorded in database"
+            }
+          ],
           createdAt: ord.createdAt.toISOString()
-        });
+        };
+        orderMap.set(ord.id, mappedOrder);
+        if (ord.parentCheckoutId) orderMap.set(ord.parentCheckoutId, mappedOrder);
+        saveOrder(mappedOrder as any);
       }
     }
 
