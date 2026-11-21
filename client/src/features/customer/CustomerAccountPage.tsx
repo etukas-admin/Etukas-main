@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Building2,
@@ -18,7 +18,9 @@ import {
   Truck,
   UserRound,
   Wrench,
-  RefreshCw
+  RefreshCw,
+  Star,
+  Edit3
 } from "lucide-react";
 import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
 import type { OrderRecord } from "../../services/api";
@@ -27,10 +29,54 @@ import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imag
 
 export function CustomerAccountPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [activeTab, setActiveTab] = useState<"orders" | "services" | "overview">("orders");
   const [trackingOrder, setTrackingOrder] = useState<OrderRecord | null>(null);
   const [isRefreshingLive, setIsRefreshingLive] = useState(false);
+
+  // Review modal state
+  const [reviewingOrder, setReviewingOrder] = useState<OrderRecord | null>(null);
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewHoverRating, setReviewHoverRating] = useState<number>(0);
+  const [reviewComment, setReviewComment] = useState<string>("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState<boolean>(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const [reviewSuccessMsg, setReviewSuccessMsg] = useState<string | null>(null);
+
+  const handleOpenReviewModal = (order: OrderRecord) => {
+    setReviewingOrder(order);
+    setReviewRating(order.review?.rating || 5);
+    setReviewComment(order.review?.comment || "");
+    setReviewError(null);
+    setReviewSuccessMsg(null);
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingOrder) return;
+    setIsSubmittingReview(true);
+    setReviewError(null);
+    try {
+      const res = await marketplaceApi.submitOrderReview(reviewingOrder.id, {
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined
+      });
+      setReviewSuccessMsg("Review submitted successfully! Thank you for your feedback.");
+      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      if (trackingOrder && (trackingOrder.id === reviewingOrder.id || trackingOrder.orderNumber === reviewingOrder.orderNumber)) {
+        setTrackingOrder(res.order);
+      }
+      setTimeout(() => {
+        setReviewingOrder(null);
+        setReviewSuccessMsg(null);
+      }, 1500);
+    } catch (err: any) {
+      setReviewError(err?.message || "Failed to submit review. Please try again.");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -295,8 +341,39 @@ export function CustomerAccountPage() {
                         })}
                       </div>
 
-                      {/* Action Bar with Track Delivery Button */}
-                      <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                      {/* Customer Review Card (if already reviewed) */}
+                      {order.review && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-amber-500">
+                              {Array.from({ length: 5 }).map((_, i) => (
+                                <Star
+                                  key={i}
+                                  size={13}
+                                  className={i < order.review.rating ? "fill-amber-400 text-amber-400" : "text-gray-300"}
+                                />
+                              ))}
+                              <span className="ml-1 text-[11px] font-black text-amber-950">
+                                Your Rating: {order.review.rating} / 5.0
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReviewModal(order)}
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 hover:text-amber-950 hover:underline"
+                            >
+                              <Edit3 size={11} />
+                              <span>Edit Review</span>
+                            </button>
+                          </div>
+                          {order.review.comment && (
+                            <p className="text-gray-700 italic leading-relaxed">"{order.review.comment}"</p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action Bar with Track Delivery and Review Buttons */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
                         <div className="text-xs text-gray-500">
                           {order.vehicleNumber && (
                             <span className="font-medium mr-2">Vehicle: <strong className="text-gray-800">{order.vehicleNumber}</strong></span>
@@ -311,14 +388,27 @@ export function CustomerAccountPage() {
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setTrackingOrder(order)}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
-                        >
-                          <Truck size={13} />
-                          <span>Track Live Delivery</span>
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {isDelivered && !order.review && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenReviewModal(order)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-black text-amber-900 shadow-xs hover:bg-amber-100 hover:border-amber-400 active:scale-95 transition"
+                            >
+                              <Star size={13} className="fill-amber-400 text-amber-500" />
+                              <span>Rate &amp; Review</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => setTrackingOrder(order)}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                          >
+                            <Truck size={13} />
+                            <span>Track Live Delivery</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -527,6 +617,7 @@ export function CustomerAccountPage() {
               order={trackingOrder}
               onRefresh={handleRefreshLiveTracking}
               isRefreshing={isRefreshingLive}
+              onReviewOrder={() => handleOpenReviewModal(trackingOrder)}
             />
 
             <div className="pt-2">
@@ -538,6 +629,169 @@ export function CustomerAccountPage() {
                 Close Tracking
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customer Review & Rating Submission Modal */}
+      {reviewingOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs animate-fadeIn">
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                  <Star size={18} className="fill-amber-400 text-amber-400" />
+                </div>
+                <div>
+                  <h3 className="font-black text-gray-900 text-base">
+                    Rate &amp; Review Order
+                  </h3>
+                  <p className="text-xs text-gray-500 font-mono">
+                    #{reviewingOrder.orderNumber || reviewingOrder.id} • {reviewingOrder.storeName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setReviewingOrder(null); setReviewError(null); setReviewSuccessMsg(null); }}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            {reviewSuccessMsg ? (
+              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6 text-center space-y-2">
+                <CheckCircle2 size={36} className="text-emerald-600 mx-auto" />
+                <h4 className="font-extrabold text-emerald-950 text-base">Feedback Recorded!</h4>
+                <p className="text-xs text-emerald-800">{reviewSuccessMsg}</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmitReview} className="space-y-4">
+                {/* Ordered Items summary */}
+                <div className="rounded-xl bg-gray-50 p-3 border border-gray-100 text-xs text-gray-700">
+                  <span className="font-bold text-gray-900 block mb-1">Delivered Materials:</span>
+                  <div className="space-y-0.5 text-[11px] text-gray-600">
+                    {reviewingOrder.items?.map((it, idx) => (
+                      <div key={idx} className="truncate">
+                        • {it.quantity} {it.unit}s · {it.productName}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 5-Star Interactive Rating Selection */}
+                <div className="text-center py-2 space-y-2">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-500">
+                    How would you rate your order &amp; delivery?
+                  </label>
+                  <div className="flex items-center justify-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const isFilled = (reviewHoverRating || reviewRating) >= star;
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setReviewRating(star)}
+                          onMouseEnter={() => setReviewHoverRating(star)}
+                          onMouseLeave={() => setReviewHoverRating(0)}
+                          className="p-1 rounded-xl transition-transform hover:scale-125 focus:outline-none"
+                          aria-label={`Rate ${star} stars`}
+                        >
+                          <Star
+                            size={32}
+                            className={`transition-colors ${
+                              isFilled
+                                ? "fill-amber-400 text-amber-400 drop-shadow-sm"
+                                : "text-gray-200 hover:text-amber-200"
+                            }`}
+                          />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-xs font-black text-amber-800">
+                    {reviewRating === 5 && "★★★★★ Excellent (5/5) — Superior Quality & Timely Delivery"}
+                    {reviewRating === 4 && "★★★★☆ Very Good (4/5) — Satisfied with materials"}
+                    {reviewRating === 3 && "★★★☆☆ Good (3/5) — Average Experience"}
+                    {reviewRating === 2 && "★★☆☆☆ Fair (2/5) — Minor Issues"}
+                    {reviewRating === 1 && "★☆☆☆☆ Poor (1/5) — Dissatisfied"}
+                  </div>
+                </div>
+
+                {/* Quick Feedback Chips */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">
+                    Quick Highlights
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      "Prompt Delivery",
+                      "Fresh Batch Materials",
+                      "Accurate Quantity",
+                      "Courteous Driver",
+                      "Competitive Wholesale Price",
+                      "Certified Test Certificate"
+                    ].map((tag) => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          if (reviewComment.includes(tag)) return;
+                          setReviewComment((prev) => (prev ? `${prev}, ${tag}` : tag));
+                        }}
+                        className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-semibold text-gray-700 hover:border-amber-400 hover:bg-amber-50 hover:text-amber-900 transition active:scale-95"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Detailed Review Textarea */}
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 mb-1">
+                    Your Detailed Review <span className="text-gray-400 font-normal normal-case">(optional)</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="Tell us about the material quality, packaging condition, driver behavior, and delivery timeliness..."
+                    maxLength={1000}
+                    className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-xs leading-relaxed text-gray-800 shadow-xs focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-100"
+                  />
+                  <div className="text-[10px] text-gray-400 text-right mt-0.5">
+                    {reviewComment.length}/1000 characters
+                  </div>
+                </div>
+
+                {reviewError && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-700 font-medium">
+                    {reviewError}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => { setReviewingOrder(null); setReviewError(null); }}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingReview}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-5 py-2 text-xs font-black text-white shadow-md hover:bg-amber-600 active:scale-95 transition disabled:opacity-50"
+                  >
+                    <Star size={13} className="fill-white" />
+                    <span>{isSubmittingReview ? "Submitting..." : "Submit Review"}</span>
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

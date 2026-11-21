@@ -489,7 +489,7 @@ export function ProductDetailsView({
                 <div>
                   <div className="text-xs font-extrabold uppercase tracking-wider text-gray-700">Quantity</div>
                   <div className="text-[11px] text-gray-500">
-                    MOQ: {product.minOrderQuantity} {product.product.unit}s â€¢ In stock: {product.stockQuantity}
+                    Minimum Order: {product.minOrderQuantity} {product.product.unit}s • In stock: {product.stockQuantity}
                   </div>
                 </div>
 

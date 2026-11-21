@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { MapPin, Star, ShieldCheck, Filter } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
@@ -252,7 +252,7 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
                           Save {formatMoney(savingsAmount)}
                         </span>
                         <span className="text-[10px] text-gray-500">
-                          MOQ {item.minOrderQuantity}
+                          Min Order {item.minOrderQuantity}
                         </span>
                       </div>
 

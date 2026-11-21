@@ -87,7 +87,15 @@ export const sellerProductSchema = z.object({
   sku: z.string().min(2).max(80),
   priceMinor: z.coerce.number().int().positive(),
   taxRateBps: z.coerce.number().int().min(0).max(2800).default(1800),
+  discountMinor: z.coerce.number().int().min(0).default(0),
   stockQuantity: z.coerce.number().int().min(0),
   minOrderQuantity: z.coerce.number().int().positive().default(1),
   isActive: z.boolean().default(false)
 });
+
+export const orderReviewSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional()
+});
+
+export type OrderReviewInput = z.infer<typeof orderReviewSchema>;

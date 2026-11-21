@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   SlidersHorizontal,
   Store as StoreIcon,
+  Star,
   Trash2,
   Truck,
   Upload,
@@ -69,7 +70,9 @@ type InventoryRow = {
   category: string;
   unit: string;
   price: number;
+  discount: number;
   stock: number;
+  minOrderQuantity: number;
   sku: string;
   isActive: boolean;
   description: string;
@@ -92,7 +95,9 @@ export function SellerDashboard() {
   const [newProdCategory, setNewProdCategory] = useState("cement");
   const [newProdUnit, setNewProdUnit] = useState("Bag");
   const [newProdPrice, setNewProdPrice] = useState("");
+  const [newProdDiscount, setNewProdDiscount] = useState("");
   const [newProdStock, setNewProdStock] = useState("");
+  const [newProdMinOrder, setNewProdMinOrder] = useState("1");
   const [newProdDescription, setNewProdDescription] = useState("");
   const [newProdImageBase64, setNewProdImageBase64] = useState<string | undefined>(undefined);
   const [newProdImagePreview, setNewProdImagePreview] = useState<string | null>(null);
@@ -102,7 +107,7 @@ export function SellerDashboard() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Edit product state
-  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; stock: string; description: string } | null>(null);
+  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; discount: string; stock: string; minOrder: string; description: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
   // Manage images on existing product
@@ -259,14 +264,18 @@ export function SellerDashboard() {
       category: newProdCategory,
       unit: newProdUnit.trim(),
       priceMinor: Math.round(Number(newProdPrice) * 100),
+      discountMinor: newProdDiscount ? Math.round(Number(newProdDiscount) * 100) : 0,
       stockQuantity: Number(newProdStock),
+      minOrderQuantity: newProdMinOrder ? Math.max(1, Number(newProdMinOrder)) : 1,
       imageBase64: newProdImageBase64,
       description: newProdDescription.trim() || newProdName.trim()
     }),
     onSuccess: () => {
       setNewProdName("");
       setNewProdPrice("");
+      setNewProdDiscount("");
       setNewProdStock("");
+      setNewProdMinOrder("1");
       setNewProdDescription("");
       setNewProdImageBase64(undefined);
       setNewProdImagePreview(null);
@@ -323,12 +332,14 @@ export function SellerDashboard() {
   });
 
   const editProductMutation = useMutation({
-    mutationFn: (vars: { id: string; name: string; unit: string; priceMinor: number; stockQuantity: number; description: string }) =>
+    mutationFn: (vars: { id: string; name: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; description: string }) =>
       marketplaceApi.sellerUpdateProduct(vars.id, {
         name: vars.name,
         unit: vars.unit,
         priceMinor: vars.priceMinor,
+        discountMinor: vars.discountMinor,
         stockQuantity: vars.stockQuantity,
+        minOrderQuantity: vars.minOrderQuantity,
         description: vars.description
       }),
     onSuccess: () => {
@@ -348,7 +359,9 @@ export function SellerDashboard() {
     category: categoryIdBySlug[listing.product.category.slug] ?? "all",
     unit: listing.product.unit,
     price: listing.priceMinor / 100,
+    discount: (listing.discountMinor ?? 0) / 100,
     stock: listing.stockQuantity,
+    minOrderQuantity: listing.minOrderQuantity ?? 1,
     sku: listing.sku,
     isActive: listing.isActive,
     description: listing.product.description ?? ""
@@ -1211,8 +1224,8 @@ export function SellerDashboard() {
                     <th className="px-6 py-3.5">Material Name & SKU</th>
                     <th className="px-6 py-3.5">Category</th>
                     <th className="px-6 py-3.5">Selling Unit</th>
-                    <th className="px-6 py-3.5">Price (₹)</th>
-                    <th className="px-6 py-3.5">Stock Available</th>
+                    <th className="px-6 py-3.5">Price & Discount (₹)</th>
+                    <th className="px-6 py-3.5">Stock & Min Order</th>
                     <th className="px-6 py-3.5">Status</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
@@ -1265,14 +1278,26 @@ export function SellerDashboard() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-600">{p.unit}</td>
-                      <td className="px-6 py-4 font-bold text-gray-900">
-                        ₹{p.price.toLocaleString("en-IN")}
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-gray-900">
+                          ₹{p.price.toLocaleString("en-IN")}
+                        </div>
+                        {p.discount > 0 ? (
+                          <div className="text-[11px] font-bold text-emerald-600">
+                            Discount: ₹{p.discount.toLocaleString("en-IN")} OFF
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-gray-400 font-normal">No discount</div>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 font-bold ${p.stock < 20 ? "text-red-600" : "text-emerald-700"}`}>
                           {p.stock} units
                           {p.stock < 20 && <AlertTriangle size={14} />}
                         </span>
+                        <div className="text-[11px] font-semibold text-gray-500 mt-0.5">
+                          Min Order: {p.minOrderQuantity} {p.unit}s
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <button
@@ -1290,7 +1315,16 @@ export function SellerDashboard() {
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => setEditingProduct({ id: p.id, name: p.name, unit: p.unit, price: String(p.price), stock: String(p.stock), description: p.description })}
+                            onClick={() => setEditingProduct({
+                              id: p.id,
+                              name: p.name,
+                              unit: p.unit,
+                              price: String(p.price),
+                              discount: p.discount ? String(p.discount) : "0",
+                              stock: String(p.stock),
+                              minOrder: String(p.minOrderQuantity || 1),
+                              description: p.description
+                            })}
                             className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
                             title="Edit product details"
                           >
@@ -1420,6 +1454,43 @@ export function SellerDashboard() {
                         />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Offering Discount (₹)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newProdDiscount}
+                          onChange={(e) => setNewProdDiscount(e.target.value)}
+                          placeholder="e.g. 25 (optional)"
+                          className="mt-1"
+                        />
+                        <p className="mt-0.5 text-[10px] text-gray-400">Discount you offer per unit</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Minimum Order</label>
+                        <Input
+                          required
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={newProdMinOrder}
+                          onChange={(e) => setNewProdMinOrder(e.target.value)}
+                          placeholder="e.g. 1 or 10"
+                          className="mt-1"
+                        />
+                        <p className="mt-0.5 text-[10px] text-gray-400">Min quantity buyer must order</p>
+                      </div>
+                    </div>
+
+                    {Number(newProdPrice) > 0 && Number(newProdDiscount) > 0 && (
+                      <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800 flex items-center justify-between">
+                        <span>Partner Discount: <strong>₹{Number(newProdDiscount)} OFF</strong> ({Math.round((Number(newProdDiscount) / Number(newProdPrice)) * 100)}%)</span>
+                        <span>Customer Net Price: <strong>₹{Math.max(0, Number(newProdPrice) - Number(newProdDiscount))}</strong> / {newProdUnit || "unit"}</span>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-bold uppercase text-gray-700">Initial Stock Quantity</label>
@@ -1591,7 +1662,9 @@ export function SellerDashboard() {
                         name: editingProduct.name.trim(),
                         unit: editingProduct.unit.trim(),
                         priceMinor: Math.round(Number(editingProduct.price) * 100),
+                        discountMinor: editingProduct.discount ? Math.round(Number(editingProduct.discount) * 100) : 0,
                         stockQuantity: Number(editingProduct.stock),
+                        minOrderQuantity: editingProduct.minOrder ? Math.max(1, Number(editingProduct.minOrder)) : 1,
                         description: editingProduct.description.trim()
                       });
                     }}
@@ -1647,6 +1720,43 @@ export function SellerDashboard() {
                         />
                       </div>
                     </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Offering Discount (₹)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={editingProduct.discount}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, discount: e.target.value })}
+                          placeholder="e.g. 25"
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <p className="mt-0.5 text-[10px] text-gray-400">Discount you offer per unit</p>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Minimum Order *</label>
+                        <input
+                          required
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={editingProduct.minOrder}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, minOrder: e.target.value })}
+                          placeholder="e.g. 1 or 10"
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <p className="mt-0.5 text-[10px] text-gray-400">Min quantity buyer must order</p>
+                      </div>
+                    </div>
+
+                    {Number(editingProduct.price) > 0 && Number(editingProduct.discount) > 0 && (
+                      <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-800 flex items-center justify-between">
+                        <span>Partner Discount: <strong>₹{Number(editingProduct.discount)} OFF</strong> ({Math.round((Number(editingProduct.discount) / Number(editingProduct.price)) * 100)}%)</span>
+                        <span>Customer Net Price: <strong>₹{Math.max(0, Number(editingProduct.price) - Number(editingProduct.discount))}</strong> / {editingProduct.unit}</span>
+                      </div>
+                    )}
 
                     <div>
                       <label className="block text-xs font-bold uppercase text-gray-700">Stock Quantity *</label>
@@ -2059,6 +2169,17 @@ export function SellerDashboard() {
                               }`}>
                                 {ord.status || "PLACED"}
                               </span>
+                              {ord.review && (
+                                <div className="mt-1.5 flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 border border-amber-200 text-[11px] font-bold text-amber-900">
+                                  <Star size={11} className="fill-amber-400 text-amber-400 shrink-0" />
+                                  <span>{ord.review.rating}★ Review</span>
+                                </div>
+                              )}
+                              {ord.review?.comment && (
+                                <p className="mt-1 text-[10px] text-gray-500 italic line-clamp-2 max-w-[140px]" title={ord.review.comment}>
+                                  "{ord.review.comment}"
+                                </p>
+                              )}
                             </td>
 
                             {/* Live Vehicle & Driver Details */}

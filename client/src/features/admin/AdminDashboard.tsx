@@ -649,6 +649,11 @@ export function AdminDashboard() {
                           <span className={"inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold " + (isDelivered ? "bg-emerald-100 text-emerald-800" : isRejected ? "bg-red-100 text-red-800" : ord.status === "ASSIGNED_DRIVER" ? "bg-blue-100 text-blue-800" : ord.status === "LOADING_VEHICLE" ? "bg-purple-100 text-purple-800" : "bg-amber-100 text-amber-800")}>
                             {ord.status || "PLACED"}
                           </span>
+                          {ord.review && (
+                            <div className="mt-1 flex items-center gap-1 font-bold text-amber-800 text-[10px] bg-amber-50 rounded px-1.5 py-0.5 border border-amber-200">
+                              ★ {ord.review.rating}/5 Review
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-xs text-gray-600">
                           {ord.vehicleNumber && <div className="font-mono font-bold text-gray-900">🚛 {ord.vehicleNumber}</div>}
