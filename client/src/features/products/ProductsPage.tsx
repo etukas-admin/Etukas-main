@@ -173,7 +173,7 @@ export function ProductsPage() {
                   {item.product.description && item.product.description !== item.product.name && (
                     <p className="mt-1 text-xs text-gray-500 line-clamp-2 leading-relaxed">{item.product.description}</p>
                   )}
-                  <p className="mt-2 text-sm text-gray-600">MOQ {item.minOrderQuantity} {item.product.unit} • Stock {item.stockQuantity}</p>
+                  <p className="mt-2 text-sm text-gray-600">Minimum Order: {item.minOrderQuantity} {item.product.unit} • Stock: {item.stockQuantity}</p>
                   <div className="mt-4 flex items-center justify-between">
                     <strong>{formatMoney(item.priceMinor)}</strong>
                     <Link

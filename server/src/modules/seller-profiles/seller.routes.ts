@@ -29,7 +29,9 @@ const newMaterialSchema = z.object({
   ]),
   unit: z.string().trim().min(1).max(40),
   priceMinor: z.coerce.number().int().positive().max(100_000_000),
+  discountMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
   stockQuantity: z.coerce.number().int().min(0).max(10_000_000),
+  minOrderQuantity: z.coerce.number().int().positive().max(1_000_000).optional(),
   imageBase64: z.string().optional(),
   description: z.string().max(1000).optional()
 });
@@ -338,8 +340,9 @@ sellerRouter.post("/products", async (req, res, next) => {
           storeId: store.id,
           sku: `ETK-${randomUUID().slice(0, 12).toUpperCase()}`,
           priceMinor: input.priceMinor,
+          discountMinor: input.discountMinor ?? 0,
           stockQuantity: input.stockQuantity,
-          minOrderQuantity: 1,
+          minOrderQuantity: input.minOrderQuantity ?? 1,
           isActive: approved
         },
         include: {
@@ -375,6 +378,7 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
     }
     const updateInput = z.object({
       priceMinor: z.coerce.number().int().positive().max(100_000_000).optional(),
+      discountMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
       stockQuantity: z.coerce.number().int().min(0).max(10_000_000).optional(),
       minOrderQuantity: z.coerce.number().int().positive().optional(),
       isActive: z.boolean().optional(),

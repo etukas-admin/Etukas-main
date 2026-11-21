@@ -6,8 +6,10 @@ import { Router } from "express";
 import {
   checkoutSchema,
   orderTrackingUpdateSchema,
+  orderReviewSchema,
   type CheckoutInput,
-  type OrderTrackingUpdateInput
+  type OrderTrackingUpdateInput,
+  type OrderReviewInput
 } from "@etukas/shared";
 import { AdminNotificationType, OrderStatus, PaymentProvider, PaymentStatus } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
@@ -90,6 +92,11 @@ export interface OrderRecord {
   gstin?: string;
   notes?: string;
   statusNote?: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
   statusHistory: Array<{
     status: DeliveryStatus;
     timestamp: string;
@@ -836,6 +843,101 @@ ordersRouter.patch("/:id/tracking", async (req, res, next) => {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
     return sendOk(res, updated);
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * POST /api/v1/orders/:id/reviews
+ * Customer submits rating & review after the order is delivered
+ */
+ordersRouter.post("/:id/reviews", async (req, res, next) => {
+  try {
+    const input = orderReviewSchema.parse(req.body);
+    const order = await findOrderById(req.params.id);
+    if (!order) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+
+    // Only allow customer who placed the order or admin
+    if (order.customerId && req.user?.id && order.customerId !== req.user.id && !req.user.roles?.includes("ADMIN")) {
+      throw new HttpError(403, "FORBIDDEN", "You can only submit reviews for your own orders");
+    }
+
+    // Task constraint: Customer can submit review only after product is delivered
+    if (order.status !== "DELIVERED") {
+      throw new HttpError(400, "ORDER_NOT_DELIVERED", "Reviews can only be submitted after the product is delivered.");
+    }
+
+    const reviewRecord = {
+      rating: input.rating,
+      comment: input.comment || undefined,
+      createdAt: new Date().toISOString()
+    };
+
+    order.review = reviewRecord;
+    order.updatedAt = new Date().toISOString();
+
+    if (!Array.isArray(order.statusHistory)) {
+      order.statusHistory = [];
+    }
+    order.statusHistory.push({
+      status: "DELIVERED",
+      timestamp: new Date().toISOString(),
+      note: `Customer submitted ${input.rating}★ review: "${input.comment || "Delivered successfully"}"`,
+      actor: "Customer"
+    });
+
+    saveOrder(order);
+
+    // Sync to Prisma DB if available
+    try {
+      if (req.user?.id) {
+        await prisma.review.upsert({
+          where: {
+            userId_orderId: {
+              userId: req.user.id,
+              orderId: order.id
+            }
+          },
+          update: {
+            rating: input.rating,
+            comment: input.comment || null
+          },
+          create: {
+            userId: req.user.id,
+            orderId: order.id,
+            rating: input.rating,
+            comment: input.comment || null
+          }
+        });
+      }
+    } catch (dbErr) {
+      console.warn("[orders] Could not sync review to Prisma DB:", dbErr);
+    }
+
+    return sendCreated(res, {
+      message: "Review submitted successfully! Thank you for your feedback.",
+      review: reviewRecord,
+      order
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/orders/:id/reviews
+ * Returns review for an order if submitted
+ */
+ordersRouter.get("/:id/reviews", async (req, res, next) => {
+  try {
+    const order = await findOrderById(req.params.id);
+    if (!order) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+    return sendOk(res, order.review || null);
   } catch (error) {
     next(error);
   }

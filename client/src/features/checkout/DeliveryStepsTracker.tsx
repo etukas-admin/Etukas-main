@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Truck, UserCheck, PackageCheck, Phone, AlertCircle, RefreshCw, FileText } from "lucide-react";
+import { CheckCircle2, Clock, Truck, UserCheck, PackageCheck, Phone, AlertCircle, RefreshCw, FileText, Star } from "lucide-react";
 import type { OrderRecord, DeliveryStatus } from "../../services/api";
 
 const STEPS: { status: DeliveryStatus; label: string; desc: string }[] = [
@@ -32,11 +32,13 @@ function getStepIndex(status: DeliveryStatus): number {
 export function DeliveryStepsTracker({
   order,
   onRefresh,
-  isRefreshing
+  isRefreshing,
+  onReviewOrder
 }: {
   order: OrderRecord;
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onReviewOrder?: () => void;
 }) {
   const isRejected = order.status === "REJECTED" || order.status === "CANCELLED";
   const currentStepIdx = getStepIndex(order.status);
@@ -214,6 +216,67 @@ export function DeliveryStepsTracker({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Customer Review Section when Order is Delivered */}
+      {order.status === "DELIVERED" && (
+        <div className="mt-6">
+          {order.review ? (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                    <Star size={16} className="fill-amber-400 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-amber-950">Your Rating: {order.review.rating} / 5.0</span>
+                      <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-[9px] font-bold text-amber-900">
+                        Verified Review
+                      </span>
+                    </div>
+                    {order.review.comment && (
+                      <p className="text-xs text-amber-900 font-medium mt-0.5 italic">
+                        "{order.review.comment}"
+                      </p>
+                    )}
+                  </div>
+                </div>
+                {onReviewOrder && (
+                  <button
+                    type="button"
+                    onClick={onReviewOrder}
+                    className="inline-flex items-center gap-1 rounded-lg border border-amber-300 bg-white px-2.5 py-1 text-xs font-bold text-amber-900 hover:bg-amber-100 transition"
+                  >
+                    Edit Review
+                  </button>
+                )}
+              </div>
+            </div>
+          ) : (
+            onReviewOrder && (
+              <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-gradient-to-r from-amber-50 to-orange-50/60 p-4 shadow-xs flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                    <Star size={18} className="fill-amber-400 text-amber-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-extrabold text-amber-950">How was your delivery & material quality?</h4>
+                    <p className="text-[11px] text-amber-800">Rate your experience to help local builders & stores</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onReviewOrder}
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-black text-white shadow-xs hover:bg-amber-600 active:scale-95 transition"
+                >
+                  <Star size={13} className="fill-white" />
+                  <span>Rate &amp; Review Order</span>
+                </button>
+              </div>
+            )
+          )}
         </div>
       )}
     </div>

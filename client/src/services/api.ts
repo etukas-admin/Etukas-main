@@ -360,10 +360,17 @@ export const marketplaceApi = {
     }),
   getCustomerServiceBookings: (options?: RequestOptions) => api<Record<string, unknown>[]>("/technicians/customer/bookings", { signal: options?.signal }),
   sellerProducts: (options?: RequestOptions) => api<SellerProductListing[]>("/seller/products", { signal: options?.signal }),
-  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; stockQuantity: number; imageBase64?: string; description?: string }) =>
+  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
-  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; stockQuantity?: number; minOrderQuantity?: number; name?: string; unit?: string; description?: string }) =>
+  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; discountMinor?: number; stockQuantity?: number; minOrderQuantity?: number; name?: string; unit?: string; description?: string }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  submitOrderReview: (orderId: string, body: { rating: number; comment?: string }) =>
+    api<{ message: string; review: { rating: number; comment?: string; createdAt: string }; order: OrderRecord }>(`/orders/${encodeURIComponent(orderId)}/reviews`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  getOrderReview: (orderId: string) =>
+    api<{ rating: number; comment?: string; createdAt: string } | null>(`/orders/${encodeURIComponent(orderId)}/reviews`),
   sellerAddProductImage: (listingId: string, imageBase64: string) =>
     api<{ id: string; productId: string; altText: string; sortOrder: number; sizeBytes: number; mimeType: string }>(`/seller/products/${encodeURIComponent(listingId)}/images`, { method: "POST", body: JSON.stringify({ imageBase64 }) }),
   sellerDeleteProductImage: (listingId: string, imageId: string) =>
@@ -662,7 +669,9 @@ export type SellerProductListing = {
   id: string;
   sku: string;
   priceMinor: number;
+  discountMinor?: number;
   stockQuantity: number;
+  minOrderQuantity?: number;
   isActive: boolean;
   product: {
     id: string;
@@ -742,6 +751,11 @@ export type OrderRecord = {
   gstin?: string;
   notes?: string;
   statusNote?: string;
+  review?: {
+    rating: number;
+    comment?: string;
+    createdAt: string;
+  };
   statusHistory: Array<{
     status: DeliveryStatus;
     timestamp: string;
