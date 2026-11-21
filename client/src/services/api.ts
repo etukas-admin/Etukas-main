@@ -271,6 +271,8 @@ export const marketplaceApi = {
     if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
     return api<StoreProduct[]>(`/products?${query.toString()}`, { signal: options?.signal });
   },
+  getProductReviews: (productId: string, options?: RequestOptions) =>
+    api<ProductReviewsResult>(`/products/${encodeURIComponent(productId)}/reviews`, { signal: options?.signal }),
   stores: (params?: { city?: string }, options?: RequestOptions) => {
     const query = new URLSearchParams();
     if (params?.city) query.set("city", params.city);
@@ -509,6 +511,23 @@ export type StoreProduct = {
     images: { id?: string; productId?: string; url: string; altText: string }[];
     category: Category;
   };
+};
+
+export type ProductReview = {
+  id: string;
+  orderNumber: string;
+  author: string;
+  rating: number;
+  date: string;
+  site: string;
+  comment: string;
+  verified: boolean;
+};
+
+export type ProductReviewsResult = {
+  rating: number | null;
+  reviewsCount: number;
+  reviews: ProductReview[];
 };
 
 export function getProductImageUrl(

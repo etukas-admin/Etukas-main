@@ -190,9 +190,9 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
                       {/* Stock status indicator */}
                       <div className="mt-1 text-[11px] text-gray-500">
                         {item.stockQuantity > 50 ? (
-                          <span className="text-emerald-600 font-medium">â— Available in local yard</span>
+                          <span className="text-emerald-600 font-medium flex items-center gap-1.5"><span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" /> Available in local yard</span>
                         ) : (
-                          <span className="text-amber-600 font-medium">â— Low stock: {item.stockQuantity} left</span>
+                          <span className="text-amber-600 font-medium flex items-center gap-1.5"><span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" /> Low stock: {item.stockQuantity} left</span>
                         )}
                       </div>
                     </div>
@@ -219,3 +219,4 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
     </section>
   );
 }
+

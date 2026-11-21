@@ -2,6 +2,7 @@ import { Router } from "express";
 import { productQuerySchema } from "@etukas/shared";
 import { prisma } from "../../config/prisma.js";
 import { HttpError, sendOk } from "../../utils/http.js";
+import { loadOrders } from "../orders/orders.routes.js";
 
 export const productsRouter = Router();
 
@@ -149,6 +150,138 @@ productsRouter.get("/:id", async (req, res, next) => {
     });
     if (!item) throw new HttpError(404, "PRODUCT_NOT_FOUND", "Product listing not found");
     return sendOk(res, formatStoreProduct(item));
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * GET /api/v1/products/:id/reviews
+ * Returns genuine customer ratings and reviews for a product from verified delivered orders
+ */
+productsRouter.get("/:id/reviews", async (req, res, next) => {
+  try {
+    const targetId = req.params.id;
+
+    // Look up product listing details if exists
+    let productListing: any = null;
+    try {
+      productListing = await prisma.storeProduct.findFirst({
+        where: { id: targetId },
+        include: { product: true, store: true }
+      });
+    } catch {}
+
+    const targetNameLower = productListing?.product?.name?.toLowerCase();
+    const targetStoreId = productListing?.storeId;
+
+    const genuineReviews: Array<{
+      id: string;
+      orderNumber: string;
+      author: string;
+      rating: number;
+      date: string;
+      site: string;
+      comment: string;
+      verified: boolean;
+    }> = [];
+
+    const seenOrderIds = new Set<string>();
+
+    // 1. Fetch real customer reviews from delivered orders in file/memory store
+    const fileOrders = loadOrders();
+    for (const ord of fileOrders) {
+      if (ord && ord.status === "DELIVERED" && ord.review && ord.review.rating) {
+        const matchesProduct = (ord.items || []).some((it: any) => {
+          if (!it) return false;
+          if (it.storeProductId && it.storeProductId === targetId) return true;
+          if (it.id && it.id === targetId) return true;
+          if (targetNameLower && it.productName && it.productName.toLowerCase().includes(targetNameLower)) return true;
+          return false;
+        });
+
+        const matchesStore = targetStoreId && ord.storeId === targetStoreId;
+
+        // If matches this specific product, or matches this fulfilling store's delivered orders
+        if (matchesProduct || matchesStore) {
+          const ordKey = ord.id || ord.orderNumber;
+          if (!seenOrderIds.has(ordKey)) {
+            seenOrderIds.add(ordKey);
+            const reviewDate = ord.review.createdAt
+              ? new Date(ord.review.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+              : "Recently";
+            const site = ord.deliveryAddress
+              ? `${ord.deliveryAddress.city || "Site"}${ord.deliveryAddress.state ? `, ${ord.deliveryAddress.state}` : ""}`
+              : "Project Site";
+
+            genuineReviews.push({
+              id: `rev-${ordKey}`,
+              orderNumber: ord.orderNumber || ord.id,
+              author: ord.customerName || "Verified Project Buyer",
+              rating: Number(ord.review.rating),
+              date: reviewDate,
+              site,
+              comment: ord.review.comment || "Order delivered and verified at site.",
+              verified: true
+            });
+          }
+        }
+      }
+    }
+
+    // 2. Fetch real reviews from Prisma DB if connected
+    try {
+      const dbReviews = await prisma.review.findMany({
+        where: {
+          isApproved: true,
+          order: {
+            OR: [
+              { items: { some: { storeProductId: targetId } } },
+              ...(targetStoreId ? [{ storeId: targetStoreId }] : [])
+            ]
+          }
+        },
+        include: {
+          user: { select: { name: true } },
+          order: { include: { address: true, items: true } }
+        },
+        orderBy: { createdAt: "desc" }
+      });
+
+      for (const dbr of dbReviews) {
+        if (!seenOrderIds.has(dbr.orderId)) {
+          seenOrderIds.add(dbr.orderId);
+          const reviewDate = dbr.createdAt
+            ? new Date(dbr.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+            : "Recently";
+          const site = dbr.order.address
+            ? `${dbr.order.address.city}, ${dbr.order.address.state}`
+            : "Project Site";
+
+          genuineReviews.push({
+            id: dbr.id,
+            orderNumber: dbr.orderId,
+            author: dbr.user?.name || "Verified Project Buyer",
+            rating: dbr.rating,
+            date: reviewDate,
+            site,
+            comment: dbr.comment || "Genuine materials delivered at site.",
+            verified: true
+          });
+        }
+      }
+    } catch {}
+
+    const totalCount = genuineReviews.length;
+    const avgRating = totalCount > 0
+      ? Number((genuineReviews.reduce((sum, r) => sum + r.rating, 0) / totalCount).toFixed(1))
+      : null;
+
+    return sendOk(res, {
+      rating: avgRating,
+      reviewsCount: totalCount,
+      reviews: genuineReviews
+    });
   } catch (error) {
     next(error);
   }
