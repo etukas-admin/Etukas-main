@@ -40,7 +40,7 @@ export function Layout() {
               <p className="mt-3 text-xs leading-relaxed text-slate-400">
                 Grow Your Business with India's dedicated construction & building materials partner network. Empowering sellers, technicians, manufacturers, and equipment owners.
               </p>
-              <p className="mt-4 text-xs text-slate-500">Â© 2026 Etukas Partner Network. All rights reserved.</p>
+              <p className="mt-4 text-xs text-slate-500">© 2026 Etukas Partner Network. All rights reserved.</p>
             </div>
             <div>
               <h3 className="font-bold text-white text-sm">Partner Categories</h3>

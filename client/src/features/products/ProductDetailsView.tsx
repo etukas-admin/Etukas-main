@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
+  ArrowRight,
   ChevronDown,
   ChevronUp,
   MapPin,
@@ -15,7 +16,8 @@ import {
   Search,
   ShoppingCart,
   Minus,
-  Plus
+  Plus,
+  PackageCheck
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
@@ -54,62 +56,6 @@ const IRON_BAR_SIZES = [
   { id: "20mm", label: "20 mm", multiplier: 0.98 },
 ];
 
-// Realistic Verified Customer Reviews
-const TOP_REVIEW = {
-  id: "top-1",
-  author: "Ramesh Babu K.",
-  rating: 5,
-  date: "3 days ago",
-  site: "Karapa Residential Project (G+2)",
-  verified: true,
-  headline: "Outstanding genuine quality & flawless local dispatch!",
-  comment:
-    "Ordered full vehicle load directly to our site. Fresh batch without any lumps or moisture. The driver called ahead and offloading was swift and courteous. Best wholesale pricing compared to local retail yards.",
-};
-
-const SIDE_REVIEWS = [
-  {
-    id: "r2",
-    author: "Venkata Rao M.",
-    rating: 5,
-    date: "1 week ago",
-    site: "Sarpavaram Commercial",
-    verified: true,
-    headline: "Unbeatable wholesale rate",
-    comment: "Best rate in the local market. Fresh stock, accurate count, quick support.",
-  },
-  {
-    id: "r3",
-    author: "K. Satyanarayana",
-    rating: 4,
-    date: "2 weeks ago",
-    site: "Smart City Plot #42",
-    verified: true,
-    headline: "Prompt dispatch",
-    comment: "Delivered in under 3 hours, checked bag weights and batch codes. Highly satisfied.",
-  },
-  {
-    id: "r4",
-    author: "Durga Prasad Ch.",
-    rating: 5,
-    date: "3 weeks ago",
-    site: "Samalkot Road Villa",
-    verified: true,
-    headline: "Trusted supplier",
-    comment: "Consistent quality across multiple deliveries. The store owner accommodated our morning schedule.",
-  },
-  {
-    id: "r5",
-    author: "Naveen Reddy T.",
-    rating: 5,
-    date: "1 month ago",
-    site: "Pithapuram Commercial Unit",
-    verified: true,
-    headline: "Genuine test certificate",
-    comment: "Materials met structural engineering specifications. Very impressed with the service.",
-  },
-];
-
 export function ProductDetailsView({
   product,
   relatedProducts = [],
@@ -121,6 +67,19 @@ export function ProductDetailsView({
   const { addToCart, isLoading: isAdding, notice } = useAddToCart();
   const [isBuying, setIsBuying] = useState(false);
   const currentUser = getStoredUser();
+
+  // Fetch genuine customer reviews for this material from verified delivered orders
+  const { data: reviewsData } = useQuery({
+    queryKey: ["product-reviews", product.id],
+    queryFn: ({ signal }) => marketplaceApi.getProductReviews(product.id, { signal }),
+    staleTime: 30000
+  });
+
+  const genuineReviews = reviewsData?.reviews ?? [];
+  const averageRating = reviewsData?.rating;
+  const reviewsCount = reviewsData?.reviewsCount ?? 0;
+  const topGenuineReview = genuineReviews.length > 0 ? genuineReviews[0] : null;
+  const remainingReviews = genuineReviews.length > 1 ? genuineReviews.slice(1) : [];
 
   const cartQuery = useCartQuery();
   const cartCount = cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
@@ -343,11 +302,20 @@ export function ProductDetailsView({
                 />
 
                 {/* Rating Badge */}
-                <div className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-extrabold text-gray-900 shadow-md backdrop-blur">
-                  <Star size={13} className="fill-amber-400 text-amber-400" />
-                  <span>4.6</span>
-                  <span className="text-gray-400">|</span>
-                  <span className="text-gray-600 font-semibold">1.2K+ Sold</span>
+                <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1 text-xs font-extrabold text-gray-900 shadow-md backdrop-blur">
+                  {averageRating ? (
+                    <>
+                      <Star size={13} className="fill-amber-400 text-amber-400" />
+                      <span>{averageRating}</span>
+                      <span className="text-gray-300">|</span>
+                      <span className="text-gray-600 font-semibold">{reviewsCount} {reviewsCount === 1 ? "Review" : "Reviews"}</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={13} className="text-emerald-600" />
+                      <span className="text-gray-800 font-semibold">Verified Material</span>
+                    </>
+                  )}
                 </div>
 
                 {/* Share Button at Top Right Corner */}
@@ -623,7 +591,9 @@ export function ProductDetailsView({
                         {product.store.name}
                       </div>
                       <div className="text-xs text-gray-500">
-                        {product.store.city}, {product.store.state} â€¢ Radius {product.store.serviceRadiusKm} km
+                        <span>{product.store.city}, {product.store.state}</span>
+                        <span className="mx-1.5 text-gray-400">•</span>
+                        <span>Radius {product.store.serviceRadiusKm} km</span>
                       </div>
                     </div>
                   </div>
@@ -647,12 +617,20 @@ export function ProductDetailsView({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-base sm:text-lg font-black text-gray-900">Ratings & Reviews</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-900">
-                    â˜… 4.6
-                  </span>
+                  {averageRating ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-black text-amber-900">
+                      <Star size={11} className="fill-amber-900 text-amber-900" /> {averageRating.toFixed(1)}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-semibold text-gray-700">
+                      New Listing
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 font-normal mt-0.5">
-                  128 verified ratings & reviews from local site contractors
+                  {reviewsCount > 0
+                    ? `${reviewsCount} verified rating${reviewsCount === 1 ? "" : "s"} & review${reviewsCount === 1 ? "" : "s"} from local site buyers`
+                    : "No customer reviews yet from delivered orders"}
                 </p>
               </div>
             </div>
@@ -665,83 +643,134 @@ export function ProductDetailsView({
 
           {isReviewsOpen && (
             <div className="border-t border-gray-100 p-4 sm:p-6 bg-gray-50/40">
-              {/* TOP RATED REVIEW - Prominently Displayed in Big Size */}
-              <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50/70 via-white to-amber-50/30 p-4 sm:p-6 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5">
-                    <span className="rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
-                      â˜… Top Rated Review
-                    </span>
-                    <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
-                      <CheckCircle2 size={13} /> Verified Project Buyer
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400 font-medium">{TOP_REVIEW.date}</span>
-                </div>
-
-                <div className="mt-3 flex items-center gap-1 text-amber-400">
-                  {Array.from({ length: TOP_REVIEW.rating }).map((_, i) => (
-                    <Star key={i} size={16} className="fill-amber-400" />
-                  ))}
-                  <span className="ml-1 text-xs font-extrabold text-gray-800">5.0 / 5.0</span>
-                </div>
-
-                <h3 className="mt-2 text-base font-extrabold text-gray-900 sm:text-lg">
-                  "{TOP_REVIEW.headline}"
-                </h3>
-
-                <p className="mt-2 text-sm leading-relaxed text-gray-700 font-medium">
-                  {TOP_REVIEW.comment}
-                </p>
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/80 pt-3 text-xs">
-                  <div className="font-black text-gray-900">{TOP_REVIEW.author}</div>
-                  <div className="text-gray-500 font-medium">Site: {TOP_REVIEW.site}</div>
-                </div>
-              </div>
-
-              {/* REMAINING REVIEWS IN HORIZONTAL SIDE-SCROLL RECTANGLE CARDS */}
-              <div className="mt-6">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs font-extrabold uppercase tracking-wider text-gray-600">
-                    More Reviews from Nearby Sites
-                  </span>
-                  <span className="text-xs text-gray-400 font-medium">Scroll horizontally â†’</span>
-                </div>
-
-                <div className="flex gap-3.5 overflow-x-auto pb-3 pt-1 scroll-smooth">
-                  {SIDE_REVIEWS.map((review) => (
-                    <div
-                      key={review.id}
-                      className="w-[280px] sm:w-[320px] shrink-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
-                    >
-                      <div>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1 text-amber-400">
-                            {Array.from({ length: review.rating }).map((_, i) => (
-                              <Star key={i} size={12} className="fill-amber-400" />
-                            ))}
-                          </div>
-                          <span className="text-[11px] text-gray-400">{review.date}</span>
+              {genuineReviews.length > 0 ? (
+                <>
+                  {/* TOP RATED REVIEW - Prominently Displayed in Big Size */}
+                  {topGenuineReview && (
+                    <div className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50/70 via-white to-amber-50/30 p-4 sm:p-6 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-white">
+                            <Star size={10} className="fill-white text-white" /> Top Rated Review
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700">
+                            <CheckCircle2 size={13} /> Verified Project Buyer
+                          </span>
                         </div>
-
-                        <h4 className="mt-2 text-xs font-black text-gray-900 line-clamp-1">
-                          {review.headline}
-                        </h4>
-
-                        <p className="mt-1.5 text-xs text-gray-600 leading-relaxed line-clamp-3">
-                          {review.comment}
-                        </p>
+                        <span className="text-xs text-gray-400 font-medium">
+                          {topGenuineReview.date}
+                        </span>
                       </div>
 
-                      <div className="mt-3.5 border-t border-gray-100 pt-2 flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-gray-900">{review.author}</span>
-                        <span className="text-gray-400 truncate max-w-[140px]">{review.site}</span>
+                      <div className="mt-3 flex items-center gap-1 text-amber-400">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <Star
+                            key={i}
+                            size={16}
+                            className={
+                              i < topGenuineReview.rating
+                                ? "fill-amber-400 text-amber-400"
+                                : "text-gray-200"
+                            }
+                          />
+                        ))}
+                        <span className="ml-1 text-xs font-extrabold text-gray-800">
+                          {topGenuineReview.rating}.0 / 5.0
+                        </span>
+                      </div>
+
+                      <p className="mt-2 text-sm leading-relaxed text-gray-800 font-medium">
+                        "{topGenuineReview.comment}"
+                      </p>
+
+                      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-amber-100/80 pt-3 text-xs">
+                        <div className="font-black text-gray-900">{topGenuineReview.author}</div>
+                        {topGenuineReview.site && (
+                          <div className="text-gray-500 font-medium">
+                            Site: {topGenuineReview.site}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* REMAINING REVIEWS IN HORIZONTAL SIDE-SCROLL RECTANGLE CARDS */}
+                  {remainingReviews.length > 0 && (
+                    <div className="mt-6">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-gray-600">
+                          More Reviews from Nearby Sites
+                        </span>
+                        <span className="text-xs text-gray-400 font-medium flex items-center gap-1">
+                          Scroll horizontally <ArrowRight size={12} />
+                        </span>
+                      </div>
+
+                      <div className="flex gap-3.5 overflow-x-auto pb-3 pt-1 scroll-smooth">
+                        {remainingReviews.map((review) => (
+                          <div
+                            key={review.id}
+                            className="w-[280px] sm:w-[320px] shrink-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1 text-amber-400">
+                                  {Array.from({ length: 5 }).map((_, i) => (
+                                    <Star
+                                      key={i}
+                                      size={12}
+                                      className={
+                                        i < review.rating
+                                          ? "fill-amber-400 text-amber-400"
+                                          : "text-gray-200"
+                                      }
+                                    />
+                                  ))}
+                                </div>
+                                <span className="text-[11px] text-gray-400">
+                                  {review.date}
+                                </span>
+                              </div>
+
+                              <p className="mt-2.5 text-xs text-gray-700 leading-relaxed line-clamp-3">
+                                {review.comment}
+                              </p>
+                            </div>
+
+                            <div className="mt-3.5 border-t border-gray-100 pt-2 flex items-center justify-between text-[11px]">
+                              <span className="font-bold text-gray-900">{review.author}</span>
+                              {review.site && (
+                                <span className="text-gray-400 truncate max-w-[140px]">
+                                  {review.site}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                /* Clean Empty State when no delivered reviews yet */
+                <div className="rounded-2xl border border-dashed border-gray-200 bg-white p-6 text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                    <Star size={24} className="fill-amber-400 text-amber-400" />
+                  </div>
+                  <h3 className="mt-3 text-sm font-extrabold text-gray-900">No Customer Reviews Yet</h3>
+                  <p className="mt-1 text-xs text-gray-500 max-w-sm mx-auto">
+                    Reviews on Etukas are only collected from verified delivered orders to guarantee 100% genuine feedback from real project sites.
+                  </p>
+                  <div className="mt-4">
+                    <Link
+                      to="/account"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 transition"
+                    >
+                      View Delivered Orders to Rate <ArrowRight size={13} />
+                    </Link>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
         </section>

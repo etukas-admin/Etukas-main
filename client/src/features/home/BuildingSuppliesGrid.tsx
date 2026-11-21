@@ -227,7 +227,7 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
 
                       {/* Updated Price Note */}
                       <p className="mt-1 text-[10px] text-gray-500">
-                        Live seller price â€¢ updated today
+                        Live seller price • updated today
                       </p>
                     </div>
 

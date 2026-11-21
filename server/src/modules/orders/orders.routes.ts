@@ -238,6 +238,11 @@ const SEED_ORDERS: OrderRecord[] = [
     vehicleNumber: "TS 08 UB 7712",
     driverName: "M. Nageswara Rao",
     driverPhone: "9848777666",
+    review: {
+      rating: 5,
+      comment: "Prompt vehicle dispatch directly to our construction site. Fresh batch without any impurities, and the driver helped coordinate offloading.",
+      createdAt: new Date(Date.now() - 86400000).toISOString()
+    },
     statusHistory: [
       { status: "PLACED", timestamp: new Date(Date.now() - 86400000 * 2).toISOString(), note: "Order placed" },
       { status: "CONFIRMED", timestamp: new Date(Date.now() - 86400000 * 2 + 3600000).toISOString(), note: "Confirmed by seller" },
