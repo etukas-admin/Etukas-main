@@ -8,14 +8,12 @@ import {
   orderTrackingUpdateSchema,
   orderReviewSchema,
   type CheckoutInput,
-  type OrderTrackingUpdateInput,
-  type OrderReviewInput
+  type OrderTrackingUpdateInput
 } from "@etukas/shared";
-import { AdminNotificationType, OrderStatus, PaymentProvider, PaymentStatus } from "@prisma/client";
+import { AdminNotificationType, OrderStatus, Role } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
-import { requireAuth } from "../../middleware/auth.js";
+import { requireAuth, requireRole, type AuthUser } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
-import { lineTotals } from "../../utils/money.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -107,6 +105,18 @@ export interface OrderRecord {
   updatedAt: string;
 }
 
+const DELIVERY_STAGE_RANK: Record<DeliveryStatus, number> = {
+  PLACED: 0,
+  CONFIRMED: 1,
+  LOADING_VEHICLE: 2,
+  ASSIGNED_DRIVER: 3,
+  DELIVERED: 4,
+  REJECTED: -1,
+  CANCELLED: -1
+};
+
+const TERMINAL_STATUSES = new Set<DeliveryStatus>(["DELIVERED", "REJECTED", "CANCELLED"]);
+
 // ---------- Helper Functions & Storage ----------
 
 export function generateOrderId(): string {
@@ -114,7 +124,8 @@ export function generateOrderId(): string {
   return `ETORD${randomDigits}`;
 }
 
-const ORDERS_FILE_PATH = path.resolve(process.cwd(), "data", "orders.json");
+// Resolve consistently relative to server/data (not process.cwd())
+const ORDERS_FILE_PATH = path.resolve(__dirname, "../../../data/orders.json");
 
 const SEED_ORDERS: OrderRecord[] = [
   {
@@ -141,8 +152,8 @@ const SEED_ORDERS: OrderRecord[] = [
       label: "Construction Site"
     },
     status: "CONFIRMED",
-    subtotalMinor: 14500000,
-    taxMinor: 2350000,
+    subtotalMinor: 16850000,
+    taxMinor: 0,
     discountMinor: 0,
     deliveryChargeMinor: 0,
     protectFeeMinor: 0,
@@ -255,13 +266,11 @@ const SEED_ORDERS: OrderRecord[] = [
   }
 ];
 
-// In-memory single source of truth for all active orders
+// Offline / local fallback memory store
 const ordersMemoryStore = new Map<string, OrderRecord>();
 
 function initOrdersStore(): void {
   try {
-    const dir = path.dirname(ORDERS_FILE_PATH);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     if (fs.existsSync(ORDERS_FILE_PATH)) {
       const raw = fs.readFileSync(ORDERS_FILE_PATH, "utf8");
       const list = JSON.parse(raw);
@@ -269,7 +278,6 @@ function initOrdersStore(): void {
         for (const ord of list) {
           ordersMemoryStore.set(ord.id, ord);
           if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
-          if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
         }
         return;
       }
@@ -278,7 +286,6 @@ function initOrdersStore(): void {
     console.warn("Failed to read orders.json:", err);
   }
 
-  // Fallback to seed orders if file is missing or empty
   for (const ord of SEED_ORDERS) {
     ordersMemoryStore.set(ord.id, ord);
     if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
@@ -287,13 +294,14 @@ function initOrdersStore(): void {
 }
 
 function persistOrdersToDisk(): void {
+  if (process.env.VITEST) return;
   try {
     const uniqueOrders = Array.from(new Set(ordersMemoryStore.values()));
     const dir = path.dirname(ORDERS_FILE_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(ORDERS_FILE_PATH, JSON.stringify(uniqueOrders, null, 2), "utf8");
-  } catch (err) {
-    console.warn("Failed to persist orders to disk:", err);
+  } catch {
+    // Expected on read-only serverless filesystems (e.g., Vercel); PostgreSQL is primary store
   }
 }
 
@@ -307,7 +315,6 @@ export function saveOrders(orders: OrderRecord[]): void {
   for (const ord of orders) {
     ordersMemoryStore.set(ord.id, ord);
     if (ord.orderNumber) ordersMemoryStore.set(ord.orderNumber, ord);
-    if (ord.parentCheckoutId) ordersMemoryStore.set(ord.parentCheckoutId, ord);
   }
   persistOrdersToDisk();
 }
@@ -315,7 +322,6 @@ export function saveOrders(orders: OrderRecord[]): void {
 export function saveOrder(order: OrderRecord): void {
   ordersMemoryStore.set(order.id, order);
   if (order.orderNumber) ordersMemoryStore.set(order.orderNumber, order);
-  if (order.parentCheckoutId) ordersMemoryStore.set(order.parentCheckoutId, order);
   persistOrdersToDisk();
 }
 
@@ -339,8 +345,241 @@ export function toPrismaOrderStatus(st: string): OrderStatus {
   return OrderStatus.PLACED;
 }
 
+export function buildTrackingMetadata(order: OrderRecord) {
+  return {
+    orderNumber: order.orderNumber,
+    sellerId: order.sellerId,
+    sellerPhone: order.sellerPhone,
+    storeName: order.storeName,
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    customerEmail: order.customerEmail,
+    deliveryAddress: order.deliveryAddress,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    protectFeeMinor: order.protectFeeMinor,
+    vehicleNumber: order.vehicleNumber,
+    driverName: order.driverName,
+    driverPhone: order.driverPhone,
+    rejectionReason: order.rejectionReason,
+    deliveryOtp: order.deliveryOtp,
+    estimatedDeliveryDate: order.estimatedDeliveryDate,
+    gstin: order.gstin,
+    notes: order.notes,
+    statusNote: order.statusNote,
+    review: order.review,
+    statusHistory: order.statusHistory,
+    items: order.items
+  };
+}
+
+export function mapDbOrderToRecord(dbOrder: any): OrderRecord {
+  const meta = (dbOrder.trackingMetadata && typeof dbOrder.trackingMetadata === "object"
+    ? dbOrder.trackingMetadata
+    : {}) as Partial<OrderRecord>;
+
+  const normalizedStatus = normalizeDeliveryStatus(dbOrder.status);
+  const dbReview = Array.isArray(dbOrder.reviews) && dbOrder.reviews.length > 0 ? dbOrder.reviews[0] : null;
+  const resolvedReview = meta.review ?? (dbReview ? {
+    rating: dbReview.rating,
+    comment: dbReview.comment || undefined,
+    createdAt: dbReview.createdAt instanceof Date ? dbReview.createdAt.toISOString() : String(dbReview.createdAt)
+  } : undefined);
+
+  const dbItems: OrderItemRecord[] = Array.isArray(dbOrder.items) && dbOrder.items.length > 0
+    ? dbOrder.items.map((it: any) => ({
+        id: it.id,
+        storeProductId: it.storeProductId,
+        productName: it.productName,
+        sku: it.sku,
+        unit: it.unit,
+        quantity: it.quantity,
+        priceMinor: it.priceMinorSnapshot,
+        taxMinor: it.taxMinorSnapshot,
+        discountMinor: it.discountMinorSnapshot,
+        totalMinor: it.totalMinorSnapshot
+      }))
+    : [];
+
+  // Prefer metadata items if DB OrderItems were empty (or enrich with imageUrl/category from metadata)
+  const metaItems = Array.isArray(meta.items) ? meta.items : [];
+  const resolvedItems: OrderItemRecord[] = dbItems.length > 0
+    ? dbItems.map((it, idx) => ({
+        ...it,
+        imageUrl: metaItems[idx]?.imageUrl,
+        category: metaItems[idx]?.category
+      }))
+    : metaItems;
+
+  const createdAtIso = dbOrder.createdAt instanceof Date ? dbOrder.createdAt.toISOString() : String(dbOrder.createdAt || new Date().toISOString());
+  const updatedAtIso = dbOrder.updatedAt instanceof Date ? dbOrder.updatedAt.toISOString() : String(dbOrder.updatedAt || createdAtIso);
+
+  const statusHistory = Array.isArray(meta.statusHistory) && meta.statusHistory.length > 0
+    ? meta.statusHistory
+    : [
+        {
+          status: normalizedStatus,
+          timestamp: updatedAtIso,
+          note: "Order recorded in database",
+          actor: "System"
+        }
+      ];
+
+  const deliveryAddress = meta.deliveryAddress ?? (dbOrder.address
+    ? {
+        contactName: dbOrder.address.contactName,
+        mobile: dbOrder.address.mobile,
+        line1: dbOrder.address.line1,
+        line2: dbOrder.address.line2 || undefined,
+        city: dbOrder.address.city,
+        state: dbOrder.address.state,
+        postalCode: dbOrder.address.postalCode,
+        label: dbOrder.address.label || undefined
+      }
+    : {
+        contactName: dbOrder.customer?.name || "Customer",
+        mobile: dbOrder.customer?.mobile || "",
+        line1: "Delivery Address",
+        city: "",
+        state: "",
+        postalCode: ""
+      });
+
+  return {
+    id: dbOrder.id,
+    orderNumber: meta.orderNumber || dbOrder.id,
+    parentCheckoutId: dbOrder.parentCheckoutId,
+    customerId: dbOrder.customerId,
+    customerName: meta.customerName || deliveryAddress.contactName || dbOrder.customer?.name || "Customer",
+    customerPhone: meta.customerPhone || deliveryAddress.mobile || dbOrder.customer?.mobile || "",
+    customerEmail: meta.customerEmail || dbOrder.customer?.email,
+    storeId: dbOrder.storeId,
+    storeName: meta.storeName || dbOrder.store?.name || "Etukas Partner Store",
+    sellerId: meta.sellerId || dbOrder.store?.sellerProfile?.sellerId || undefined,
+    sellerPhone: meta.sellerPhone || dbOrder.store?.phone || dbOrder.store?.sellerProfile?.user?.mobile || undefined,
+    addressId: dbOrder.addressId,
+    deliveryAddress,
+    status: normalizedStatus,
+    subtotalMinor: dbOrder.subtotalMinor,
+    taxMinor: dbOrder.taxMinor,
+    discountMinor: dbOrder.discountMinor,
+    deliveryChargeMinor: dbOrder.deliveryChargeMinor,
+    protectFeeMinor: meta.protectFeeMinor ?? 4900,
+    totalMinor: dbOrder.totalMinor,
+    currency: dbOrder.currency || "INR",
+    paymentMethod: meta.paymentMethod || "COD",
+    paymentStatus: meta.paymentStatus || (normalizedStatus === "DELIVERED" ? "PAID" : "PENDING"),
+    items: resolvedItems,
+    vehicleNumber: meta.vehicleNumber,
+    driverName: meta.driverName,
+    driverPhone: meta.driverPhone,
+    rejectionReason: meta.rejectionReason,
+    deliveryOtp: meta.deliveryOtp,
+    estimatedDeliveryDate: meta.estimatedDeliveryDate,
+    gstin: meta.gstin,
+    notes: meta.notes,
+    statusNote: meta.statusNote,
+    review: resolvedReview,
+    statusHistory,
+    createdAt: createdAtIso,
+    updatedAt: updatedAtIso
+  };
+}
+
+export const ORDER_DB_INCLUDE = {
+  store: {
+    include: {
+      sellerProfile: {
+        include: {
+          user: { select: { mobile: true, email: true } }
+        }
+      }
+    }
+  },
+  customer: { select: { id: true, name: true, mobile: true, email: true } },
+  address: true,
+  items: true,
+  reviews: { orderBy: { createdAt: "desc" as const }, take: 1 }
+};
+
+export function orderMatchesSeller(
+  order: Pick<OrderRecord, "storeId" | "sellerId">,
+  profile: { id?: string; sellerId?: string | null },
+  storeIds: string[]
+): boolean {
+  if (order.storeId && storeIds.includes(order.storeId)) return true;
+  const orderSeller = order.sellerId?.trim().toLowerCase();
+  const profileSeller = profile.sellerId?.trim().toLowerCase();
+  if (orderSeller && profileSeller && orderSeller === profileSeller) return true;
+  if (orderSeller && profile.id && orderSeller === profile.id.toLowerCase()) return true;
+  return false;
+}
+
+export async function canPartnerManageOrder(order: OrderRecord, user: AuthUser): Promise<boolean> {
+  if (user.roles.includes(Role.ADMIN)) return true;
+  if (!user.roles.includes(Role.SELLER) && !user.roles.includes(Role.MANUFACTURER)) return false;
+
+  try {
+    const profile = await prisma.sellerProfile.findFirst({
+      where: {
+        OR: [
+          { userId: user.id },
+          { user: { email: { equals: user.email, mode: "insensitive" } } }
+        ]
+      },
+      include: { stores: { select: { id: true } } }
+    });
+    if (!profile) return false;
+    const storeIds = profile.stores.map((s) => s.id);
+    return orderMatchesSeller(order, profile, storeIds);
+  } catch {
+    // Offline fallback: allow matching by user.id when DB is unreachable
+    return order.sellerId === user.id || order.storeId === user.id;
+  }
+}
+
+export async function canUserAccessOrder(order: OrderRecord, user: AuthUser): Promise<boolean> {
+  if (user.roles.includes(Role.ADMIN)) return true;
+  if (order.customerId === user.id) return true;
+  if (order.customerEmail && user.email && order.customerEmail.toLowerCase() === user.email.toLowerCase()) {
+    return true;
+  }
+  return canPartnerManageOrder(order, user);
+}
+
+/**
+ * Fetches an order by ID / orderNumber / parentCheckoutId.
+ * Queries PostgreSQL first (essential for stateless serverless instances on Vercel)
+ * and falls back to the local memory/file store if not in DB or DB is offline.
+ */
 export async function findOrderById(id: string): Promise<OrderRecord | null> {
-  const clean = id.trim().toLowerCase();
+  const trimmed = id.trim();
+  if (!trimmed) return null;
+
+  // 1. Primary source of truth: PostgreSQL
+  try {
+    const dbOrder = await prisma.order.findFirst({
+      where: {
+        OR: [
+          { id: trimmed },
+          { id: { equals: trimmed, mode: "insensitive" } },
+          { parentCheckoutId: trimmed }
+        ]
+      },
+      include: ORDER_DB_INCLUDE
+    });
+
+    if (dbOrder) {
+      const mapped = mapDbOrderToRecord(dbOrder);
+      saveOrder(mapped);
+      return mapped;
+    }
+  } catch (err) {
+    console.warn("DB order lookup fallback to memory store:", err);
+  }
+
+  // 2. Fallback: local memory / file store
+  const clean = trimmed.toLowerCase();
   for (const ord of ordersMemoryStore.values()) {
     if (
       ord.id.toLowerCase() === clean ||
@@ -351,126 +590,156 @@ export async function findOrderById(id: string): Promise<OrderRecord | null> {
     }
   }
 
-  // Search Prisma DB if not found in memory store
+  return null;
+}
+
+async function syncOrderTrackingToDb(order: OrderRecord, lookupId: string): Promise<void> {
+  const prismaStatus = toPrismaOrderStatus(order.status);
+  const where = {
+    OR: [
+      { id: order.id },
+      { id: lookupId }
+    ]
+  };
   try {
-    const dbOrder = await prisma.order.findFirst({
-      where: {
-        OR: [
-          { id: id },
-          { id: { equals: id, mode: "insensitive" } },
-          { parentCheckoutId: id }
-        ]
-      },
-      include: {
-        store: { include: { sellerProfile: true } },
-        customer: { select: { id: true, name: true, mobile: true, email: true } },
-        address: true,
-        items: true
+    await prisma.order.updateMany({
+      where,
+      data: {
+        status: prismaStatus,
+        trackingMetadata: buildTrackingMetadata(order) as any
       }
     });
-
-    if (dbOrder) {
-      const mapped: OrderRecord = {
-        id: dbOrder.id,
-        orderNumber: dbOrder.id,
-        parentCheckoutId: dbOrder.parentCheckoutId,
-        customerId: dbOrder.customerId,
-        customerName: dbOrder.address?.contactName || dbOrder.customer?.name || "Customer",
-        customerPhone: dbOrder.address?.mobile || dbOrder.customer?.mobile || "",
-        customerEmail: dbOrder.customer?.email,
-        storeId: dbOrder.storeId,
-        storeName: dbOrder.store?.name || "Etukas Partner Store",
-        sellerId: dbOrder.store?.sellerProfile?.sellerId || "PARTNER",
-        sellerPhone: (dbOrder.store?.sellerProfile as any)?.user?.mobile || "",
-        deliveryAddress: dbOrder.address ? {
-          contactName: dbOrder.address.contactName,
-          mobile: dbOrder.address.mobile,
-          line1: dbOrder.address.line1,
-          line2: dbOrder.address.line2 || undefined,
-          city: dbOrder.address.city,
-          state: dbOrder.address.state,
-          postalCode: dbOrder.address.postalCode,
-          label: dbOrder.address.label || undefined
-        } : {
-          contactName: "Customer",
-          mobile: "9848012345",
-          line1: "Delivery Address",
-          city: "Hyderabad",
-          state: "Telangana",
-          postalCode: "500001"
-        },
-        status: normalizeDeliveryStatus(dbOrder.status),
-        subtotalMinor: dbOrder.subtotalMinor,
-        taxMinor: dbOrder.taxMinor,
-        discountMinor: dbOrder.discountMinor,
-        deliveryChargeMinor: dbOrder.deliveryChargeMinor,
-        protectFeeMinor: 4900,
-        totalMinor: dbOrder.totalMinor,
-        currency: dbOrder.currency || "INR",
-        paymentMethod: "COD",
-        paymentStatus: "PENDING",
-        items: dbOrder.items?.map((it: any) => ({
-          id: it.id,
-          storeProductId: it.storeProductId,
-          productName: it.productName,
-          sku: it.sku,
-          unit: it.unit,
-          quantity: it.quantity,
-          priceMinor: it.priceMinorSnapshot,
-          totalMinor: it.totalMinorSnapshot
-        })) || [],
-        statusHistory: [
-          {
-            status: normalizeDeliveryStatus(dbOrder.status),
-            timestamp: dbOrder.updatedAt ? dbOrder.updatedAt.toISOString() : new Date().toISOString(),
-            note: "Order recorded in database"
-          }
-        ],
-        createdAt: dbOrder.createdAt.toISOString(),
-        updatedAt: dbOrder.updatedAt.toISOString()
-      };
-      saveOrder(mapped);
-      return mapped;
+  } catch (err: any) {
+    // Graceful fallback if trackingMetadata column migration has not been applied yet
+    try {
+      await prisma.order.updateMany({
+        where,
+        data: { status: prismaStatus }
+      });
+    } catch {
+      console.warn("Prisma order status sync skipped:", err?.message || err);
     }
-  } catch (err) {
-    console.warn("DB order lookup error:", err);
   }
-
-  return null;
 }
 
 export async function updateOrderTracking(
   id: string,
   update: OrderTrackingUpdateInput,
-  actor = "Partner"
+  actor = "Partner",
+  options: { isAdmin?: boolean } = {}
 ): Promise<OrderRecord | null> {
   const order = await findOrderById(id);
   if (!order) return null;
 
+  const isAdmin = Boolean(options.isAdmin);
+  const previousStatus = normalizeDeliveryStatus(order.status);
   const normalizedStatus = normalizeDeliveryStatus(update.status);
-  order.status = normalizedStatus;
-  if (update.vehicleNumber !== undefined) order.vehicleNumber = update.vehicleNumber;
-  if (update.driverName !== undefined) order.driverName = update.driverName;
-  if (update.driverPhone !== undefined) order.driverPhone = update.driverPhone;
-  if (update.rejectionReason !== undefined) order.rejectionReason = update.rejectionReason;
-  if (update.note !== undefined && update.note.trim()) {
-    order.statusNote = update.note.trim();
+
+  // Enforce transition rules for partners (Admin may still intervene/override)
+  if (!isAdmin) {
+    if (TERMINAL_STATUSES.has(previousStatus)) {
+      throw new HttpError(
+        409,
+        "ORDER_TERMINAL_STATE",
+        `Cannot update an order that is already ${previousStatus.toLowerCase()}.`
+      );
+    }
+    if (normalizedStatus === "PLACED") {
+      throw new HttpError(
+        400,
+        "INVALID_STATUS_TRANSITION",
+        "Select a fulfillment stage (Confirmed, Loading Vehicle, Assigned Delivery, Delivered, or Rejected)."
+      );
+    }
+    const prevRank = DELIVERY_STAGE_RANK[previousStatus];
+    const nextRank = DELIVERY_STAGE_RANK[normalizedStatus];
+    if (nextRank >= 0 && prevRank >= 0 && nextRank < prevRank) {
+      throw new HttpError(
+        400,
+        "INVALID_STATUS_TRANSITION",
+        `Cannot move order backward from ${previousStatus.replace(/_/g, " ")} to ${normalizedStatus.replace(/_/g, " ")}.`
+      );
+    }
   }
 
+  // Compute effective fields (allow intentional clearing when "" or null is provided)
+  const nextVehicleNumber =
+    update.vehicleNumber !== undefined
+      ? (update.vehicleNumber?.trim() || undefined)
+      : order.vehicleNumber;
+  const nextDriverName =
+    update.driverName !== undefined
+      ? (update.driverName?.trim() || undefined)
+      : order.driverName;
+  const nextDriverPhone =
+    update.driverPhone !== undefined
+      ? (update.driverPhone?.trim() || undefined)
+      : order.driverPhone;
+  const nextRejectionReason =
+    update.rejectionReason !== undefined
+      ? (update.rejectionReason?.trim() || undefined)
+      : order.rejectionReason;
+
+  // Validate stage-specific required fields
+  if (normalizedStatus === "LOADING_VEHICLE" && !nextVehicleNumber) {
+    throw new HttpError(400, "VEHICLE_REQUIRED", "Vehicle number is required for Loading on Vehicle stage.");
+  }
+  if (normalizedStatus === "ASSIGNED_DRIVER") {
+    if (!nextVehicleNumber) {
+      throw new HttpError(400, "VEHICLE_REQUIRED", "Vehicle number is required when assigning a delivery partner.");
+    }
+    if (!nextDriverName || !nextDriverPhone) {
+      throw new HttpError(400, "DRIVER_DETAILS_REQUIRED", "Driver name and contact phone are required when assigning a delivery partner.");
+    }
+    const digits = nextDriverPhone.replace(/\D/g, "");
+    if (digits.length < 10 || digits.length > 15) {
+      throw new HttpError(400, "INVALID_DRIVER_PHONE", "Please enter a valid 10-digit driver phone number.");
+    }
+  }
+  if (normalizedStatus === "REJECTED" && !nextRejectionReason) {
+    throw new HttpError(400, "REJECTION_REASON_REQUIRED", "Rejection reason is required when rejecting an order.");
+  }
+
+  order.status = normalizedStatus;
+  order.vehicleNumber = nextVehicleNumber;
+  order.driverName = nextDriverName;
+  order.driverPhone = nextDriverPhone;
+  order.rejectionReason = normalizedStatus === "REJECTED" ? nextRejectionReason : undefined;
+
+  // Mark COD orders as PAID once delivered
+  if (normalizedStatus === "DELIVERED" && order.paymentMethod === "COD") {
+    order.paymentStatus = "PAID";
+  }
+
+  const customNote = update.note?.trim() || "";
   const defaultNote =
-    (update.note && update.note.trim()) ||
+    customNote ||
     (normalizedStatus === "CONFIRMED"
       ? "Order confirmed by seller store"
       : normalizedStatus === "LOADING_VEHICLE"
-      ? `Material loading in vehicle ${update.vehicleNumber || order.vehicleNumber || ""}`.trim()
+      ? `Material loading in vehicle ${nextVehicleNumber || ""}`.trim()
       : normalizedStatus === "ASSIGNED_DRIVER"
-      ? `Delivery partner ${update.driverName || order.driverName || "driver"} assigned`.trim()
+      ? `Delivery partner ${nextDriverName || "driver"} assigned (${nextVehicleNumber || "vehicle"})`
       : normalizedStatus === "DELIVERED"
       ? "Order successfully delivered at site"
       : normalizedStatus === "REJECTED"
-      ? `Order rejected by seller: ${update.rejectionReason || "Store unavailable"}`
+      ? `Order rejected: ${nextRejectionReason || "Store unavailable"}`
+      : normalizedStatus === "CANCELLED"
+      ? "Order cancelled"
       : "Order status updated");
 
+  // Always update statusNote on status change or explicit note so old stage notes never stick
+  if (customNote) {
+    order.statusNote = customNote;
+  } else if (update.note === "" || update.note === null) {
+    order.statusNote = undefined;
+  } else if (previousStatus !== normalizedStatus) {
+    order.statusNote = defaultNote;
+  }
+
+  if (!Array.isArray(order.statusHistory)) {
+    order.statusHistory = [];
+  }
   order.statusHistory.push({
     status: normalizedStatus,
     timestamp: new Date().toISOString(),
@@ -481,22 +750,7 @@ export async function updateOrderTracking(
   order.updatedAt = new Date().toISOString();
   saveOrder(order);
 
-  // Sync status to DB if available
-  try {
-    const prismaStatus = toPrismaOrderStatus(normalizedStatus);
-    await prisma.order.updateMany({
-      where: {
-        OR: [
-          { id: order.id },
-          { id: id },
-          { parentCheckoutId: order.parentCheckoutId || id }
-        ]
-      },
-      data: { status: prismaStatus }
-    });
-  } catch (err) {
-    console.warn("Prisma order status sync skipped:", err);
-  }
+  await syncOrderTrackingToDb(order, id);
 
   return order;
 }
@@ -507,14 +761,23 @@ ordersRouter.use(requireAuth);
 
 /**
  * POST /api/v1/orders
- * Places a 3-step checkout order (Cash on Delivery or Online)
+ * Places a 3-step checkout order (Cash on Delivery or Online).
+ * Splits multi-store carts into one order per store sharing parentCheckoutId.
  */
 ordersRouter.post("/", async (req, res, next) => {
   try {
     const input: CheckoutInput = checkoutSchema.parse(req.body);
     const parentCheckoutId = randomUUID();
-    const orderNumber = generateOrderId();
     const user = req.user!;
+
+    // Fetch user name/mobile from DB if available
+    let dbUser: { name: string; mobile: string; email: string } | null = null;
+    try {
+      dbUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { name: true, mobile: true, email: true }
+      });
+    } catch {}
 
     // Resolve delivery address
     let deliveryAddress = input.deliveryAddress;
@@ -539,10 +802,9 @@ ordersRouter.post("/", async (req, res, next) => {
     }
 
     if (!deliveryAddress) {
-      // Default to user info if none provided
       deliveryAddress = {
-        contactName: (user as any).name || "Customer",
-        mobile: (user as any).mobile || "9848012345",
+        contactName: dbUser?.name || "Customer",
+        mobile: dbUser?.mobile || "9848012345",
         line1: "Site Address, Main Road",
         city: "Kakinada",
         state: "Andhra Pradesh",
@@ -551,15 +813,12 @@ ordersRouter.post("/", async (req, res, next) => {
       };
     }
 
-    // Resolve items: from input.items or from user's Cart
-    let orderItems: OrderItemRecord[] = [];
-    let storeId = "store-kakinada-1";
-    let storeName = "Etukas Partner Store";
-    let sellerId = "SELLER-10247";
+    // Collect line items with their store associations
+    type PendingItem = OrderItemRecord & { storeId?: string; storeName?: string };
+    let pendingItems: PendingItem[] = [];
 
     if (input.items && input.items.length > 0) {
-      // Direct items passed from checkout
-      orderItems = input.items.map((item, idx) => ({
+      pendingItems = input.items.map((item, idx) => ({
         id: `item-${Date.now()}-${idx}`,
         storeProductId: item.storeProductId,
         productName: item.productName,
@@ -568,160 +827,290 @@ ordersRouter.post("/", async (req, res, next) => {
         priceMinor: item.priceMinor,
         totalMinor: item.priceMinor * item.quantity,
         imageUrl: item.imageUrl,
-        category: item.category
+        category: item.category,
+        storeId: item.storeId,
+        storeName: item.storeName
       }));
-      if (input.items[0]?.storeId) storeId = input.items[0].storeId;
-      if (input.items[0]?.storeName) storeName = input.items[0].storeName;
     } else {
-      // Fetch from Cart
       try {
         const cart = await prisma.cart.findUnique({
           where: { userId: user.id },
-          include: { items: { include: { storeProduct: { include: { product: true, store: true } } } } }
+          include: {
+            items: {
+              include: {
+                storeProduct: {
+                  include: {
+                    product: { include: { category: true, images: true } },
+                    store: true
+                  }
+                }
+              }
+            }
+          }
         });
         if (cart && cart.items.length > 0) {
-          orderItems = cart.items.map((item, idx) => {
-            const price = item.storeProduct.priceMinor;
-            if (item.storeProduct.store) {
-              storeId = item.storeProduct.store.id;
-              storeName = item.storeProduct.store.name;
-            }
-            return {
-              id: `item-${Date.now()}-${idx}`,
-              storeProductId: item.storeProductId,
-              productName: item.storeProduct.product.name,
-              sku: item.storeProduct.sku,
-              unit: item.storeProduct.product.unit,
-              quantity: item.quantity,
-              priceMinor: price,
-              totalMinor: price * item.quantity,
-              category: (item.storeProduct.product as any).category?.name || "Materials"
-            };
-          });
+          pendingItems = cart.items.map((item, idx) => ({
+            id: `item-${Date.now()}-${idx}`,
+            storeProductId: item.storeProductId,
+            productName: item.storeProduct.product.name,
+            sku: item.storeProduct.sku,
+            unit: item.storeProduct.product.unit,
+            quantity: item.quantity,
+            priceMinor: item.storeProduct.priceMinor,
+            totalMinor: item.storeProduct.priceMinor * item.quantity,
+            imageUrl: item.storeProduct.product.images?.[0]?.url,
+            category: item.storeProduct.product.category?.name || "Materials",
+            storeId: item.storeProduct.store?.id,
+            storeName: item.storeProduct.store?.name
+          }));
         }
       } catch {}
     }
 
-    // Fallback item if cart was empty in offline mode
-    if (orderItems.length === 0) {
-      orderItems = [
-        {
-          id: `item-${Date.now()}-0`,
-          productName: "UltraTech Super Cement (50kg Bag)",
-          unit: "bag",
-          quantity: 20,
-          priceMinor: 38500,
-          totalMinor: 770000,
-          category: "Cement"
-        }
-      ];
+    if (pendingItems.length === 0) {
+      throw new HttpError(400, "EMPTY_ORDER", "Your cart is empty. Add at least one item before placing an order.");
     }
 
-    // Calculate totals
-    const subtotalMinor = orderItems.reduce((sum, item) => sum + item.totalMinor, 0);
-    const taxMinor = Math.round(subtotalMinor * 0.18);
-    const discountMinor = Math.round(subtotalMinor * 0.1); // 10% instant checkout discount
-    const deliveryChargeMinor = subtotalMinor > 500000 ? 0 : 25000;
-    const protectFeeMinor = 4900; // ₹49 protection & site inspection fee
-    const totalMinor = subtotalMinor + taxMinor - discountMinor + deliveryChargeMinor + protectFeeMinor;
+    // Enrich items with authoritative store/seller info from PostgreSQL when available
+    const storeProductIds = pendingItems.map((it) => it.storeProductId).filter(Boolean) as string[];
+    const storeInfoById = new Map<string, { id: string; name: string; phone: string; sellerId?: string }>();
+    const dbStoreProductMap = new Map<string, { id: string; sku: string; storeId: string; priceMinor: number }>();
 
-    const newOrder: OrderRecord = {
-      id: orderNumber,
-      orderNumber,
-      parentCheckoutId,
-      customerId: user.id,
-      customerName: deliveryAddress.contactName,
-      customerPhone: deliveryAddress.mobile,
-      customerEmail: user.email,
-      storeId,
-      storeName,
-      sellerId,
-      deliveryAddress,
-      status: "PLACED",
-      subtotalMinor,
-      taxMinor,
-      discountMinor,
-      deliveryChargeMinor,
-      protectFeeMinor,
-      totalMinor,
-      currency: "INR",
-      paymentMethod: input.paymentMethod || "COD",
-      paymentStatus: "PENDING",
-      items: orderItems,
-      gstin: input.gstin,
-      notes: input.notes,
-      statusHistory: [
-        {
-          status: "PLACED",
-          timestamp: new Date().toISOString(),
-          note: `Order placed via ${input.paymentMethod === "COD" ? "Cash on Delivery" : input.paymentMethod}. Sent to ${storeName} for confirmation.`,
-          actor: "Customer"
-        }
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    // Save to persistent file storage
-    saveOrder(newOrder);
-
-    // Sync with Prisma if database is available
     try {
-      const address = await prisma.address.findFirst({ where: { userId: user.id } });
-      const addressId = address?.id || (await prisma.address.create({
-        data: {
-          userId: user.id,
-          label: deliveryAddress.label || "Home",
-          contactName: deliveryAddress.contactName,
-          mobile: deliveryAddress.mobile,
-          line1: deliveryAddress.line1,
-          line2: deliveryAddress.line2,
-          city: deliveryAddress.city,
-          state: deliveryAddress.state,
-          postalCode: deliveryAddress.postalCode
+      if (storeProductIds.length > 0) {
+        const spList = await prisma.storeProduct.findMany({
+          where: { id: { in: storeProductIds } },
+          include: {
+            store: {
+              include: {
+                sellerProfile: {
+                  select: { sellerId: true, user: { select: { mobile: true } } }
+                }
+              }
+            }
+          }
+        });
+        for (const sp of spList) {
+          dbStoreProductMap.set(sp.id, {
+            id: sp.id,
+            sku: sp.sku,
+            storeId: sp.storeId,
+            priceMinor: sp.priceMinor
+          });
+          if (sp.store) {
+            storeInfoById.set(sp.store.id, {
+              id: sp.store.id,
+              name: sp.store.name,
+              phone: sp.store.phone || sp.store.sellerProfile?.user?.mobile || "",
+              sellerId: sp.store.sellerProfile?.sellerId || undefined
+            });
+          }
         }
-      })).id;
+      }
 
-      await prisma.order.create({
-        data: {
-          id: newOrder.id,
-          parentCheckoutId,
-          customerId: user.id,
-          storeId: newOrder.storeId,
-          addressId,
-          status: OrderStatus.PLACED,
-          subtotalMinor: newOrder.subtotalMinor,
-          taxMinor: newOrder.taxMinor,
-          discountMinor: newOrder.discountMinor,
-          deliveryChargeMinor: newOrder.deliveryChargeMinor,
-          totalMinor: newOrder.totalMinor
+      const explicitStoreIds = Array.from(
+        new Set(pendingItems.map((it) => it.storeId).filter((sid): sid is string => Boolean(sid) && !storeInfoById.has(sid!)))
+      );
+      if (explicitStoreIds.length > 0) {
+        const stores = await prisma.store.findMany({
+          where: { id: { in: explicitStoreIds } },
+          include: {
+            sellerProfile: {
+              select: { sellerId: true, user: { select: { mobile: true } } }
+            }
+          }
+        });
+        for (const store of stores) {
+          storeInfoById.set(store.id, {
+            id: store.id,
+            name: store.name,
+            phone: store.phone || store.sellerProfile?.user?.mobile || "",
+            sellerId: store.sellerProfile?.sellerId || undefined
+          });
         }
-      });
+      }
+    } catch {
+      // DB offline; continue with item metadata
+    }
 
-      // Clear cart items in DB
+    // Group items by storeId so multi-store carts create separate store orders
+    const itemsByStore = new Map<string, PendingItem[]>();
+    for (const item of pendingItems) {
+      const dbSp = item.storeProductId ? dbStoreProductMap.get(item.storeProductId) : undefined;
+      const resolvedStoreId = dbSp?.storeId || item.storeId || "store-kakinada-1";
+      const enrichedItem: PendingItem = {
+        ...item,
+        sku: item.sku || dbSp?.sku,
+        storeId: resolvedStoreId
+      };
+      const group = itemsByStore.get(resolvedStoreId) ?? [];
+      group.push(enrichedItem);
+      itemsByStore.set(resolvedStoreId, group);
+    }
+
+    // Resolve or create DB address once if DB is available
+    let dbAddressId: string | undefined;
+    try {
+      if (input.addressId) {
+        const existing = await prisma.address.findFirst({ where: { id: input.addressId, userId: user.id } });
+        if (existing) dbAddressId = existing.id;
+      }
+      if (!dbAddressId) {
+        const createdAddr = await prisma.address.create({
+          data: {
+            userId: user.id,
+            label: deliveryAddress.label || "Home",
+            contactName: deliveryAddress.contactName,
+            mobile: deliveryAddress.mobile,
+            line1: deliveryAddress.line1,
+            line2: deliveryAddress.line2,
+            city: deliveryAddress.city,
+            state: deliveryAddress.state,
+            postalCode: deliveryAddress.postalCode
+          }
+        });
+        dbAddressId = createdAddr.id;
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    const createdOrders: OrderRecord[] = [];
+    const nowIso = new Date().toISOString();
+
+    for (const [groupStoreId, groupItems] of itemsByStore.entries()) {
+      const orderNumber = generateOrderId();
+      const storeMeta = storeInfoById.get(groupStoreId);
+      const storeName = storeMeta?.name || groupItems[0]?.storeName || "Etukas Partner Store";
+      const sellerId = storeMeta?.sellerId || (groupStoreId === "store-kakinada-1" ? "SELLER-10247" : undefined);
+      const sellerPhone = storeMeta?.phone || undefined;
+
+      const cleanItems: OrderItemRecord[] = groupItems.map(({ storeId: _s, storeName: _sn, ...rest }) => rest);
+
+      // Pricing matches CheckoutPage (GST-inclusive catalog prices + ₹49 protect fee + conditional delivery fee)
+      const subtotalMinor = cleanItems.reduce((sum, item) => sum + item.totalMinor, 0);
+      const taxMinor = 0;
+      const discountMinor = 0;
+      const deliveryChargeMinor = subtotalMinor > 500000 ? 0 : 25000;
+      const protectFeeMinor = 4900;
+      const totalMinor = subtotalMinor + deliveryChargeMinor + protectFeeMinor;
+
+      const newOrder: OrderRecord = {
+        id: orderNumber,
+        orderNumber,
+        parentCheckoutId,
+        customerId: user.id,
+        customerName: deliveryAddress.contactName,
+        customerPhone: deliveryAddress.mobile,
+        customerEmail: dbUser?.email || user.email,
+        storeId: groupStoreId,
+        storeName,
+        sellerId,
+        sellerPhone,
+        addressId: dbAddressId,
+        deliveryAddress,
+        status: "PLACED",
+        subtotalMinor,
+        taxMinor,
+        discountMinor,
+        deliveryChargeMinor,
+        protectFeeMinor,
+        totalMinor,
+        currency: "INR",
+        paymentMethod: input.paymentMethod || "COD",
+        paymentStatus: input.paymentMethod === "COD" ? "PENDING" : "PAID",
+        items: cleanItems,
+        gstin: input.gstin,
+        notes: input.notes,
+        statusHistory: [
+          {
+            status: "PLACED",
+            timestamp: nowIso,
+            note: `Order placed via ${input.paymentMethod === "COD" ? "Cash on Delivery" : input.paymentMethod}. Sent to ${storeName} for confirmation.`,
+            actor: "Customer"
+          }
+        ],
+        createdAt: nowIso,
+        updatedAt: nowIso
+      };
+
+      // Save to PostgreSQL first (with full trackingMetadata + OrderItems where valid)
+      try {
+        if (dbAddressId && storeMeta) {
+          const validDbItems = cleanItems
+            .filter((it) => it.storeProductId && dbStoreProductMap.has(it.storeProductId))
+            .map((it) => ({
+              storeProductId: it.storeProductId!,
+              productName: it.productName,
+              sku: it.sku || dbStoreProductMap.get(it.storeProductId!)!.sku,
+              unit: it.unit,
+              quantity: it.quantity,
+              priceMinorSnapshot: it.priceMinor,
+              taxMinorSnapshot: 0,
+              discountMinorSnapshot: 0,
+              totalMinorSnapshot: it.totalMinor
+            }));
+
+          const baseOrderData = {
+            id: newOrder.id,
+            parentCheckoutId,
+            customerId: user.id,
+            storeId: storeMeta.id,
+            addressId: dbAddressId,
+            status: OrderStatus.PLACED,
+            subtotalMinor: newOrder.subtotalMinor,
+            taxMinor: newOrder.taxMinor,
+            discountMinor: newOrder.discountMinor,
+            deliveryChargeMinor: newOrder.deliveryChargeMinor,
+            totalMinor: newOrder.totalMinor,
+            ...(validDbItems.length > 0 ? { items: { create: validDbItems } } : {})
+          };
+
+          try {
+            await prisma.order.create({
+              data: {
+                ...baseOrderData,
+                trackingMetadata: buildTrackingMetadata(newOrder) as any
+              }
+            });
+          } catch {
+            // Fallback if trackingMetadata column migration hasn't been applied yet
+            await prisma.order.create({ data: baseOrderData });
+          }
+        }
+      } catch (dbErr) {
+        console.warn("[orders] Could not persist order in Prisma, using fallback store:", dbErr);
+      }
+
+      saveOrder(newOrder);
+      createdOrders.push(newOrder);
+
+      // Notify Admin
+      try {
+        await prisma.adminNotification.create({
+          data: {
+            type: AdminNotificationType.SYSTEM,
+            title: `New Material Order: ${newOrder.orderNumber}`,
+            body: `${newOrder.customerName} placed order for ${newOrder.items.length} items (Total: ₹${(newOrder.totalMinor / 100).toLocaleString("en-IN")})`,
+            metadata: { orderId: newOrder.id, orderNumber: newOrder.orderNumber, storeName: newOrder.storeName } as any
+          }
+        });
+      } catch {}
+    }
+
+    // Clear cart items in DB once order(s) are created
+    try {
       const cart = await prisma.cart.findUnique({ where: { userId: user.id } });
       if (cart) {
         await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
       }
-    } catch {
-      // Non-blocking offline fallback
-    }
-
-    // Notify Admin & Store
-    try {
-      await prisma.adminNotification.create({
-        data: {
-          type: AdminNotificationType.SYSTEM,
-          title: `New Material Order: ${newOrder.orderNumber}`,
-          body: `${newOrder.customerName} placed order for ${newOrder.items.length} items (Total: ₹${(newOrder.totalMinor / 100).toLocaleString("en-IN")})`,
-          metadata: newOrder as any
-        }
-      });
     } catch {}
 
+    const primaryOrder = createdOrders[0];
     return sendCreated(res, {
-      order: newOrder,
-      orderNumber: newOrder.orderNumber,
+      order: primaryOrder,
+      orders: createdOrders,
+      orderNumber: primaryOrder.orderNumber,
       parentCheckoutId,
       message: "Order placed successfully! Thanks for ordering in Etukas."
     });
@@ -732,88 +1121,46 @@ ordersRouter.post("/", async (req, res, next) => {
 
 /**
  * GET /api/v1/orders
- * Returns customer's placed orders only (never returns demo orders to customers)
+ * Returns the logged-in customer's own placed orders (PostgreSQL first, merged with fallback).
  */
 ordersRouter.get("/", async (req, res, next) => {
   try {
     const user = req.user!;
-    const userPhoneClean = ((user as any).mobile || "").replace(/\D/g, "");
     const userEmailLower = (user.email || "").toLowerCase();
 
-    // 1. Fetch from Prisma DB
-    let dbOrders: any[] = [];
+    const orderMap = new Map<string, OrderRecord>();
+
+    // 1. Primary: PostgreSQL
     try {
-      dbOrders = await prisma.order.findMany({
+      const dbOrders = await prisma.order.findMany({
         where: { customerId: user.id },
-        include: {
-          store: { include: { sellerProfile: true } },
-          address: true,
-          items: true
-        },
+        include: ORDER_DB_INCLUDE,
         orderBy: { createdAt: "desc" }
       });
+      for (const dbOrd of dbOrders) {
+        const mapped = mapDbOrderToRecord(dbOrd);
+        orderMap.set(mapped.id, mapped);
+      }
     } catch {}
 
-    // 2. Fetch from persistent file storage (excluding demo orders)
-    const all = loadOrders();
-    const fileCustomerOrders = all.filter((o) => {
-      if (o.customerId === user.id) return true;
+    // 2. Fallback: file/memory orders for this customer only (never demo orders, never substring phone match)
+    const fileOrders = loadOrders().filter((o) => {
       if (o.customerId === "cust-demo-1" || o.customerId === "cust-demo-2") return false;
-      if (userPhoneClean && (o.customerPhone || "").replace(/\D/g, "").includes(userPhoneClean)) return true;
+      if (o.customerId === user.id) return true;
       if (userEmailLower && (o.customerEmail || "").toLowerCase() === userEmailLower) return true;
       return false;
     });
 
-    // 3. Merge both sources without duplicates
-    const orderMap = new Map<string, any>();
-    for (const ord of fileCustomerOrders) {
-      ord.status = normalizeDeliveryStatus(ord.status);
-      orderMap.set(ord.id, ord);
-      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
-    }
-    for (const ord of dbOrders) {
-      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
-      if (!existing) {
-        orderMap.set(ord.id, {
-          id: ord.id,
-          orderNumber: ord.id,
-          parentCheckoutId: ord.parentCheckoutId,
-          customerId: ord.customerId,
-          customerName: ord.address?.contactName || user.email,
-          customerPhone: ord.address?.mobile || "",
-          customerEmail: user.email,
-          storeName: ord.store?.name || "Etukas Partner Store",
-          sellerId: ord.store?.sellerProfile?.sellerId || "PARTNER",
-          deliveryAddress: ord.address ? {
-            contactName: ord.address.contactName,
-            mobile: ord.address.mobile,
-            line1: ord.address.line1,
-            line2: ord.address.line2 || undefined,
-            city: ord.address.city,
-            state: ord.address.state,
-            postalCode: ord.address.postalCode,
-            label: ord.address.label || undefined
-          } : undefined,
-          status: normalizeDeliveryStatus(ord.status),
-          totalMinor: ord.totalMinor,
-          items: ord.items?.map((it: any) => ({
-            id: it.id,
-            productName: it.productName,
-            unit: it.unit,
-            quantity: it.quantity,
-            totalMinor: it.totalMinorSnapshot,
-            priceMinor: it.priceMinorSnapshot
-          })) || [],
-          createdAt: ord.createdAt.toISOString()
-        });
+    for (const ord of fileOrders) {
+      if (!orderMap.has(ord.id)) {
+        orderMap.set(ord.id, { ...ord, status: normalizeDeliveryStatus(ord.status) });
       }
     }
 
-    const result = Array.from(new Set(orderMap.values())).sort(
+    const result = Array.from(orderMap.values()).sort(
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
 
-    // Return ONLY the customer's actual placed orders (empty array if none)
     return sendOk(res, result);
   } catch (error) {
     next(error);
@@ -822,13 +1169,17 @@ ordersRouter.get("/", async (req, res, next) => {
 
 /**
  * GET /api/v1/orders/:id
- * Fetches order details by Order ID or database ID for live tracking
+ * Fetches order details by Order ID for live tracking (authorized customer, owning partner, or admin only).
  */
 ordersRouter.get("/:id", async (req, res, next) => {
   try {
     const order = await findOrderById(req.params.id);
     if (!order) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+    const allowed = await canUserAccessOrder(order, req.user!);
+    if (!allowed) {
+      throw new HttpError(403, "FORBIDDEN", "You do not have permission to view this order");
     }
     return sendOk(res, order);
   } catch (error) {
@@ -838,20 +1189,40 @@ ordersRouter.get("/:id", async (req, res, next) => {
 
 /**
  * PATCH /api/v1/orders/:id/tracking
- * Live status update on order (e.g. Loading on Vehicle, Assigned Driver, Delivered)
+ * Live status update on order — strictly restricted to Admin or the owning Store Partner.
  */
-ordersRouter.patch("/:id/tracking", async (req, res, next) => {
-  try {
-    const updateInput = orderTrackingUpdateSchema.parse(req.body);
-    const updated = await updateOrderTracking(req.params.id, updateInput, req.user?.roles?.includes("ADMIN") ? "Admin" : "Store Partner");
-    if (!updated) {
-      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+ordersRouter.patch(
+  "/:id/tracking",
+  requireRole(Role.SELLER, Role.MANUFACTURER, Role.ADMIN),
+  async (req, res, next) => {
+    try {
+      const existing = await findOrderById(req.params.id);
+      if (!existing) {
+        throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+      }
+      const isAdmin = req.user!.roles.includes(Role.ADMIN);
+      if (!isAdmin) {
+        const canManage = await canPartnerManageOrder(existing, req.user!);
+        if (!canManage) {
+          throw new HttpError(403, "FORBIDDEN", "You do not have permission to update tracking for this order");
+        }
+      }
+      const updateInput = orderTrackingUpdateSchema.parse(req.body);
+      const updated = await updateOrderTracking(
+        req.params.id,
+        updateInput,
+        isAdmin ? "Admin" : "Store Partner",
+        { isAdmin }
+      );
+      if (!updated) {
+        throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+      }
+      return sendOk(res, updated);
+    } catch (error) {
+      next(error);
     }
-    return sendOk(res, updated);
-  } catch (error) {
-    next(error);
   }
-});
+);
 
 /**
  * POST /api/v1/orders/:id/reviews
@@ -865,12 +1236,10 @@ ordersRouter.post("/:id/reviews", async (req, res, next) => {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
 
-    // Only allow customer who placed the order or admin
     if (order.customerId && req.user?.id && order.customerId !== req.user.id && !req.user.roles?.includes("ADMIN")) {
       throw new HttpError(403, "FORBIDDEN", "You can only submit reviews for your own orders");
     }
 
-    // Task constraint: Customer can submit review only after product is delivered
     if (order.status !== "DELIVERED") {
       throw new HttpError(400, "ORDER_NOT_DELIVERED", "Reviews can only be submitted after the product is delivered.");
     }
@@ -895,8 +1264,8 @@ ordersRouter.post("/:id/reviews", async (req, res, next) => {
     });
 
     saveOrder(order);
+    await syncOrderTrackingToDb(order, req.params.id);
 
-    // Sync to Prisma DB if available
     try {
       if (req.user?.id) {
         await prisma.review.upsert({
@@ -941,6 +1310,10 @@ ordersRouter.get("/:id/reviews", async (req, res, next) => {
     const order = await findOrderById(req.params.id);
     if (!order) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+    const allowed = await canUserAccessOrder(order, req.user!);
+    if (!allowed) {
+      throw new HttpError(403, "FORBIDDEN", "You do not have permission to view this order review");
     }
     return sendOk(res, order.review || null);
   } catch (error) {

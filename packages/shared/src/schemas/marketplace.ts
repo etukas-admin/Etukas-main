@@ -69,11 +69,11 @@ export const orderTrackingUpdateSchema = z.object({
     "REJECTED",
     "CANCELLED"
   ]),
-  vehicleNumber: z.string().trim().max(50).optional(),
-  driverName: z.string().trim().max(100).optional(),
-  driverPhone: z.string().trim().max(20).optional(),
-  rejectionReason: z.string().trim().max(300).optional(),
-  note: z.string().trim().max(300).optional()
+  vehicleNumber: z.string().trim().max(50).nullable().optional(),
+  driverName: z.string().trim().max(100).nullable().optional(),
+  driverPhone: z.string().trim().max(20).nullable().optional(),
+  rejectionReason: z.string().trim().max(300).nullable().optional(),
+  note: z.string().trim().max(300).nullable().optional()
 });
 
 export type CheckoutInput = z.infer<typeof checkoutSchema>;

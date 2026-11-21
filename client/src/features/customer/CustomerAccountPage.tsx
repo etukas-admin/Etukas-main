@@ -22,7 +22,13 @@ import {
   Star,
   Edit3
 } from "lucide-react";
-import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
+import {
+  DeliveryStepsTracker,
+  formatDeliveryStatusLabel,
+  getDeliveryStatusBadgeClass,
+  isOrderTrackingTerminal
+} from "../checkout/DeliveryStepsTracker";
+import { queryKeys } from "../../lib/queryKeys";
 import type { OrderRecord } from "../../services/api";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
@@ -32,8 +38,7 @@ export function CustomerAccountPage() {
   const queryClient = useQueryClient();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [activeTab, setActiveTab] = useState<"orders" | "services" | "overview">("orders");
-  const [trackingOrder, setTrackingOrder] = useState<OrderRecord | null>(null);
-  const [isRefreshingLive, setIsRefreshingLive] = useState(false);
+  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
 
   // Review modal state
   const [reviewingOrder, setReviewingOrder] = useState<OrderRecord | null>(null);
@@ -63,9 +68,13 @@ export function CustomerAccountPage() {
         comment: reviewComment.trim() || undefined
       });
       setReviewSuccessMsg("Review submitted successfully! Thank you for your feedback.");
-      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
-      if (trackingOrder && (trackingOrder.id === reviewingOrder.id || trackingOrder.orderNumber === reviewingOrder.orderNumber)) {
-        setTrackingOrder(res.order);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.customer() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(reviewingOrder.id) });
+      if (reviewingOrder.orderNumber) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(reviewingOrder.orderNumber) });
+      }
+      if (trackingOrderId && (trackingOrderId === reviewingOrder.id || trackingOrderId === reviewingOrder.orderNumber)) {
+        queryClient.setQueryData(queryKeys.orders.detail(trackingOrderId), res.order);
       }
       setTimeout(() => {
         setReviewingOrder(null);
@@ -90,36 +99,58 @@ export function CustomerAccountPage() {
     data: customerOrders = [],
     isLoading: loadingOrders,
     isFetching: isRefetchingOrders,
+    isError: isOrdersError,
+    error: ordersError,
     refetch: refetchOrders
   } = useQuery({
-    queryKey: ["customer-orders"],
-    queryFn: ({ signal }) => marketplaceApi.getCustomerOrders({ signal }).catch(() => []),
+    queryKey: queryKeys.orders.customer(),
+    queryFn: ({ signal }) => marketplaceApi.getCustomerOrders({ signal }),
     enabled: Boolean(currentUser),
+    staleTime: 30_000,
     refetchInterval: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: true
   });
 
+  const cachedTrackingOrder = trackingOrderId
+    ? customerOrders.find((o) => o.id === trackingOrderId || o.orderNumber === trackingOrderId)
+    : undefined;
+
+  const {
+    data: liveTrackingOrder,
+    isFetching: isRefreshingLive,
+    refetch: refetchLiveTracking
+  } = useQuery({
+    queryKey: queryKeys.orders.detail(trackingOrderId || ""),
+    queryFn: ({ signal }) => marketplaceApi.getOrder(trackingOrderId || "", { signal }),
+    enabled: Boolean(currentUser && trackingOrderId),
+    placeholderData: cachedTrackingOrder,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    // Vercel Free-friendly smart polling: only poll every 30s while modal is open & delivery is active
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || isOrderTrackingTerminal(status)) return false;
+      return 30_000;
+    },
+    refetchIntervalInBackground: false
+  });
+
+  const trackingOrder: OrderRecord | null = trackingOrderId
+    ? liveTrackingOrder ?? cachedTrackingOrder ?? null
+    : null;
+
   const handleRefreshLiveTracking = async () => {
-    if (!trackingOrder) return;
-    setIsRefreshingLive(true);
-    try {
-      const updated = await marketplaceApi.getOrder(trackingOrder.orderNumber || trackingOrder.id);
-      if (updated) {
-        setTrackingOrder(updated);
-      }
-      await refetchOrders();
-    } catch (err) {
-      console.warn("Could not refresh live tracking:", err);
-    } finally {
-      setIsRefreshingLive(false);
-    }
+    if (!trackingOrderId) return;
+    await Promise.all([refetchLiveTracking(), refetchOrders()]);
   };
 
   const { data: serviceBookings = [], isLoading: loadingServices } = useQuery({
     queryKey: ["customer-service-bookings"],
     queryFn: ({ signal }) => marketplaceApi.getCustomerServiceBookings({ signal }).catch(() => []),
-    enabled: Boolean(currentUser),
-    refetchInterval: 15000
+    enabled: Boolean(currentUser) && activeTab === "services",
+    staleTime: 30_000,
+    refetchInterval: activeTab === "services" ? 30_000 : false,
+    refetchIntervalInBackground: false
   });
 
   const handleLogout = async () => {
@@ -258,6 +289,22 @@ export function CustomerAccountPage() {
               <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500">
                 Loading your orders...
               </div>
+            ) : isOrdersError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50/70 p-8 text-center">
+                <AlertCircle className="mx-auto text-etukas-red" size={28} />
+                <h3 className="mt-2 text-sm font-bold text-red-900">Could not load your orders</h3>
+                <p className="mt-1 text-xs text-red-700">
+                  {(ordersError as Error)?.message || "Please check your connection and try again."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void refetchOrders()}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-red-700"
+                >
+                  <RefreshCw size={13} />
+                  <span>Retry</span>
+                </button>
+              </div>
             ) : customerOrders.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                 <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-etukas-red">
@@ -291,12 +338,8 @@ export function CustomerAccountPage() {
                             <span className="font-mono text-xs font-black text-orange-700 bg-orange-100/80 border border-orange-200 px-2 py-0.5 rounded">
                               #{displayId}
                             </span>
-                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                              isDelivered
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-blue-100 text-blue-800"
-                            }`}>
-                              {order.status || "PLACED"}
+                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${getDeliveryStatusBadgeClass(order.status)}`}>
+                              {formatDeliveryStatusLabel(order.status)}
                             </span>
                           </div>
                           <div className="text-[11px] text-gray-400 mt-1">
@@ -402,7 +445,7 @@ export function CustomerAccountPage() {
 
                           <button
                             type="button"
-                            onClick={() => setTrackingOrder(order)}
+                            onClick={() => setTrackingOrderId(order.orderNumber || order.id)}
                             className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
                           >
                             <Truck size={13} />
@@ -606,7 +649,7 @@ export function CustomerAccountPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setTrackingOrder(null)}
+                onClick={() => setTrackingOrderId(null)}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
               >
                 ✕
@@ -623,7 +666,7 @@ export function CustomerAccountPage() {
             <div className="pt-2">
               <button
                 type="button"
-                onClick={() => setTrackingOrder(null)}
+                onClick={() => setTrackingOrderId(null)}
                 className="w-full rounded-xl bg-gray-900 py-2.5 text-xs font-bold text-white hover:bg-black transition"
               >
                 Close Tracking

@@ -1,5 +1,15 @@
 import { loadTechnicians, loadBookings } from "../technicians/technicians.routes.js";
-import { loadOrders, updateOrderTracking, normalizeDeliveryStatus } from "../orders/orders.routes.js";
+import {
+  canPartnerManageOrder,
+  findOrderById,
+  loadOrders,
+  mapDbOrderToRecord,
+  normalizeDeliveryStatus,
+  ORDER_DB_INCLUDE,
+  orderMatchesSeller,
+  updateOrderTracking,
+  type OrderRecord
+} from "../orders/orders.routes.js";
 import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
@@ -157,20 +167,22 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
       });
     }
     const storeIds = (await prisma.store.findMany({ where: { sellerProfileId: profile.id }, select: { id: true } })).map((store) => store.id);
-    const [orders, products, lowStock] = await Promise.all([
-      prisma.order.count({ where: { storeId: { in: storeIds } } }),
+    const [sellerOrders, products, lowStock] = await Promise.all([
+      getMergedSellerOrders(profile, storeIds),
       prisma.storeProduct.count({ where: { storeId: { in: storeIds } } }),
       prisma.storeProduct.count({ where: { storeId: { in: storeIds }, stockQuantity: { lte: 10 } } })
     ]);
-    const revenue = await prisma.order.aggregate({ where: { storeId: { in: storeIds }, status: { in: [OrderStatus.DELIVERED, OrderStatus.DISPATCHED, OrderStatus.ACCEPTED] } }, _sum: { totalMinor: true } });
+    const revenueMinor = sellerOrders
+      .filter((ord) => ord.status === "CONFIRMED" || ord.status === "LOADING_VEHICLE" || ord.status === "ASSIGNED_DRIVER" || ord.status === "DELIVERED")
+      .reduce((sum, ord) => sum + (ord.totalMinor || 0), 0);
     return sendOk(res, {
       sellerId: profile.sellerId,
       businessName: profile.businessName,
       contactPerson: profile.contactPerson,
-      totalOrders: orders,
+      totalOrders: sellerOrders.length,
       productsListed: products,
       lowStockProducts: lowStock,
-      revenueMinor: revenue._sum.totalMinor ?? 0,
+      revenueMinor,
       verificationStatus: profile.verificationStatus
     });
   } catch (error) {
@@ -516,68 +528,57 @@ sellerRouter.delete("/products/:listingId/images/:imageId", async (req, res, nex
   }
 });
 
+async function getMergedSellerOrders(
+  profile: { id: string; sellerId?: string | null },
+  knownStoreIds?: string[]
+): Promise<OrderRecord[]> {
+  let storeIds = knownStoreIds;
+  if (!storeIds) {
+    try {
+      storeIds = (
+        await prisma.store.findMany({
+          where: { sellerProfileId: profile.id },
+          select: { id: true }
+        })
+      ).map((store) => store.id);
+    } catch {
+      storeIds = [];
+    }
+  }
+
+  const orderMap = new Map<string, OrderRecord>();
+
+  // 1. Primary: PostgreSQL orders for this partner's stores
+  try {
+    const dbOrders = await prisma.order.findMany({
+      where: { store: { sellerProfileId: profile.id } },
+      include: ORDER_DB_INCLUDE,
+      orderBy: { createdAt: "desc" }
+    });
+    for (const ord of dbOrders) {
+      const mapped = mapDbOrderToRecord(ord);
+      orderMap.set(mapped.id, mapped);
+    }
+  } catch {}
+
+  // 2. Fallback: file/memory orders strictly belonging to this partner (never leak other partners' orders)
+  const fileOrders = loadOrders().filter((o) => orderMatchesSeller(o, profile, storeIds!));
+  for (const ord of fileOrders) {
+    if (!orderMap.has(ord.id)) {
+      orderMap.set(ord.id, { ...ord, status: normalizeDeliveryStatus(ord.status) });
+    }
+  }
+
+  return Array.from(orderMap.values()).sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
 sellerRouter.get("/orders", async (req, res, next) => {
   try {
     const profile = await sellerProfile(req.user!.id, req.user?.email);
-    let dbOrders: any[] = [];
-    try {
-      dbOrders = await prisma.order.findMany({
-        where: { store: { sellerProfileId: profile.id } },
-        include: { items: true, customer: { select: { name: true, mobile: true } }, address: true },
-        orderBy: { createdAt: "desc" }
-      });
-    } catch {}
-
-    const fileOrders = loadOrders();
-    const partnerOrders = fileOrders.filter((o) => {
-      if (profile.sellerId && (o.sellerId === profile.sellerId || o.storeId.includes(profile.sellerId))) return true;
-      if (profile.id && (o.sellerId === profile.id || o.storeId === profile.id)) return true;
-      return true; // Show available received orders for the partner
-    });
-
-    // Merge without duplicates, prioritizing memory/file tracking info
-    const orderMap = new Map<string, any>();
-    for (const ord of partnerOrders) {
-      ord.status = normalizeDeliveryStatus(ord.status);
-      orderMap.set(ord.id, ord);
-      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
-    }
-    for (const ord of dbOrders) {
-      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
-      if (!existing) {
-        orderMap.set(ord.id, {
-          id: ord.id,
-          orderNumber: ord.id,
-          parentCheckoutId: ord.parentCheckoutId,
-          customerId: ord.customerId,
-          customerName: ord.customer?.name || "Customer",
-          customerPhone: ord.customer?.mobile || "",
-          customerEmail: ord.customer?.email,
-          storeName: ord.store?.name || "Partner Store",
-          sellerId: profile.sellerId || "PARTNER",
-          deliveryAddress: ord.address ? {
-            contactName: ord.address.contactName,
-            mobile: ord.address.mobile,
-            line1: ord.address.line1,
-            city: ord.address.city,
-            state: ord.address.state,
-            postalCode: ord.address.postalCode
-          } : undefined,
-          status: normalizeDeliveryStatus(ord.status),
-          totalMinor: ord.totalMinor,
-          items: ord.items?.map((it: any) => ({
-            id: it.id,
-            productName: it.productName,
-            unit: it.unit,
-            quantity: it.quantity,
-            totalMinor: it.totalMinorSnapshot
-          })),
-          createdAt: ord.createdAt.toISOString()
-        });
-      }
-    }
-
-    return sendOk(res, Array.from(new Set(orderMap.values())));
+    const orders = await getMergedSellerOrders(profile);
+    return sendOk(res, orders);
   } catch (error) {
     next(error);
   }
@@ -585,8 +586,19 @@ sellerRouter.get("/orders", async (req, res, next) => {
 
 sellerRouter.patch("/orders/:id/tracking", async (req, res, next) => {
   try {
+    const existing = await findOrderById(req.params.id);
+    if (!existing) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+    const isAdmin = req.user!.roles.includes(Role.ADMIN);
+    if (!isAdmin) {
+      const canManage = await canPartnerManageOrder(existing, req.user!);
+      if (!canManage) {
+        throw new HttpError(403, "FORBIDDEN", "You do not have permission to update this order");
+      }
+    }
     const input = orderTrackingUpdateSchema.parse(req.body);
-    const updated = await updateOrderTracking(req.params.id, input, "Partner");
+    const updated = await updateOrderTracking(req.params.id, input, isAdmin ? "Admin" : "Partner", { isAdmin });
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
@@ -599,11 +611,25 @@ sellerRouter.patch("/orders/:id/tracking", async (req, res, next) => {
 
 sellerRouter.patch("/orders/:id/status", async (req, res, next) => {
   try {
-    const status = req.body.status as OrderStatus;
-    const profile = await sellerProfile(req.user!.id);
-    const updated = await updateOrderTracking(req.params.id, {
-      status: (status === "ACCEPTED" ? "CONFIRMED" : status) as any
-    }, "Partner");
+    const existing = await findOrderById(req.params.id);
+    if (!existing) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
+    const isAdmin = req.user!.roles.includes(Role.ADMIN);
+    if (!isAdmin) {
+      const canManage = await canPartnerManageOrder(existing, req.user!);
+      if (!canManage) {
+        throw new HttpError(403, "FORBIDDEN", "You do not have permission to update this order");
+      }
+    }
+    const parsed = orderTrackingUpdateSchema.parse({
+      ...req.body,
+      status: req.body?.status === "ACCEPTED" ? "CONFIRMED" : req.body?.status
+    });
+    const updated = await updateOrderTracking(req.params.id, parsed, isAdmin ? "Admin" : "Partner", { isAdmin });
+    if (!updated) {
+      throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+    }
     return sendOk(res, updated);
   } catch (error) {
     next(error);

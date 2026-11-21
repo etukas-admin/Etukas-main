@@ -1,5 +1,12 @@
 import { cleanPhone, loadTechnicians, updateTechnicianStatus } from "../technicians/technicians.routes.js";
-import { loadOrders, updateOrderTracking, normalizeDeliveryStatus } from "../orders/orders.routes.js";
+import {
+  loadOrders,
+  mapDbOrderToRecord,
+  normalizeDeliveryStatus,
+  ORDER_DB_INCLUDE,
+  updateOrderTracking,
+  type OrderRecord
+} from "../orders/orders.routes.js";
 import { orderTrackingUpdateSchema } from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { del, put } from "@vercel/blob";
@@ -464,60 +471,33 @@ adminRouter.patch("/sellers/:id/status", async (req, res, next) => {
  */
 adminRouter.get("/orders", async (_req, res, next) => {
   try {
-    let dbOrders: any[] = [];
+    const orderMap = new Map<string, OrderRecord>();
+
+    // 1. Primary: PostgreSQL orders (stateless serverless-safe)
     try {
-      dbOrders = await prisma.order.findMany({
-        include: {
-          store: { include: { sellerProfile: true } },
-          customer: { select: { name: true, mobile: true, email: true } },
-          address: true,
-          items: true
-        },
+      const dbOrders = await prisma.order.findMany({
+        include: ORDER_DB_INCLUDE,
         orderBy: { createdAt: "desc" }
       });
+      for (const ord of dbOrders) {
+        const mapped = mapDbOrderToRecord(ord);
+        orderMap.set(mapped.id, mapped);
+      }
     } catch {}
 
+    // 2. Fallback: file/memory orders not yet in DB
     const fileOrders = loadOrders();
-    const orderMap = new Map<string, any>();
     for (const ord of fileOrders) {
-      ord.status = normalizeDeliveryStatus(ord.status);
-      orderMap.set(ord.id, ord);
-      if (ord.orderNumber) orderMap.set(ord.orderNumber, ord);
-    }
-    for (const ord of dbOrders) {
-      const existing = orderMap.get(ord.id) || (ord.orderNumber ? orderMap.get(ord.orderNumber) : null);
-      if (!existing) {
-        orderMap.set(ord.id, {
-          id: ord.id,
-          orderNumber: ord.id,
-          customerName: ord.customer?.name || "Customer",
-          customerPhone: ord.customer?.mobile || "",
-          customerEmail: ord.customer?.email,
-          storeName: ord.store?.name || "Partner Store",
-          sellerId: ord.store?.sellerProfile?.sellerId || "PARTNER",
-          deliveryAddress: ord.address ? {
-            contactName: ord.address.contactName,
-            mobile: ord.address.mobile,
-            line1: ord.address.line1,
-            city: ord.address.city,
-            state: ord.address.state,
-            postalCode: ord.address.postalCode
-          } : undefined,
-          status: normalizeDeliveryStatus(ord.status),
-          totalMinor: ord.totalMinor,
-          items: ord.items?.map((it: any) => ({
-            id: it.id,
-            productName: it.productName,
-            unit: it.unit,
-            quantity: it.quantity,
-            totalMinor: it.totalMinorSnapshot
-          })),
-          createdAt: ord.createdAt.toISOString()
-        });
+      if (!orderMap.has(ord.id)) {
+        orderMap.set(ord.id, { ...ord, status: normalizeDeliveryStatus(ord.status) });
       }
     }
 
-    return sendOk(res, Array.from(new Set(orderMap.values())));
+    const sorted = Array.from(orderMap.values()).sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    return sendOk(res, sorted);
   } catch (error) {
     next(error);
   }
@@ -530,10 +510,19 @@ adminRouter.get("/orders", async (_req, res, next) => {
 adminRouter.patch("/orders/:id/tracking", async (req, res, next) => {
   try {
     const input = orderTrackingUpdateSchema.parse(req.body);
-    const updated = await updateOrderTracking(req.params.id, input, "Admin");
+    const updated = await updateOrderTracking(req.params.id, input, "Admin", { isAdmin: true });
     if (!updated) {
       throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
     }
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: req.user!.id,
+        action: "ORDER_TRACKING_UPDATED",
+        target: updated.id,
+        metadata: { status: updated.status, vehicleNumber: updated.vehicleNumber, driverName: updated.driverName }
+      }
+    }).catch(() => {});
 
     return sendOk(res, updated);
   } catch (error) {

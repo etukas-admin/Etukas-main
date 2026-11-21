@@ -318,6 +318,7 @@ model Order {
   deliveryChargeMinor Int           @default(0)
   totalMinor          Int
   currency            String        @default("INR")
+  trackingMetadata    Json?
   items               OrderItem[]
   payment             Payment?
   reviews             Review[]

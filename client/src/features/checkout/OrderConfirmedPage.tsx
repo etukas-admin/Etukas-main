@@ -1,20 +1,42 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock } from "lucide-react";
-import { marketplaceApi } from "../../services/api";
+import { marketplaceApi, type OrderRecord } from "../../services/api";
 import { queryKeys } from "../../lib/queryKeys";
 import { OrderConfirmedView } from "./OrderConfirmedView";
+import { isOrderTrackingTerminal } from "./DeliveryStepsTracker";
 
 export function OrderConfirmedPage() {
   const { orderId } = useParams<{ orderId: string }>();
+  const location = useLocation();
+  const initialOrder = (location.state as { initialOrder?: OrderRecord } | null)?.initialOrder;
 
-  const { data: order, isLoading, error } = useQuery({
+  const {
+    data: order,
+    isLoading,
+    isFetching,
+    error,
+    refetch
+  } = useQuery({
     queryKey: queryKeys.orders.detail(orderId || ""),
     queryFn: ({ signal }) => marketplaceApi.getOrder(orderId || "", { signal }),
-    enabled: Boolean(orderId)
+    enabled: Boolean(orderId),
+    initialData:
+      initialOrder && (initialOrder.id === orderId || initialOrder.orderNumber === orderId)
+        ? initialOrder
+        : undefined,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    // Vercel Free-friendly smart polling: only poll every 30s while delivery is active
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || isOrderTrackingTerminal(status)) return false;
+      return 30_000;
+    },
+    refetchIntervalInBackground: false
   });
 
-  if (isLoading) {
+  if (isLoading && !order) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center p-4">
         <Clock size={32} className="animate-spin text-etukas-red mb-3" />
@@ -23,7 +45,7 @@ export function OrderConfirmedPage() {
     );
   }
 
-  if (error || !order) {
+  if ((error && !order) || !order) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
         <h2 className="text-xl font-bold text-gray-900">Order Not Found</h2>
@@ -40,6 +62,11 @@ export function OrderConfirmedPage() {
     );
   }
 
-  return <OrderConfirmedView order={order} />;
+  return (
+    <OrderConfirmedView
+      order={order}
+      onRefresh={() => void refetch()}
+      isRefreshing={isFetching}
+    />
+  );
 }
-

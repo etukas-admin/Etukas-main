@@ -3,7 +3,13 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertCircle, AlertTriangle, BadgeAlert, BadgeCheck, CheckCircle2, Clock, ExternalLink, Handshake, Headphones, ImagePlus, LayoutDashboard, LogOut, MapPin, MessageSquareText, PackageCheck, PanelsTopLeft, Phone, RefreshCw, Search, ShoppingBag, Trash2, Truck, UserCheck, X } from "lucide-react";
 import { marketplaceApi, clearSession, getStoredUser, type AdminSeller, type HomepageBanner, type HomepageBannerInput, type OrderRecord, type SellerEnquiry, type User } from "../../services/api";
-import { DeliveryStepsTracker } from "../checkout/DeliveryStepsTracker";
+import { queryKeys } from "../../lib/queryKeys";
+import {
+  DeliveryStepsTracker,
+  formatDeliveryStatusLabel,
+  getDeliveryStatusBadgeClass,
+  isOrderTrackingTerminal
+} from "../checkout/DeliveryStepsTracker";
 import { AdminNotificationsDropdown } from "./AdminNotificationsDropdown";
 import { AdminLiveChat } from "./AdminLiveChat";
 
@@ -187,31 +193,64 @@ export function AdminDashboard() {
 
   const [isRefreshingTracking, setIsRefreshingTracking] = useState(false);
 
-  const adminOrders = useQuery({
-    queryKey: ["admin", "orders"],
-    queryFn: ({ signal }) => marketplaceApi.getAdminOrders({ signal }).catch(() => []),
+  const me = useQuery({
+    queryKey: ["admin", "me"],
+    queryFn: ({ signal }) => marketplaceApi.me({ signal }),
     enabled: Boolean(sessionUser),
-    refetchInterval: false,
-    refetchOnWindowFocus: false
+    retry: false
   });
+
+  const adminOrders = useQuery({
+    queryKey: queryKeys.orders.admin(),
+    queryFn: ({ signal }) => marketplaceApi.getAdminOrders({ signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN")),
+    staleTime: 30_000,
+    refetchInterval: false,
+    refetchOnWindowFocus: true
+  });
+
+  const selectedAdminOrderId = selectedAdminOrder
+    ? (selectedAdminOrder.orderNumber || selectedAdminOrder.id)
+    : "";
+
+  const adminOrderDetailQuery = useQuery({
+    queryKey: queryKeys.orders.detail(selectedAdminOrderId),
+    queryFn: ({ signal }) => marketplaceApi.getOrder(selectedAdminOrderId, { signal }),
+    enabled: Boolean(me.data?.roles.includes("ADMIN") && selectedAdminOrderId),
+    placeholderData: selectedAdminOrder ?? undefined,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    // Vercel Free-friendly smart polling: only poll every 30s while modal is open & delivery is active
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || isOrderTrackingTerminal(status)) return false;
+      return 30_000;
+    },
+    refetchIntervalInBackground: false
+  });
+
+  const liveAdminOrder = adminOrderDetailQuery.data ?? selectedAdminOrder;
 
   const handleRefreshAdminOrder = async () => {
     if (!selectedAdminOrder) return;
     setIsRefreshingTracking(true);
     try {
-      const updated = await marketplaceApi.getOrder(selectedAdminOrder.orderNumber || selectedAdminOrder.id);
+      const refreshed = await adminOrderDetailQuery.refetch();
+      const updated = refreshed.data;
       if (updated) {
         setSelectedAdminOrder(updated);
         const currentStatus = String(updated.status || "");
         const normalized = currentStatus === "ACCEPTED" ? "CONFIRMED"
           : currentStatus === "PREPARING" ? "LOADING_VEHICLE"
           : currentStatus === "DISPATCHED" ? "ASSIGNED_DRIVER"
+          : currentStatus === "PLACED" ? "CONFIRMED"
           : updated.status || "CONFIRMED";
         setAdminNewStatus(normalized);
         setAdminVehicleNo(updated.vehicleNumber || "");
         setAdminDriverName(updated.driverName || "");
         setAdminDriverPhone(updated.driverPhone || "");
         setAdminRejectionReason(updated.rejectionReason || "");
+        setAdminNote("");
       }
       await adminOrders.refetch();
     } catch (err) {
@@ -224,22 +263,20 @@ export function AdminDashboard() {
   const updateAdminOrderTracking = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       marketplaceApi.updateAdminOrderTracking(id, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+    onSuccess: (updatedOrder, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.admin() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.seller() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.customer() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(variables.id) });
+      if (updatedOrder?.orderNumber) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(updatedOrder.orderNumber) });
+      }
+      setAdminNote("");
       setSelectedAdminOrder(null);
     },
     onError: (err: any) => {
       alert(`Could not update live tracking: ${err?.message || "Please check details and try again."}`);
     }
-  });
-
-  const me = useQuery({
-    queryKey: ["admin", "me"],
-    queryFn: ({ signal }) => marketplaceApi.me({ signal }),
-    enabled: Boolean(sessionUser),
-    retry: false
   });
   const sellers = useQuery({
     queryKey: ["admin", "sellers"],
@@ -429,7 +466,7 @@ export function AdminDashboard() {
   const navigation = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "partners", label: "Partners", icon: Handshake },
-    { id: "orders", label: "Orders & Live Tracking", icon: ShoppingBag, badge: (adminOrders.data || []).filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED").length },
+    { id: "orders", label: "Orders & Live Tracking", icon: ShoppingBag, badge: (adminOrders.data || []).filter((o: any) => !isOrderTrackingTerminal(o.status)).length },
     { id: "banners", label: "Homepage banners", icon: PanelsTopLeft },
     { id: "enquiries", label: "Enquiries & Live Chat", icon: MessageSquareText, badge: openChatCount }
   ];
@@ -591,16 +628,25 @@ export function AdminDashboard() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-1.5 border-b border-gray-100 pb-3 text-xs font-semibold">
-            {["ALL","PLACED","CONFIRMED","LOADING_VEHICLE","ASSIGNED_DRIVER","DELIVERED","REJECTED"].map((s) => (
+            {["ALL","PLACED","CONFIRMED","LOADING_VEHICLE","ASSIGNED_DRIVER","DELIVERED","REJECTED","CANCELLED"].map((s) => (
               <button key={s} type="button" onClick={() => setOrderStatusFilter(s)}
                 className={`rounded-lg px-3 py-1.5 transition ${orderStatusFilter === s ? "bg-etukas-red text-white" : "bg-gray-100 text-gray-600"}`}>
-                {s === "ALL" ? "All Orders" : s.replace(/_/g, " ")}
+                {s === "ALL" ? "All Orders" : formatDeliveryStatusLabel(s)}
               </button>
             ))}
           </div>
 
           {adminOrders.isLoading ? (
             <div className="py-12 text-center text-sm text-gray-500">Loading orders...</div>
+          ) : adminOrders.isError ? (
+            <div className="my-4 rounded-xl border border-red-200 bg-red-50/70 p-8 text-center">
+              <AlertCircle className="mx-auto text-etukas-red" size={32} />
+              <h3 className="mt-2 text-sm font-bold text-red-900">Could not load orders</h3>
+              <p className="mt-1 text-xs text-red-700">{(adminOrders.error as Error)?.message || "Please try refreshing."}</p>
+              <button type="button" onClick={() => void adminOrders.refetch()} className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-etukas-red px-4 py-2 text-xs font-bold text-white hover:bg-red-700">
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
           ) : filteredOrders.length === 0 ? (
             <div className="py-12 text-center">
               <ShoppingBag className="mx-auto text-gray-300" size={40} />
@@ -624,8 +670,6 @@ export function AdminDashboard() {
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {filteredOrders.map((ord: any) => {
                     const displayId = ord.orderNumber || ord.id;
-                    const isDelivered = ord.status === "DELIVERED";
-                    const isRejected = ord.status === "REJECTED" || ord.status === "CANCELLED";
                     return (
                       <tr key={ord.id} className="hover:bg-gray-50/70 transition-colors">
                         <td className="px-4 py-3.5 whitespace-nowrap">
@@ -646,8 +690,8 @@ export function AdminDashboard() {
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap font-black">₹{((ord.totalMinor || 0) / 100).toLocaleString("en-IN")}</td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
-                          <span className={"inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold " + (isDelivered ? "bg-emerald-100 text-emerald-800" : isRejected ? "bg-red-100 text-red-800" : ord.status === "ASSIGNED_DRIVER" ? "bg-blue-100 text-blue-800" : ord.status === "LOADING_VEHICLE" ? "bg-purple-100 text-purple-800" : "bg-amber-100 text-amber-800")}>
-                            {ord.status || "PLACED"}
+                          <span className={"inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold " + getDeliveryStatusBadgeClass(ord.status)}>
+                            {formatDeliveryStatusLabel(ord.status)}
                           </span>
                           {ord.review && (
                             <div className="mt-1 flex items-center gap-1 font-bold text-amber-800 text-[10px] bg-amber-50 rounded px-1.5 py-0.5 border border-amber-200">
@@ -667,6 +711,7 @@ export function AdminDashboard() {
                             const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
                               : ord.status === "PREPARING" ? "LOADING_VEHICLE"
                               : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
+                              : ord.status === "PLACED" ? "CONFIRMED"
                               : ord.status || "CONFIRMED";
                             setAdminNewStatus(normalized); 
                             setAdminVehicleNo(ord.vehicleNumber || ""); 
@@ -687,56 +732,44 @@ export function AdminDashboard() {
             </div>
           )}
 
-          {selectedAdminOrder && (
+          {selectedAdminOrder && liveAdminOrder && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
               <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-gray-200">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                   <div>
                     <h3 className="text-lg font-bold flex items-center gap-2"><Truck className="text-etukas-red" size={20} /> Admin Live Tracking</h3>
-                    <p className="text-xs text-gray-500 font-mono mt-0.5">Order #{selectedAdminOrder.orderNumber || selectedAdminOrder.id} · Partner: {selectedAdminOrder.sellerId}</p>
+                    <p className="text-xs text-gray-500 font-mono mt-0.5">Order #{liveAdminOrder.orderNumber || liveAdminOrder.id} · Partner: {liveAdminOrder.sellerId || "Unassigned"}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleRefreshAdminOrder()}
-                      disabled={isRefreshingTracking}
-                      className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-700 hover:border-etukas-red hover:text-etukas-red shadow-2xs"
-                      title="Fetch latest tracking details"
-                    >
-                      <RefreshCw size={12} className={isRefreshingTracking ? "animate-spin text-etukas-red" : ""} />
-                      <span>{isRefreshingTracking ? "Refreshing..." : "Refresh"}</span>
-                    </button>
-                    <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
-                  </div>
+                  <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100"><X size={18} /></button>
                 </div>
 
                 <div className="mt-4">
                   <DeliveryStepsTracker
-                    order={selectedAdminOrder}
+                    order={liveAdminOrder}
                     onRefresh={handleRefreshAdminOrder}
-                    isRefreshing={isRefreshingTracking}
+                    isRefreshing={isRefreshingTracking || adminOrderDetailQuery.isFetching}
                   />
                 </div>
 
                 <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <span className="font-bold text-gray-700 block uppercase tracking-wider text-[10px]">Customer Details</span>
-                    <p className="mt-1 font-bold text-gray-900">{selectedAdminOrder.customerName}</p>
-                    <p className="text-gray-600">{selectedAdminOrder.deliveryAddress?.line1}{selectedAdminOrder.deliveryAddress?.city ? ", " + selectedAdminOrder.deliveryAddress.city : ""}</p>
-                    {selectedAdminOrder.customerPhone && (<a href={"tel:" + selectedAdminOrder.customerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-etukas-red hover:underline"><Phone size={11} /> {selectedAdminOrder.customerPhone}</a>)}
+                    <p className="mt-1 font-bold text-gray-900">{liveAdminOrder.customerName}</p>
+                    <p className="text-gray-600">{liveAdminOrder.deliveryAddress?.line1}{liveAdminOrder.deliveryAddress?.city ? ", " + liveAdminOrder.deliveryAddress.city : ""}</p>
+                    {liveAdminOrder.customerPhone && (<a href={"tel:" + liveAdminOrder.customerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-etukas-red hover:underline"><Phone size={11} /> {liveAdminOrder.customerPhone}</a>)}
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
                     <span className="font-bold text-gray-700 block uppercase tracking-wider text-[10px]">Store &amp; Partner</span>
-                    <p className="mt-1 font-bold text-gray-900">{selectedAdminOrder.storeName || "Etukas Partner Store"}</p>
-                    <p className="font-mono text-gray-600">Partner ID: <strong>{selectedAdminOrder.sellerId}</strong></p>
-                    {selectedAdminOrder.sellerPhone && (<a href={"tel:" + selectedAdminOrder.sellerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-gray-700 hover:underline"><Phone size={11} /> {selectedAdminOrder.sellerPhone}</a>)}
+                    <p className="mt-1 font-bold text-gray-900">{liveAdminOrder.storeName || "Etukas Partner Store"}</p>
+                    <p className="font-mono text-gray-600">Partner ID: <strong>{liveAdminOrder.sellerId || "Unassigned"}</strong></p>
+                    {liveAdminOrder.sellerPhone && (<a href={"tel:" + liveAdminOrder.sellerPhone} className="inline-flex items-center gap-1 font-mono font-bold text-gray-700 hover:underline"><Phone size={11} /> {liveAdminOrder.sellerPhone}</a>)}
                   </div>
                 </div>
 
                 <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50/50 p-4">
                   <h4 className="text-xs font-bold text-orange-900 uppercase tracking-wider mb-2">Override Delivery Stage (Admin Intervention):</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    {[{ id: "CONFIRMED", label: "Confirmed" }, { id: "LOADING_VEHICLE", label: "Loading Vehicle" }, { id: "ASSIGNED_DRIVER", label: "Assigned Delivery" }, { id: "DELIVERED", label: "Delivered" }, { id: "REJECTED", label: "Rejected" }].map((st) => (
+                    {[{ id: "CONFIRMED", label: "Confirmed" }, { id: "LOADING_VEHICLE", label: "Loading Vehicle" }, { id: "ASSIGNED_DRIVER", label: "Assigned Delivery" }, { id: "DELIVERED", label: "Delivered" }, { id: "REJECTED", label: "Rejected" }, { id: "CANCELLED", label: "Cancelled" }].map((st) => (
                       <button key={st.id} type="button" onClick={() => setAdminNewStatus(st.id)}
                         className={"p-2 rounded-lg border text-center transition " + (adminNewStatus === st.id ? "bg-etukas-red text-white border-etukas-red font-bold" : "bg-white text-gray-700 border-gray-200")}>
                         {st.label}
@@ -746,25 +779,25 @@ export function AdminDashboard() {
                   <div className="mt-3 space-y-2 text-xs">
                     {(adminNewStatus === "LOADING_VEHICLE" || adminNewStatus === "ASSIGNED_DRIVER") && (
                       <div>
-                        <label className="block font-semibold text-gray-700 mb-0.5">Vehicle Number:</label>
+                        <label className="block font-semibold text-gray-700 mb-0.5">Vehicle Number: <span className="text-red-500">*</span></label>
                         <input type="text" placeholder="e.g. AP 05 TX 4589" value={adminVehicleNo} onChange={(e) => setAdminVehicleNo(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono uppercase focus:border-etukas-red focus:outline-none" />
                       </div>
                     )}
                     {adminNewStatus === "ASSIGNED_DRIVER" && (
                       <div className="grid sm:grid-cols-2 gap-2">
                         <div>
-                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Name:</label>
+                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Name: <span className="text-red-500">*</span></label>
                           <input type="text" placeholder="Driver Name" value={adminDriverName} onChange={(e) => setAdminDriverName(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
                         </div>
                         <div>
-                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Phone:</label>
+                          <label className="block font-semibold text-gray-700 mb-0.5">Driver Phone: <span className="text-red-500">*</span></label>
                           <input type="tel" placeholder="10-digit phone" value={adminDriverPhone} onChange={(e) => setAdminDriverPhone(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 font-mono focus:border-etukas-red focus:outline-none" />
                         </div>
                       </div>
                     )}
                     {adminNewStatus === "REJECTED" && (
                       <div>
-                        <label className="block font-semibold text-gray-700 mb-0.5">Rejection Reason:</label>
+                        <label className="block font-semibold text-gray-700 mb-0.5">Rejection Reason: <span className="text-red-500">*</span></label>
                         <textarea rows={2} placeholder="Reason" value={adminRejectionReason} onChange={(e) => setAdminRejectionReason(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-1.5 focus:border-etukas-red focus:outline-none" />
                       </div>
                     )}
@@ -778,7 +811,44 @@ export function AdminDashboard() {
                 <div className="mt-4 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
                   <button type="button" onClick={() => setSelectedAdminOrder(null)} className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-100">Close</button>
                   <button type="button" disabled={updateAdminOrderTracking.isPending}
-                    onClick={() => { updateAdminOrderTracking.mutate({ id: selectedAdminOrder.id, data: { status: adminNewStatus, vehicleNumber: adminVehicleNo.trim() || undefined, driverName: adminDriverName.trim() || undefined, driverPhone: adminDriverPhone.trim() || undefined, rejectionReason: adminRejectionReason.trim() || undefined, note: adminNote.trim() || undefined } }); }}
+                    onClick={() => {
+                      if ((adminNewStatus === "LOADING_VEHICLE" || adminNewStatus === "ASSIGNED_DRIVER") && !adminVehicleNo.trim()) {
+                        alert("Please enter the vehicle number.");
+                        return;
+                      }
+                      if (adminNewStatus === "ASSIGNED_DRIVER") {
+                        if (!adminDriverName.trim() || !adminDriverPhone.trim()) {
+                          alert("Please enter driver name and contact number.");
+                          return;
+                        }
+                        const digits = adminDriverPhone.replace(/\D/g, "");
+                        if (digits.length < 10 || digits.length > 15) {
+                          alert("Please enter a valid 10-digit driver phone number.");
+                          return;
+                        }
+                      }
+                      if (adminNewStatus === "REJECTED" && !adminRejectionReason.trim()) {
+                        alert("Please provide a rejection reason.");
+                        return;
+                      }
+                      updateAdminOrderTracking.mutate({
+                        id: liveAdminOrder.id,
+                        data: {
+                          status: adminNewStatus,
+                          vehicleNumber: (adminNewStatus === "LOADING_VEHICLE" || adminNewStatus === "ASSIGNED_DRIVER")
+                            ? adminVehicleNo.trim()
+                            : (adminVehicleNo.trim() || undefined),
+                          driverName: adminNewStatus === "ASSIGNED_DRIVER"
+                            ? adminDriverName.trim()
+                            : (adminDriverName.trim() || undefined),
+                          driverPhone: adminNewStatus === "ASSIGNED_DRIVER"
+                            ? adminDriverPhone.trim()
+                            : (adminDriverPhone.trim() || undefined),
+                          rejectionReason: adminNewStatus === "REJECTED" ? adminRejectionReason.trim() : undefined,
+                          note: adminNote.trim() || undefined
+                        }
+                      });
+                    }}
                     className="rounded-lg bg-etukas-red px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 disabled:opacity-50">
                     {updateAdminOrderTracking.isPending ? "Saving..." : "Save & Update Live Tracking"}
                   </button>

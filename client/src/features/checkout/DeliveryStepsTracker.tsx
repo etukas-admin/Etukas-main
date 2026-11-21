@@ -1,5 +1,57 @@
-import { CheckCircle2, Clock, Truck, UserCheck, PackageCheck, Phone, AlertCircle, RefreshCw, FileText, Star } from "lucide-react";
+import { CheckCircle2, Clock, Truck, UserCheck, Phone, AlertCircle, RefreshCw, FileText, Star } from "lucide-react";
 import type { OrderRecord, DeliveryStatus } from "../../services/api";
+
+export const TERMINAL_DELIVERY_STATUSES: ReadonlySet<string> = new Set([
+  "DELIVERED",
+  "REJECTED",
+  "CANCELLED"
+]);
+
+export function isOrderTrackingTerminal(status?: string | null): boolean {
+  return Boolean(status && TERMINAL_DELIVERY_STATUSES.has(status));
+}
+
+export function formatDeliveryStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "PLACED":
+      return "Order Placed";
+    case "CONFIRMED":
+    case "ACCEPTED":
+      return "Confirmed by Seller";
+    case "LOADING_VEHICLE":
+    case "PREPARING":
+      return "Loading on Vehicle";
+    case "ASSIGNED_DRIVER":
+    case "DISPATCHED":
+      return "Assigned Delivery Partner";
+    case "DELIVERED":
+      return "Delivered";
+    case "REJECTED":
+      return "Rejected";
+    case "CANCELLED":
+      return "Cancelled";
+    default:
+      return status ? status.replace(/_/g, " ") : "Order Placed";
+  }
+}
+
+export function getDeliveryStatusBadgeClass(status?: string | null): string {
+  switch (status) {
+    case "DELIVERED":
+      return "bg-emerald-100 text-emerald-800";
+    case "REJECTED":
+    case "CANCELLED":
+      return "bg-red-100 text-red-800";
+    case "ASSIGNED_DRIVER":
+    case "DISPATCHED":
+      return "bg-blue-100 text-blue-800";
+    case "LOADING_VEHICLE":
+    case "PREPARING":
+      return "bg-purple-100 text-purple-800";
+    default:
+      return "bg-amber-100 text-amber-800";
+  }
+}
 
 const STEPS: { status: DeliveryStatus; label: string; desc: string }[] = [
   { status: "PLACED", label: "Order Placed", desc: "Sent to store partner" },
@@ -41,35 +93,64 @@ export function DeliveryStepsTracker({
   onReviewOrder?: () => void;
 }) {
   const isRejected = order.status === "REJECTED" || order.status === "CANCELLED";
+  const isFullyDelivered = order.status === "DELIVERED";
   const currentStepIdx = getStepIndex(order.status);
 
   if (isRejected) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-5">
-        <div className="flex items-start gap-3">
-          <div className="rounded-full bg-red-100 p-2 text-red-600">
-            <AlertCircle size={22} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="rounded-full bg-red-100 p-2 text-red-600">
+              <AlertCircle size={22} />
+            </div>
+            <div>
+              <h4 className="font-extrabold text-red-900 text-sm sm:text-base">
+                {order.status === "CANCELLED" ? "Order Cancelled" : "Order Rejected"}
+              </h4>
+              <p className="mt-1 text-xs sm:text-sm text-red-800">
+                Reason: <strong>{order.rejectionReason || "Store inventory or delivery route unavailable"}</strong>
+              </p>
+              <p className="mt-1 text-xs text-red-600">
+                Our customer care executive is reviewing alternatives. You will be contacted shortly.
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="font-extrabold text-red-900 text-sm sm:text-base">Order Rejected / Cancelled</h4>
-            <p className="mt-1 text-xs sm:text-sm text-red-800">
-              Reason: <strong>{order.rejectionReason || "Store inventory or delivery route unavailable"}</strong>
-            </p>
-            <p className="mt-1 text-xs text-red-600">
-              Our customer care executive is reviewing alternatives. You will be contacted shortly.
-            </p>
-          </div>
+
+          {onRefresh && (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-bold text-red-700 hover:bg-red-100 transition active:scale-95 disabled:opacity-50"
+              title="Refresh live tracking"
+            >
+              <RefreshCw size={12} className={isRefreshing ? "animate-spin text-etukas-red" : ""} />
+              <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          )}
         </div>
       </div>
     );
   }
+
+  const latestPartnerNote =
+    order.statusNote ||
+    (order.statusHistory &&
+      order.statusHistory
+        .slice()
+        .reverse()
+        .find((h) => h.note && h.actor !== "Customer")?.note);
 
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-6 shadow-xs">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 mb-4">
         <div>
           <h3 className="text-sm font-extrabold text-gray-900 sm:text-base">Live Delivery Status</h3>
-          <p className="text-xs text-gray-500">Real-time status updates from {order.storeName}</p>
+          <p className="text-xs text-gray-500">
+            Real-time status updates from {order.storeName}
+            {!isFullyDelivered ? " · Auto-updates every 30s" : ""}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {onRefresh && (
@@ -84,17 +165,9 @@ export function DeliveryStepsTracker({
               <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
             </button>
           )}
-          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${
-            order.status === "DELIVERED"
-              ? "bg-emerald-100 text-emerald-800"
-              : order.status === "ASSIGNED_DRIVER"
-              ? "bg-blue-100 text-blue-800"
-              : order.status === "LOADING_VEHICLE"
-              ? "bg-purple-100 text-purple-800"
-              : "bg-amber-100 text-amber-800"
-          }`}>
-            <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
-            {STEPS.find((s) => s.status === order.status)?.label || order.status}
+          <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${getDeliveryStatusBadgeClass(order.status)}`}>
+            <span className={`h-1.5 w-1.5 rounded-full bg-current ${isFullyDelivered ? "" : "animate-pulse"}`} />
+            {formatDeliveryStatusLabel(order.status)}
           </span>
         </div>
       </div>
@@ -102,9 +175,8 @@ export function DeliveryStepsTracker({
       {/* Stepper Timeline */}
       <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-gray-200">
         {STEPS.map((step, idx) => {
-          const isDone = currentStepIdx > idx;
-          const isCurrent = currentStepIdx === idx;
-          const isPending = currentStepIdx < idx;
+          const isDone = isFullyDelivered ? true : currentStepIdx > idx;
+          const isCurrent = isFullyDelivered ? false : currentStepIdx === idx;
 
           return (
             <div key={step.status} className="relative">
@@ -195,8 +267,8 @@ export function DeliveryStepsTracker({
         })}
       </div>
 
-      {/* Live Status Note from Store Partner / Admin (Task 4) */}
-      {(order.statusNote || (order.statusHistory && order.statusHistory.slice().reverse().find(h => h.note && h.actor !== "Customer")?.note)) && (
+      {/* Live Status Note from Store Partner / Admin */}
+      {latestPartnerNote && (
         <div className="mt-6 rounded-2xl border border-orange-200 bg-gradient-to-r from-orange-50/90 to-amber-50/90 p-4 text-xs shadow-xs">
           <div className="flex items-start gap-2.5">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-100 text-orange-700">
@@ -212,15 +284,46 @@ export function DeliveryStepsTracker({
                 </span>
               </div>
               <p className="text-orange-950 font-bold text-xs sm:text-sm leading-relaxed">
-                "{order.statusNote || order.statusHistory.slice().reverse().find(h => h.note && h.actor !== "Customer")?.note}"
+                "{latestPartnerNote}"
               </p>
             </div>
           </div>
         </div>
       )}
 
+      {/* Compact Tracking Audit Log */}
+      {Array.isArray(order.statusHistory) && order.statusHistory.length > 0 && (
+        <details className="mt-4 rounded-xl border border-gray-100 bg-gray-50/70 px-3.5 py-2.5 text-xs">
+          <summary className="cursor-pointer font-bold text-gray-700 select-none">
+            Tracking Activity Log ({order.statusHistory.length})
+          </summary>
+          <ul className="mt-2.5 space-y-2 border-t border-gray-200/80 pt-2.5">
+            {order.statusHistory
+              .slice()
+              .reverse()
+              .map((entry, i) => (
+                <li key={`${entry.timestamp}-${i}`} className="flex items-start justify-between gap-3 text-[11px]">
+                  <div className="min-w-0">
+                    <span className="font-bold text-gray-900">{formatDeliveryStatusLabel(entry.status)}</span>
+                    {entry.actor ? <span className="text-gray-400"> · {entry.actor}</span> : null}
+                    {entry.note ? <p className="text-gray-600 mt-0.5">{entry.note}</p> : null}
+                  </div>
+                  <span className="shrink-0 font-mono text-[10px] text-gray-400">
+                    {new Date(entry.timestamp).toLocaleString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit"
+                    })}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
+
       {/* Customer Review Section when Order is Delivered */}
-      {order.status === "DELIVERED" && (
+      {isFullyDelivered && (
         <div className="mt-6">
           {order.review ? (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-xs">
@@ -262,8 +365,8 @@ export function DeliveryStepsTracker({
                     <Star size={18} className="fill-amber-400 text-amber-400" />
                   </div>
                   <div>
-                    <h4 className="text-xs sm:text-sm font-extrabold text-amber-950">How was your delivery & material quality?</h4>
-                    <p className="text-[11px] text-amber-800">Rate your experience to help local builders & stores</p>
+                    <h4 className="text-xs sm:text-sm font-extrabold text-amber-950">How was your delivery &amp; material quality?</h4>
+                    <p className="text-[11px] text-amber-800">Rate your experience to help local builders &amp; stores</p>
                   </div>
                 </div>
                 <button
@@ -282,4 +385,3 @@ export function DeliveryStepsTracker({
     </div>
   );
 }
-

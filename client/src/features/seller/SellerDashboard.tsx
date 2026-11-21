@@ -38,6 +38,13 @@ import { useNavigate, Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { marketplaceApi, API_BASE, getStoredUser } from "../../services/api";
+import { queryKeys } from "../../lib/queryKeys";
+import {
+  DeliveryStepsTracker,
+  formatDeliveryStatusLabel,
+  getDeliveryStatusBadgeClass,
+  isOrderTrackingTerminal
+} from "../checkout/DeliveryStepsTracker";
 import { ImageCropModal } from "./ImageCropModal";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
@@ -165,10 +172,11 @@ export function SellerDashboard() {
   const [isRefreshingPartnerTracking, setIsRefreshingPartnerTracking] = useState(false);
 
   const partnerOrdersQuery = useQuery({
-    queryKey: ["partner-orders"],
-    queryFn: ({ signal }) => marketplaceApi.getSellerOrders({ signal }).catch(() => []),
+    queryKey: queryKeys.orders.seller(),
+    queryFn: ({ signal }) => marketplaceApi.getSellerOrders({ signal }),
+    staleTime: 30_000,
     refetchInterval: false,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: true
   });
 
   const partnerOrders = partnerOrdersQuery.data || [];
@@ -181,23 +189,48 @@ export function SellerDashboard() {
   const [statusRejectionReason, setStatusRejectionReason] = useState("");
   const [statusNote, setStatusNote] = useState("");
 
+  const selectedPartnerOrderId = selectedOrderForStatus
+    ? (selectedOrderForStatus.orderNumber || selectedOrderForStatus.id)
+    : "";
+
+  const partnerOrderDetailQuery = useQuery({
+    queryKey: queryKeys.orders.detail(selectedPartnerOrderId),
+    queryFn: ({ signal }) => marketplaceApi.getOrder(selectedPartnerOrderId, { signal }),
+    enabled: Boolean(selectedPartnerOrderId),
+    placeholderData: selectedOrderForStatus ?? undefined,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    // Vercel Free-friendly smart polling: only poll every 30s while modal is open & order is active
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (!status || isOrderTrackingTerminal(status)) return false;
+      return 30_000;
+    },
+    refetchIntervalInBackground: false
+  });
+
+  const livePartnerOrder = partnerOrderDetailQuery.data ?? selectedOrderForStatus;
+
   const handleRefreshPartnerOrder = async () => {
     if (!selectedOrderForStatus) return;
     setIsRefreshingPartnerTracking(true);
     try {
-      const updated = await marketplaceApi.getOrder(selectedOrderForStatus.orderNumber || selectedOrderForStatus.id);
+      const refreshed = await partnerOrderDetailQuery.refetch();
+      const updated = refreshed.data;
       if (updated) {
         setSelectedOrderForStatus(updated);
         const currentStatus = String(updated.status || "");
         const normalized = currentStatus === "ACCEPTED" ? "CONFIRMED"
           : currentStatus === "PREPARING" ? "LOADING_VEHICLE"
           : currentStatus === "DISPATCHED" ? "ASSIGNED_DRIVER"
+          : currentStatus === "PLACED" ? "CONFIRMED"
           : updated.status || "CONFIRMED";
         setNewStatus(normalized);
         setStatusVehicleNo(updated.vehicleNumber || "");
         setStatusDriverName(updated.driverName || "");
         setStatusDriverPhone(updated.driverPhone || "");
         setStatusRejectionReason(updated.rejectionReason || "");
+        setStatusNote("");
       }
       await partnerOrdersQuery.refetch();
     } catch (err) {
@@ -210,10 +243,16 @@ export function SellerDashboard() {
   const updateOrderTrackingMutation = useMutation({
     mutationFn: ({ orderId, data }: { orderId: string; data: any }) =>
       marketplaceApi.updateSellerOrderTracking(orderId, data),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+    onSuccess: (updatedOrder, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.seller() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.admin() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.customer() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(variables.orderId) });
+      if (updatedOrder?.orderNumber) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(updatedOrder.orderNumber) });
+      }
+      void queryClient.invalidateQueries({ queryKey: ["seller-dashboard"] });
+      setStatusNote("");
       setSelectedOrderForStatus(null);
     },
     onError: (err: any) => {
@@ -2067,7 +2106,27 @@ export function SellerDashboard() {
               </div>
             </div>
 
-            {partnerOrders.length === 0 ? (
+            {partnerOrdersQuery.isLoading ? (
+              <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-sm text-gray-500">
+                Loading received customer orders...
+              </div>
+            ) : partnerOrdersQuery.isError ? (
+              <div className="rounded-2xl border border-red-200 bg-red-50/70 p-8 text-center">
+                <AlertTriangle className="mx-auto text-etukas-red" size={28} />
+                <h3 className="mt-2 text-base font-bold text-red-900">Could not load orders</h3>
+                <p className="mt-1 text-xs text-red-700">
+                  {(partnerOrdersQuery.error as Error)?.message || "Please try refreshing your orders."}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void partnerOrdersQuery.refetch()}
+                  className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-red-700"
+                >
+                  <RefreshCw size={13} />
+                  <span>Retry</span>
+                </button>
+              </div>
+            ) : partnerOrders.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center shadow-sm">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-orange-500">
                   <ShoppingBag size={32} />
@@ -2098,8 +2157,6 @@ export function SellerDashboard() {
                     <tbody className="divide-y divide-gray-100 font-medium">
                       {partnerOrders.map((ord: any) => {
                         const displayId = ord.orderNumber || ord.id;
-                        const isDelivered = ord.status === "DELIVERED";
-                        const isRejected = ord.status === "REJECTED";
                         return (
                           <tr key={ord.id} className="hover:bg-gray-50 transition-colors">
                             {/* Order ID */}
@@ -2156,18 +2213,8 @@ export function SellerDashboard() {
 
                             {/* Delivery Status Badge */}
                             <td className="px-4 py-4">
-                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
-                                isDelivered
-                                  ? "bg-emerald-100 text-emerald-800"
-                                  : isRejected
-                                  ? "bg-red-100 text-red-800"
-                                  : ord.status === "ASSIGNED_DRIVER"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : ord.status === "LOADING_VEHICLE"
-                                  ? "bg-purple-100 text-purple-800"
-                                  : "bg-amber-100 text-amber-800"
-                              }`}>
-                                {ord.status || "PLACED"}
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${getDeliveryStatusBadgeClass(ord.status)}`}>
+                                {formatDeliveryStatusLabel(ord.status)}
                               </span>
                               {ord.review && (
                                 <div className="mt-1.5 flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 border border-amber-200 text-[11px] font-bold text-amber-900">
@@ -2209,17 +2256,19 @@ export function SellerDashboard() {
                                   const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
                                     : ord.status === "PREPARING" ? "LOADING_VEHICLE"
                                     : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
+                                    : ord.status === "PLACED" ? "CONFIRMED"
                                     : ord.status || "CONFIRMED";
                                   setNewStatus(normalized);
                                   setStatusVehicleNo(ord.vehicleNumber || "");
                                   setStatusDriverName(ord.driverName || "");
                                   setStatusDriverPhone(ord.driverPhone || "");
                                   setStatusRejectionReason(ord.rejectionReason || "");
+                                  setStatusNote("");
                                 }}
                                 className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
                               >
                                 <Truck size={13} />
-                                <span>Update Status</span>
+                                <span>{isOrderTrackingTerminal(ord.status) ? "View Tracking" : "Update Status"}</span>
                               </button>
                             </td>
                           </tr>
@@ -2235,198 +2284,237 @@ export function SellerDashboard() {
       </div>
 
       {/* Update Live Status Modal */}
-      {selectedOrderForStatus && (
+      {selectedOrderForStatus && livePartnerOrder && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-gray-200 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                   <Truck className="text-etukas-red" size={20} />
-                  Update Live Delivery Status
+                  {isOrderTrackingTerminal(livePartnerOrder.status) ? "Order Delivery Tracking" : "Update Live Delivery Status"}
                 </h3>
                 <p className="text-xs text-gray-500 font-mono mt-0.5">
-                  Order #{selectedOrderForStatus.orderNumber || selectedOrderForStatus.id}
+                  Order #{livePartnerOrder.orderNumber || livePartnerOrder.id}
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleRefreshPartnerOrder()}
-                  disabled={isRefreshingPartnerTracking}
-                  className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-gray-700 hover:border-etukas-red hover:text-etukas-red shadow-2xs"
-                  title="Fetch latest tracking details"
-                >
-                  <RefreshCw size={12} className={isRefreshingPartnerTracking ? "animate-spin text-etukas-red" : ""} />
-                  <span>{isRefreshingPartnerTracking ? "Refreshing..." : "Refresh"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedOrderForStatus(null)}
-                  className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                >
-                  <X size={18} />
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedOrderForStatus(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Live Timeline Preview (includes single Refresh button + Activity Log + Admin notes) */}
+            <div className="mt-4">
+              <DeliveryStepsTracker
+                order={livePartnerOrder}
+                onRefresh={handleRefreshPartnerOrder}
+                isRefreshing={isRefreshingPartnerTracking || partnerOrderDetailQuery.isFetching}
+              />
             </div>
 
             {/* Customer & Item mini summary */}
             <div className="mt-4 rounded-xl bg-gray-50 p-3 text-xs text-gray-700 border border-gray-200">
               <div className="flex justify-between items-center font-bold text-gray-900 mb-1">
-                <span>Customer: {selectedOrderForStatus.customerName || selectedOrderForStatus.customer?.name}</span>
-                <span className="text-etukas-red">₹{((selectedOrderForStatus.totalMinor || 0) / 100).toLocaleString("en-IN")}</span>
+                <span>Customer: {livePartnerOrder.customerName || (livePartnerOrder as any).customer?.name}</span>
+                <span className="text-etukas-red">₹{((livePartnerOrder.totalMinor || 0) / 100).toLocaleString("en-IN")}</span>
               </div>
               <div className="text-gray-500 text-[11px] truncate">
-                Site: {selectedOrderForStatus.deliveryAddress?.line1 || "Customer Address"}{selectedOrderForStatus.deliveryAddress?.city ? `, ${selectedOrderForStatus.deliveryAddress.city}` : ""}
+                Site: {livePartnerOrder.deliveryAddress?.line1 || "Customer Address"}{livePartnerOrder.deliveryAddress?.city ? `, ${livePartnerOrder.deliveryAddress.city}` : ""}
               </div>
             </div>
 
-            {/* Status options */}
-            <div className="mt-4">
-              <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
-                Select Delivery Stage:
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
-                {[
-                  { id: "CONFIRMED", label: "Confirmed by Seller", icon: CheckCircle2 },
-                  { id: "LOADING_VEHICLE", label: "Loading on Vehicle", icon: PackageCheck },
-                  { id: "ASSIGNED_DRIVER", label: "Assigned Delivery Partner", icon: Truck },
-                  { id: "DELIVERED", label: "Delivered to Site", icon: BadgeCheck },
-                  { id: "REJECTED", label: "Reject Order", icon: AlertTriangle }
-                ].map((st) => (
+            {isOrderTrackingTerminal(livePartnerOrder.status) ? (
+              <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+                This order is already <strong>{formatDeliveryStatusLabel(livePartnerOrder.status)}</strong> and can no longer be edited by store partners. Contact Etukas Admin if an override is needed.
+                <div className="mt-4 flex justify-end">
                   <button
-                    key={st.id}
                     type="button"
-                    onClick={() => setNewStatus(st.id)}
-                    className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition ${
-                      newStatus === st.id
-                        ? "border-etukas-red bg-red-50 text-etukas-red ring-2 ring-red-100 font-bold"
-                        : "border-gray-200 bg-white hover:border-gray-300 text-gray-700"
-                    }`}
+                    onClick={() => setSelectedOrderForStatus(null)}
+                    className="rounded-xl bg-gray-900 px-5 py-2 text-xs font-bold text-white hover:bg-black"
                   >
-                    <st.icon size={16} />
-                    <span>{st.label}</span>
+                    Close
                   </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Dynamic Conditional Fields */}
-            <div className="mt-4 space-y-3">
-              {(newStatus === "LOADING_VEHICLE" || newStatus === "ASSIGNED_DRIVER") && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Vehicle Number / Registration: <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. AP 05 TX 4589 / TS 09 EA 1234"
-                    value={statusVehicleNo}
-                    onChange={(e) => setStatusVehicleNo(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono uppercase focus:border-etukas-red focus:outline-none"
-                  />
                 </div>
-              )}
+              </div>
+            ) : (
+              <>
+                {/* Status options */}
+                <div className="mt-4">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+                    Select Delivery Stage:
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-semibold">
+                    {[
+                      { id: "CONFIRMED", label: "Confirmed by Seller", icon: CheckCircle2, rank: 1 },
+                      { id: "LOADING_VEHICLE", label: "Loading on Vehicle", icon: PackageCheck, rank: 2 },
+                      { id: "ASSIGNED_DRIVER", label: "Assigned Delivery Partner", icon: Truck, rank: 3 },
+                      { id: "DELIVERED", label: "Delivered to Site", icon: BadgeCheck, rank: 4 },
+                      { id: "REJECTED", label: "Reject Order", icon: AlertTriangle, rank: -1 }
+                    ].map((st) => {
+                      const currentRank =
+                        livePartnerOrder.status === "CONFIRMED" ? 1
+                          : livePartnerOrder.status === "LOADING_VEHICLE" ? 2
+                          : livePartnerOrder.status === "ASSIGNED_DRIVER" ? 3
+                          : livePartnerOrder.status === "DELIVERED" ? 4
+                          : 0;
+                      const isBackward = st.rank > 0 && st.rank < currentRank;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          disabled={isBackward}
+                          onClick={() => setNewStatus(st.id)}
+                          className={`flex items-center gap-2 p-2.5 rounded-xl border text-left transition ${
+                            isBackward
+                              ? "border-gray-100 bg-gray-50 text-gray-300 cursor-not-allowed"
+                              : newStatus === st.id
+                              ? "border-etukas-red bg-red-50 text-etukas-red ring-2 ring-red-100 font-bold"
+                              : "border-gray-200 bg-white hover:border-gray-300 text-gray-700"
+                          }`}
+                        >
+                          <st.icon size={16} />
+                          <span>{st.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
 
-              {newStatus === "ASSIGNED_DRIVER" && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* Dynamic Conditional Fields */}
+                <div className="mt-4 space-y-3">
+                  {(newStatus === "LOADING_VEHICLE" || newStatus === "ASSIGNED_DRIVER") && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Vehicle Number / Registration: <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g. AP 05 TX 4589 / TS 09 EA 1234"
+                        value={statusVehicleNo}
+                        onChange={(e) => setStatusVehicleNo(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono uppercase focus:border-etukas-red focus:outline-none"
+                      />
+                    </div>
+                  )}
+
+                  {newStatus === "ASSIGNED_DRIVER" && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Driver Name: <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Driver full name"
+                          value={statusDriverName}
+                          onChange={(e) => setStatusDriverName(e.target.value)}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1">
+                          Driver Contact Phone: <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="tel"
+                          placeholder="10-digit mobile number"
+                          value={statusDriverPhone}
+                          onChange={(e) => setStatusDriverPhone(e.target.value)}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono focus:border-etukas-red focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {newStatus === "REJECTED" && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1">
+                        Rejection Reason: <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        rows={2}
+                        placeholder="Provide reason for rejecting (out of stock, site unserviceable, etc.)"
+                        value={statusRejectionReason}
+                        onChange={(e) => setStatusRejectionReason(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Driver Name: <span className="text-red-500">*</span>
+                      Status Note / Dispatch Note (Visible to customer in live tracking):
                     </label>
                     <input
                       type="text"
-                      placeholder="Driver full name"
-                      value={statusDriverName}
-                      onChange={(e) => setStatusDriverName(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">
-                      Driver Contact Phone: <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="tel"
-                      placeholder="10-digit mobile number"
-                      value={statusDriverPhone}
-                      onChange={(e) => setStatusDriverPhone(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono focus:border-etukas-red focus:outline-none"
+                      placeholder="e.g. Dispatched from warehouse"
+                      value={statusNote}
+                      onChange={(e) => setStatusNote(e.target.value)}
+                      className="w-full rounded-xl border border-gray-200 px-3 py-1.5 text-xs focus:border-etukas-red focus:outline-none"
                     />
                   </div>
                 </div>
-              )}
 
-              {newStatus === "REJECTED" && (
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">
-                    Rejection Reason: <span className="text-red-500">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    placeholder="Provide reason for rejecting (out of stock, site unserviceable, etc.)"
-                    value={statusRejectionReason}
-                    onChange={(e) => setStatusRejectionReason(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-etukas-red focus:outline-none"
-                  />
+                {/* Action buttons */}
+                <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrderForStatus(null)}
+                    className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={updateOrderTrackingMutation.isPending}
+                    onClick={() => {
+                      if ((newStatus === "LOADING_VEHICLE" || newStatus === "ASSIGNED_DRIVER") && !statusVehicleNo.trim()) {
+                        alert("Please enter the vehicle number.");
+                        return;
+                      }
+                      if (newStatus === "ASSIGNED_DRIVER") {
+                        if (!statusDriverName.trim() || !statusDriverPhone.trim()) {
+                          alert("Please enter driver name and contact number.");
+                          return;
+                        }
+                        const digits = statusDriverPhone.replace(/\D/g, "");
+                        if (digits.length < 10 || digits.length > 15) {
+                          alert("Please enter a valid 10-digit driver phone number.");
+                          return;
+                        }
+                      }
+                      if (newStatus === "REJECTED" && !statusRejectionReason.trim()) {
+                        alert("Please provide the rejection reason.");
+                        return;
+                      }
+                      updateOrderTrackingMutation.mutate({
+                        orderId: livePartnerOrder.id,
+                        data: {
+                          status: newStatus,
+                          vehicleNumber: (newStatus === "LOADING_VEHICLE" || newStatus === "ASSIGNED_DRIVER")
+                            ? statusVehicleNo.trim()
+                            : (statusVehicleNo.trim() || undefined),
+                          driverName: newStatus === "ASSIGNED_DRIVER"
+                            ? statusDriverName.trim()
+                            : (statusDriverName.trim() || undefined),
+                          driverPhone: newStatus === "ASSIGNED_DRIVER"
+                            ? statusDriverPhone.trim()
+                            : (statusDriverPhone.trim() || undefined),
+                          rejectionReason: newStatus === "REJECTED" ? statusRejectionReason.trim() : undefined,
+                          note: statusNote.trim() || undefined
+                        }
+                      });
+                    }}
+                    className="rounded-xl bg-etukas-red px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 active:scale-95 disabled:opacity-50"
+                  >
+                    {updateOrderTrackingMutation.isPending ? "Updating Live Status..." : "Save & Update Live Status"}
+                  </button>
                 </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">
-                  Status Note / Dispatch Note (Visible to customer in live tracking):
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Dispatched from warehouse"
-                  value={statusNote}
-                  onChange={(e) => setStatusNote(e.target.value)}
-                  className="w-full rounded-xl border border-gray-200 px-3 py-1.5 text-xs focus:border-etukas-red focus:outline-none"
-                />
-              </div>
-            </div>
-
-            {/* Action buttons */}
-            <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-100 pt-4">
-              <button
-                type="button"
-                onClick={() => setSelectedOrderForStatus(null)}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={updateOrderTrackingMutation.isPending}
-                onClick={() => {
-                  if (newStatus === "LOADING_VEHICLE" && !statusVehicleNo.trim()) {
-                    alert("Please enter the vehicle number for loading status.");
-                    return;
-                  }
-                  if (newStatus === "ASSIGNED_DRIVER" && (!statusDriverName.trim() || !statusDriverPhone.trim())) {
-                    alert("Please enter driver name and contact number.");
-                    return;
-                  }
-                  if (newStatus === "REJECTED" && !statusRejectionReason.trim()) {
-                    alert("Please provide the rejection reason.");
-                    return;
-                  }
-                  updateOrderTrackingMutation.mutate({
-                    orderId: selectedOrderForStatus.id,
-                    data: {
-                      status: newStatus,
-                      vehicleNumber: statusVehicleNo.trim() || undefined,
-                      driverName: statusDriverName.trim() || undefined,
-                      driverPhone: statusDriverPhone.trim() || undefined,
-                      rejectionReason: statusRejectionReason.trim() || undefined,
-                      note: statusNote.trim() || undefined
-                    }
-                  });
-                }}
-                className="rounded-xl bg-etukas-red px-5 py-2 text-xs font-bold text-white shadow-md hover:bg-red-700 active:scale-95 disabled:opacity-50"
-              >
-                {updateOrderTrackingMutation.isPending ? "Updating Live Status..." : "Save & Update Live Status"}
-              </button>
-            </div>
+              </>
+            )}
           </div>
         </div>
       )}

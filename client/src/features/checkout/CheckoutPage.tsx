@@ -100,7 +100,7 @@ export function CheckoutPage() {
         imageUrl: item.storeProduct.product.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
         category: item.storeProduct.product.category?.name || "Building Material",
         storeId: item.storeProduct.store.id,
-        storeName: "Etukas Verified Partner Store"
+        storeName: item.storeProduct.store.name || "Etukas Verified Partner Store"
       }));
     }
     // Fallback item for demo if cart was empty
@@ -145,7 +145,7 @@ export function CheckoutPage() {
           imageUrl: item.storeProduct.product.images?.[0]?.url || FALLBACK_PRODUCT_IMAGE,
           category: item.storeProduct.product.category?.name || "Building Material",
           storeId: item.storeProduct.store.id,
-          storeName: "Etukas Verified Partner Store"
+          storeName: item.storeProduct.store.name || "Etukas Verified Partner Store"
         }))
       );
     }
@@ -197,7 +197,13 @@ export function CheckoutPage() {
       setPlacedOrder(data.order);
       void queryClient.invalidateQueries({ queryKey: ["cart"] });
       void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });
+      void queryClient.invalidateQueries({ queryKey: ["partner-orders"] });
       void queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+      const targetId = data.order.orderNumber || data.order.id;
+      navigate(`/order-confirmed/${encodeURIComponent(targetId)}`, {
+        replace: true,
+        state: { initialOrder: data.order }
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
