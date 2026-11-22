@@ -260,22 +260,38 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const marketplaceApi = {
   categories: (options?: RequestOptions) => api<Category[]>("/categories", { signal: options?.signal }),
   products: (
-    params?: { category?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number },
+    params?: { category?: string; brand?: string; city?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number },
     options?: RequestOptions
   ) => {
     const query = new URLSearchParams();
     query.set("pageSize", String(params?.pageSize ?? 24));
     if (params?.category) query.set("category", params.category);
+    if (params?.brand) query.set("brand", params.brand);
+    if (params?.city) query.set("city", params.city);
     if (params?.q) query.set("q", params.q);
     if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
     if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
     return api<StoreProduct[]>(`/products?${query.toString()}`, { signal: options?.signal });
   },
+  productById: (
+    id: string,
+    params?: { latitude?: number; longitude?: number; city?: string },
+    options?: RequestOptions
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
+    if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
+    if (params?.city) query.set("city", params.city);
+    const qs = query.toString();
+    return api<StoreProduct>(`/products/${encodeURIComponent(id)}${qs ? `?${qs}` : ""}`, { signal: options?.signal });
+  },
   getProductReviews: (productId: string, options?: RequestOptions) =>
     api<ProductReviewsResult>(`/products/${encodeURIComponent(productId)}/reviews`, { signal: options?.signal }),
-  stores: (params?: { city?: string }, options?: RequestOptions) => {
+  stores: (params?: { city?: string; latitude?: number; longitude?: number }, options?: RequestOptions) => {
     const query = new URLSearchParams();
     if (params?.city) query.set("city", params.city);
+    if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
+    if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
     const qs = query.toString();
     return api<Store[]>(qs ? `/stores/nearby?${qs}` : "/stores/nearby", { signal: options?.signal });
   },
@@ -362,9 +378,9 @@ export const marketplaceApi = {
     }),
   getCustomerServiceBookings: (options?: RequestOptions) => api<Record<string, unknown>[]>("/technicians/customer/bookings", { signal: options?.signal }),
   sellerProducts: (options?: RequestOptions) => api<SellerProductListing[]>("/seller/products", { signal: options?.signal }),
-  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; imageBase64?: string; description?: string }) =>
+  sellerAddProduct: (body: { name: string; category: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; deliveryRadiusKm?: number; imageBase64?: string; description?: string }) =>
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
-  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; discountMinor?: number; stockQuantity?: number; minOrderQuantity?: number; name?: string; unit?: string; description?: string }) =>
+  sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; discountMinor?: number; stockQuantity?: number; minOrderQuantity?: number; deliveryRadiusKm?: number; name?: string; unit?: string; description?: string }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
   submitOrderReview: (orderId: string, body: { rating: number; comment?: string }) =>
     api<{ message: string; review: { rating: number; comment?: string; createdAt: string }; order: OrderRecord }>(`/orders/${encodeURIComponent(orderId)}/reviews`, {
@@ -490,6 +506,7 @@ export type Store = {
   city: string;
   state: string;
   serviceRadiusKm: number;
+  distanceKm?: number | null;
   sellerProfile?: { businessName: string; verificationStatus: string };
 };
 
@@ -501,6 +518,9 @@ export type StoreProduct = {
   stockQuantity: number;
   minOrderQuantity: number;
   deliveryEta: string;
+  deliveryRadiusKm?: number;
+  distanceKm?: number | null;
+  isDeliverable?: boolean;
   updatedAt?: string;
   store: Store;
   product: {
@@ -691,6 +711,7 @@ export type SellerProductListing = {
   discountMinor?: number;
   stockQuantity: number;
   minOrderQuantity?: number;
+  deliveryRadiusKm?: number;
   isActive: boolean;
   product: {
     id: string;

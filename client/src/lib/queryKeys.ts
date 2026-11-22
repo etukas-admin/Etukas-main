@@ -15,11 +15,11 @@ export const queryKeys = {
   products: {
     all: ["products"] as const,
     list: (params?: Record<string, unknown>) => ["products", params ?? {}] as const,
-    detail: (id: string) => ["products", "detail", id] as const
+    detail: (id: string, params?: Record<string, unknown>) => ["products", "detail", id, params ?? {}] as const
   },
   stores: {
     all: ["stores"] as const,
-    nearby: (city?: string) => ["stores", city ?? ""] as const
+    nearby: (params?: string | Record<string, unknown>) => ["stores", params ?? ""] as const
   },
   technicians: {
     all: ["technicians"] as const,

@@ -1,4 +1,4 @@
-﻿import { useRef } from "react";
+import { useRef } from "react";
 import { ChevronLeft, ChevronRight, Sparkles, MapPin, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { StoreProduct, getProductImageUrl } from "../../services/api";
@@ -8,10 +8,11 @@ import { Skeleton } from "../../components/ui/Skeleton";
 interface FlashDealsCarouselProps {
   products?: StoreProduct[];
   isLoading?: boolean;
+  locationCity?: string;
   onProductSelect?: (product: StoreProduct) => void;
 }
 
-export function FlashDealsCarousel({ products, isLoading, onProductSelect }: FlashDealsCarouselProps) {
+export function FlashDealsCarousel({ products, isLoading, locationCity, onProductSelect }: FlashDealsCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scroll = (direction: "left" | "right") => {
@@ -51,7 +52,7 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
             Fast-Moving Building Materials
           </h2>
           <p className="mt-0.5 text-xs text-gray-600 sm:text-sm">
-            Cement bags, steel TMT bars, and red bricks from nearby local yards in Hyderabad
+            Cement bags, steel TMT bars, and red bricks from nearby local yards delivering to {locationCity || "your area"}
           </p>
         </div>
 
@@ -105,7 +106,22 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
                 </div>
               </div>
             ))
-          : flashProducts.map((item) => {
+          : flashProducts.length === 0 ? (
+            <div className="w-full rounded-xl border border-dashed border-gray-200 bg-gray-50/80 p-6 text-center">
+              <p className="text-sm font-bold text-gray-800">
+                No sellers currently deliver materials to {locationCity || "your location"}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Only products whose seller delivery radius covers your site are displayed here.
+              </p>
+              <Link
+                to="/location"
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-etukas-red px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+              >
+                <MapPin size={13} /> Change Delivery Location
+              </Link>
+            </div>
+          ) : flashProducts.map((item) => {
               const discountMinor = item.discountMinor ?? 0;
               const originalMrp = discountMinor > 0 ? item.priceMinor + discountMinor : Math.round(item.priceMinor * 1.15);
               const discountPercent = Math.max(
@@ -168,7 +184,7 @@ export function FlashDealsCarousel({ products, isLoading, onProductSelect }: Fla
                           <span className="truncate">{item.store.name}</span>
                         </span>
                         <span className="rounded bg-green-50 px-1.5 py-0.5 text-[10px] font-bold text-green-700">
-                          {item.deliveryEta}
+                          {item.distanceKm != null ? `${item.distanceKm} km` : item.deliveryEta}
                         </span>
                       </div>
 

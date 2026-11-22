@@ -42,6 +42,7 @@ const newMaterialSchema = z.object({
   discountMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
   stockQuantity: z.coerce.number().int().min(0).max(10_000_000),
   minOrderQuantity: z.coerce.number().int().positive().max(1_000_000).optional(),
+  deliveryRadiusKm: z.coerce.number().int().min(1).max(500).optional(),
   imageBase64: z.string().optional(),
   description: z.string().max(1000).optional()
 });
@@ -355,6 +356,7 @@ sellerRouter.post("/products", async (req, res, next) => {
           discountMinor: input.discountMinor ?? 0,
           stockQuantity: input.stockQuantity,
           minOrderQuantity: input.minOrderQuantity ?? 1,
+          deliveryRadiusKm: input.deliveryRadiusKm ?? store.serviceRadiusKm ?? 25,
           isActive: approved
         },
         include: {
@@ -393,6 +395,7 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
       discountMinor: z.coerce.number().int().min(0).max(100_000_000).optional(),
       stockQuantity: z.coerce.number().int().min(0).max(10_000_000).optional(),
       minOrderQuantity: z.coerce.number().int().positive().optional(),
+      deliveryRadiusKm: z.coerce.number().int().min(1).max(500).optional(),
       isActive: z.boolean().optional(),
       name: z.string().min(2).max(200).optional(),
       unit: z.string().min(1).max(50).optional(),

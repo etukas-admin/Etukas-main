@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useProducts } from "../../hooks/useMarketplace";
+import { useProduct, useProducts } from "../../hooks/useMarketplace";
 import { ProductDetailsView } from "./ProductDetailsView";
 import { getSelectedAddress, ADDRESS_CHANGE_EVENT } from "../location/locationStore";
 import { Skeleton } from "../../components/ui/Skeleton";
@@ -16,22 +16,26 @@ export function ProductDetailsPage() {
     return () => window.removeEventListener(ADDRESS_CHANGE_EVENT, handleAddressChange);
   }, []);
 
-  const products = useProducts({
-    pageSize: 50,
+  const locationParams = {
     latitude: activeAddress?.latitude,
     longitude: activeAddress?.longitude,
+    city: activeAddress?.city || activeAddress?.district
+  };
+
+  const productQuery = useProduct(id, locationParams);
+
+  const relatedQuery = useProducts({
+    category: productQuery.data?.product.category?.slug,
+    pageSize: 12,
+    ...locationParams
   });
 
-  const product = products.data?.find((item) => item.id === id);
+  const product = productQuery.data;
   const relatedProducts = product
-    ? (products.data ?? []).filter(
-        (item) =>
-          item.product.category?.slug === product.product.category?.slug &&
-          item.id !== product.id
-      )
+    ? (relatedQuery.data ?? []).filter((item) => item.id !== product.id)
     : [];
 
-  if (products.isLoading) {
+  if (productQuery.isLoading) {
     return (
       <div className="mx-auto max-w-5xl px-4 py-8">
         <Skeleton className="h-14 w-full rounded-2xl mb-6" />
@@ -75,4 +79,3 @@ export function ProductDetailsPage() {
     />
   );
 }
-

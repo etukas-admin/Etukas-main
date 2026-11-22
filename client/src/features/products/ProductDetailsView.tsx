@@ -368,6 +368,27 @@ export function ProductDetailsView({
                 </p>
               )}
 
+              {/* Out of delivery range alert when customer opens a direct link outside seller radius */}
+              {product.isDeliverable === false && (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-900">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-extrabold">Outside seller&apos;s delivery radius</p>
+                      <p className="mt-0.5 text-red-700">
+                        This product delivers within <strong>{product.deliveryRadiusKm ?? product.store.serviceRadiusKm ?? 25} km</strong> of {product.store.city}
+                        {product.distanceKm != null ? ` (your site is ${product.distanceKm} km away)` : ""}.
+                      </p>
+                    </div>
+                    <Link
+                      to="/location"
+                      className="rounded-lg bg-etukas-red px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+                    >
+                      Change Location
+                    </Link>
+                  </div>
+                </div>
+              )}
+
               {/* Cement Grade Selection (Radio Buttons) */}
               {isCement && (
                 <div className="mt-5 rounded-xl border border-amber-200/80 bg-amber-50/40 p-4">
@@ -593,7 +614,13 @@ export function ProductDetailsView({
                       <div className="text-xs text-gray-500">
                         <span>{product.store.city}, {product.store.state}</span>
                         <span className="mx-1.5 text-gray-400">•</span>
-                        <span>Radius {product.store.serviceRadiusKm} km</span>
+                        <span>Delivery Range: {product.deliveryRadiusKm ?? product.store.serviceRadiusKm ?? 25} km</span>
+                        {product.distanceKm != null && (
+                          <>
+                            <span className="mx-1.5 text-gray-400">•</span>
+                            <span className="font-semibold text-emerald-700">{product.distanceKm} km from your site</span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -828,8 +855,8 @@ export function ProductDetailsView({
             <button
               type="button"
               onClick={() => addToCart(product.id, effectiveQuantity)}
-              disabled={isAdding}
-              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold text-gray-900 shadow-sm transition hover:bg-gray-50 active:scale-95 disabled:opacity-60"
+              disabled={isAdding || product.isDeliverable === false}
+              className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-extrabold text-gray-900 shadow-sm transition hover:bg-gray-50 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ShoppingBag size={16} />
               <span>{isAdding ? "Adding..." : "Add to cart"}</span>
@@ -838,10 +865,10 @@ export function ProductDetailsView({
             <button
               type="button"
               onClick={handleBuyNow}
-              disabled={isBuying || isAdding}
-              className="flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-5 sm:px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-red-700 active:scale-95 disabled:opacity-75"
+              disabled={isBuying || isAdding || product.isDeliverable === false}
+              className="flex items-center justify-center gap-1.5 rounded-xl bg-etukas-red px-5 sm:px-8 py-2.5 sm:py-3 text-xs sm:text-sm font-black text-white shadow-md transition hover:bg-red-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isBuying ? "Proceeding..." : "Buy now"}
+              {product.isDeliverable === false ? "Out of range" : isBuying ? "Proceeding..." : "Buy now"}
             </button>
           </div>
         </div>

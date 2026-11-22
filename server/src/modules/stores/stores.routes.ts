@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../config/prisma.js";
+import { calculateDistanceKm, parseCoordinate } from "../../utils/geo.js";
 import { HttpError, sendOk } from "../../utils/http.js";
 
 export const storesRouter = Router();
@@ -23,6 +24,57 @@ storesRouter.get("/", async (_req, res, next) => {
 storesRouter.get("/nearby", async (req, res, next) => {
   try {
     const city = typeof req.query.city === "string" && req.query.city.trim() !== "" ? req.query.city.trim() : undefined;
+    const customerLat = parseCoordinate(req.query.latitude);
+    const customerLng = parseCoordinate(req.query.longitude);
+
+    if (customerLat !== null && customerLng !== null) {
+      const allStores = await prisma.store.findMany({
+        where: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } },
+        include: {
+          sellerProfile: { select: { businessName: true, verificationStatus: true } },
+          storeProducts: { where: { isActive: true }, select: { deliveryRadiusKm: true } }
+        }
+      });
+
+      const nearby = allStores
+        .map(({ storeProducts, ...store }) => {
+          const sLat = parseCoordinate(store.latitude);
+          const sLng = parseCoordinate(store.longitude);
+          // Effective store reach is the max of its serviceRadiusKm and any active product's deliveryRadiusKm
+          const maxProductRadius = storeProducts.reduce(
+            (max, sp) => Math.max(max, sp.deliveryRadiusKm ?? 0),
+            0
+          );
+          const effectiveRadiusKm = Math.max(store.serviceRadiusKm ?? 25, maxProductRadius);
+
+          if (sLat !== null && sLng !== null) {
+            const distanceKm = calculateDistanceKm(customerLat, customerLng, sLat, sLng);
+            return {
+              ...store,
+              serviceRadiusKm: effectiveRadiusKm,
+              distanceKm,
+              inRange: distanceKm <= effectiveRadiusKm
+            };
+          }
+
+          const cityMatches = Boolean(
+            city && store.city.toLowerCase().includes(city.toLowerCase())
+          );
+          return {
+            ...store,
+            serviceRadiusKm: effectiveRadiusKm,
+            distanceKm: null as number | null,
+            inRange: cityMatches
+          };
+        })
+        .filter((s) => s.inRange)
+        .sort((a, b) => (a.distanceKm ?? Number.POSITIVE_INFINITY) - (b.distanceKm ?? Number.POSITIVE_INFINITY))
+        .slice(0, 12)
+        .map(({ inRange: _inRange, ...rest }) => rest);
+
+      return sendOk(res, nearby, 200, { provider: "geo", city: city || "Nearby" });
+    }
+
     let stores = city
       ? await prisma.store.findMany({
           where: { isActive: true, city: { contains: city, mode: "insensitive" }, sellerProfile: { verificationStatus: "APPROVED" } },
