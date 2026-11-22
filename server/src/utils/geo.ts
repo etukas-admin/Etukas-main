@@ -96,3 +96,13 @@ export function evaluateProductDeliveryRange(params: {
 
   return { deliveryRadiusKm, distanceKm: null, isDeliverable: false };
 }
+
+export function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { code?: string; message?: string; meta?: { column?: string } };
+  if (err.code !== "P2022") return false;
+  const target = columnName.toLowerCase();
+  const metaCol = String(err.meta?.column ?? "").toLowerCase();
+  const msg = String(err.message ?? "").toLowerCase();
+  return metaCol.includes(target) || msg.includes(target);
+}

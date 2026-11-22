@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { productQuerySchema } from "@etukas/shared";
 import { prisma } from "../../config/prisma.js";
-import { evaluateProductDeliveryRange, parseCoordinate } from "../../utils/geo.js";
+import { evaluateProductDeliveryRange, isMissingColumnError, parseCoordinate } from "../../utils/geo.js";
 import { HttpError, sendOk } from "../../utils/http.js";
 import { loadOrders } from "../orders/orders.routes.js";
 
@@ -133,15 +133,43 @@ productsRouter.get("/", async (req, res, next) => {
       store: true
     };
 
+    const legacySelect = {
+      id: true,
+      storeId: true,
+      productId: true,
+      sku: true,
+      priceMinor: true,
+      currency: true,
+      taxRateBps: true,
+      discountMinor: true,
+      stockQuantity: true,
+      minOrderQuantity: true,
+      deliveryEta: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true,
+      ...include
+    };
+
     const hasCoordinates = query.latitude !== undefined && query.longitude !== undefined;
 
     if (hasCoordinates) {
       // Fetch matching listings and strictly filter by each product's partner-configured delivery radius
-      const candidates = await prisma.storeProduct.findMany({
-        where,
-        include,
-        orderBy
-      });
+      let candidates: any[];
+      try {
+        candidates = await prisma.storeProduct.findMany({
+          where,
+          include,
+          orderBy
+        });
+      } catch (err) {
+        if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+        candidates = await prisma.storeProduct.findMany({
+          where,
+          select: legacySelect,
+          orderBy
+        });
+      }
 
       const deliverableItems = candidates
         .map((item) => {
@@ -183,16 +211,32 @@ productsRouter.get("/", async (req, res, next) => {
       });
     }
 
-    const [items, total] = await Promise.all([
-      prisma.storeProduct.findMany({
-        where,
-        include,
-        orderBy,
-        skip,
-        take: query.pageSize
-      }),
-      prisma.storeProduct.count({ where })
-    ]);
+    let items: any[];
+    let total: number;
+    try {
+      [items, total] = await Promise.all([
+        prisma.storeProduct.findMany({
+          where,
+          include,
+          orderBy,
+          skip,
+          take: query.pageSize
+        }),
+        prisma.storeProduct.count({ where })
+      ]);
+    } catch (err) {
+      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+      [items, total] = await Promise.all([
+        prisma.storeProduct.findMany({
+          where,
+          select: legacySelect,
+          orderBy,
+          skip,
+          take: query.pageSize
+        }),
+        prisma.storeProduct.count({ where })
+      ]);
+    }
 
     const formatted = items.map((item) => {
       const range = evaluateProductDeliveryRange({
@@ -215,30 +259,57 @@ productsRouter.get("/", async (req, res, next) => {
 
 productsRouter.get("/:id", async (req, res, next) => {
   try {
-    const item = await prisma.storeProduct.findFirst({
-      where: {
-        id: req.params.id,
-        isActive: true,
-        store: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } }
-      },
-      include: {
-        product: {
-          include: {
-            category: true,
-            images: {
-              select: {
-                id: true,
-                productId: true,
-                url: true,
-                altText: true,
-                sortOrder: true
-              }
+    const detailInclude = {
+      product: {
+        include: {
+          category: true,
+          images: {
+            select: {
+              id: true,
+              productId: true,
+              url: true,
+              altText: true,
+              sortOrder: true
             }
           }
-        },
-        store: true
-      }
-    });
+        }
+      },
+      store: true
+    };
+    const detailWhere = {
+      id: req.params.id,
+      isActive: true,
+      store: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" as const } }
+    };
+    let item: any;
+    try {
+      item = await prisma.storeProduct.findFirst({
+        where: detailWhere,
+        include: detailInclude
+      });
+    } catch (err) {
+      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+      item = await prisma.storeProduct.findFirst({
+        where: detailWhere,
+        select: {
+          id: true,
+          storeId: true,
+          productId: true,
+          sku: true,
+          priceMinor: true,
+          currency: true,
+          taxRateBps: true,
+          discountMinor: true,
+          stockQuantity: true,
+          minOrderQuantity: true,
+          deliveryEta: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true,
+          ...detailInclude
+        }
+      });
+    }
     if (!item) throw new HttpError(404, "PRODUCT_NOT_FOUND", "Product listing not found");
 
     const customerLat = parseCoordinate(req.query.latitude);

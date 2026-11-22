@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../../config/prisma.js";
-import { calculateDistanceKm, parseCoordinate } from "../../utils/geo.js";
+import { calculateDistanceKm, isMissingColumnError, parseCoordinate } from "../../utils/geo.js";
 import { HttpError, sendOk } from "../../utils/http.js";
 
 export const storesRouter = Router();
@@ -28,23 +28,33 @@ storesRouter.get("/nearby", async (req, res, next) => {
     const customerLng = parseCoordinate(req.query.longitude);
 
     if (customerLat !== null && customerLng !== null) {
-      const allStores = await prisma.store.findMany({
-        where: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } },
-        include: {
-          sellerProfile: { select: { businessName: true, verificationStatus: true } },
-          storeProducts: { where: { isActive: true }, select: { deliveryRadiusKm: true } }
-        }
-      });
+      let allStores: any[];
+      try {
+        allStores = await prisma.store.findMany({
+          where: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } },
+          include: {
+            sellerProfile: { select: { businessName: true, verificationStatus: true } },
+            storeProducts: { where: { isActive: true }, select: { deliveryRadiusKm: true } }
+          }
+        });
+      } catch (err) {
+        if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+        allStores = await prisma.store.findMany({
+          where: { isActive: true, sellerProfile: { verificationStatus: "APPROVED" } },
+          include: {
+            sellerProfile: { select: { businessName: true, verificationStatus: true } }
+          }
+        });
+      }
 
       const nearby = allStores
         .map(({ storeProducts, ...store }) => {
           const sLat = parseCoordinate(store.latitude);
           const sLng = parseCoordinate(store.longitude);
           // Effective store reach is the max of its serviceRadiusKm and any active product's deliveryRadiusKm
-          const maxProductRadius = storeProducts.reduce(
-            (max, sp) => Math.max(max, sp.deliveryRadiusKm ?? 0),
-            0
-          );
+          const maxProductRadius = Array.isArray(storeProducts)
+            ? storeProducts.reduce((max: number, sp: { deliveryRadiusKm?: number | null }) => Math.max(max, sp.deliveryRadiusKm ?? 0), 0)
+            : 0;
           const effectiveRadiusKm = Math.max(store.serviceRadiusKm ?? 25, maxProductRadius);
 
           if (sLat !== null && sLng !== null) {

@@ -17,6 +17,7 @@ import { z } from "zod";
 import { OrderStatus, Role, VerificationStatus } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
+import { isMissingColumnError } from "../../utils/geo.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
 
 export const sellerRouter = Router();
@@ -167,7 +168,9 @@ sellerRouter.get("/dashboard", async (req, res, next) => {
         verificationStatus: profile.verificationStatus
       });
     }
-    const storeIds = (await prisma.store.findMany({ where: { sellerProfileId: profile.id }, select: { id: true } })).map((store) => store.id);
+    const storeIds: string[] = Array.isArray((profile as any).stores) && (profile as any).stores.length > 0
+      ? (profile as any).stores.map((store: { id: string }) => store.id)
+      : (await prisma.store.findMany({ where: { sellerProfileId: profile.id }, select: { id: true } })).map((store) => store.id);
     const [sellerOrders, products, lowStock] = await Promise.all([
       getMergedSellerOrders(profile, storeIds),
       prisma.storeProduct.count({ where: { storeId: { in: storeIds } } }),
@@ -235,43 +238,80 @@ sellerRouter.get("/profile", async (req, res, next) => {
   }
 });
 
+const SELLER_LISTING_INCLUDE = {
+  product: {
+    include: {
+      images: {
+        select: {
+          id: true,
+          productId: true,
+          url: true,
+          altText: true,
+          sortOrder: true
+        }
+      },
+      category: true
+    }
+  },
+  store: true
+} as const;
+
+const SELLER_LISTING_LEGACY_SELECT = {
+  id: true,
+  storeId: true,
+  productId: true,
+  sku: true,
+  priceMinor: true,
+  currency: true,
+  taxRateBps: true,
+  discountMinor: true,
+  stockQuantity: true,
+  minOrderQuantity: true,
+  deliveryEta: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+  ...SELLER_LISTING_INCLUDE
+} as const;
+
+function formatSellerListing(listing: any) {
+  return {
+    ...listing,
+    deliveryRadiusKm: listing.deliveryRadiusKm ?? listing.store?.serviceRadiusKm ?? 25,
+    product: {
+      ...listing.product,
+      images: (listing.product?.images ?? []).map((img: any) => ({
+        id: img.id,
+        productId: img.productId,
+        url: img.url && img.url.trim() !== ""
+          ? img.url
+          : `/api/v1/products/${img.productId}/images/${img.id}`,
+        altText: img.altText,
+        sortOrder: img.sortOrder
+      }))
+    }
+  };
+}
+
 sellerRouter.get("/products", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
-    const listings = await prisma.storeProduct.findMany({
-      where: { store: { sellerProfileId: profile.id } },
-      include: {
-        product: {
-          include: {
-            images: {
-              select: {
-                id: true,
-                productId: true,
-                url: true,
-                altText: true,
-                sortOrder: true
-              }
-            },
-            category: true
-          }
-        },
-        store: true
-      },
-      orderBy: { updatedAt: "desc" }
-    });
-    const formattedListings = listings.map((listing) => ({
-      ...listing,
-      product: {
-        ...listing.product,
-        images: listing.product.images.map((img) => ({
-          ...img,
-          url: (img.url && img.url.trim() !== "")
-            ? img.url
-            : `/api/v1/products/${img.productId}/images/${img.id}`
-        }))
-      }
-    }));
-    return sendOk(res, formattedListings);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    let listings: any[];
+    try {
+      listings = await prisma.storeProduct.findMany({
+        where: { store: { sellerProfileId: profile.id } },
+        include: SELLER_LISTING_INCLUDE,
+        orderBy: { updatedAt: "desc" }
+      });
+    } catch (err) {
+      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+      listings = await prisma.storeProduct.findMany({
+        where: { store: { sellerProfileId: profile.id } },
+        select: SELLER_LISTING_LEGACY_SELECT,
+        orderBy: { updatedAt: "desc" }
+      });
+    }
+    return sendOk(res, listings.map(formatSellerListing));
   } catch (error) {
     next(error);
   }
@@ -280,11 +320,14 @@ sellerRouter.get("/products", async (req, res, next) => {
 sellerRouter.post("/products", async (req, res, next) => {
   try {
     const input = newMaterialSchema.parse(req.body);
-    const profile = await sellerProfile(req.user!.id);
-    const store = await prisma.store.findFirst({
-      where: { sellerProfileId: profile.id },
-      orderBy: { createdAt: "asc" }
-    });
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    const profileStores = Array.isArray((profile as any).stores) ? (profile as any).stores : [];
+    const store =
+      profileStores[0] ??
+      (await prisma.store.findFirst({
+        where: { sellerProfileId: profile.id },
+        orderBy: { createdAt: "asc" }
+      }));
     if (!store) throw new HttpError(404, "STORE_NOT_FOUND", "Store not found");
 
     const approved = profile.verificationStatus === VerificationStatus.APPROVED;
@@ -297,7 +340,7 @@ sellerRouter.post("/products", async (req, res, next) => {
     let imageMimeType: string | undefined;
     let imageSizeBytes: number | undefined;
     if (input.imageBase64) {
-      const match = input.imageBase64.match(/^data:([a-zA-Z0-9+/]+\/[a-zA-Z0-9+/]+);base64,(.+)$/);
+      const match = input.imageBase64.match(/^data:([a-zA-Z0-9.+/-]+\/[a-zA-Z0-9.+/-]+);base64,(.+)$/);
       if (!match) throw new HttpError(400, "INVALID_IMAGE", "Invalid image data format");
       const [, mimeType, b64data] = match;
       if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
@@ -311,72 +354,90 @@ sellerRouter.post("/products", async (req, res, next) => {
       imageSizeBytes = imageDataBuffer.length;
     }
 
-    const listing = await prisma.$transaction(async (transaction) => {
-      const category = categoryInfo[input.category];
-      const dbCategory = await transaction.category.upsert({
-        where: { slug: category.slug },
-        update: { isActive: true },
-        create: { ...category, isActive: true }
-      });
-      const product = await transaction.product.create({
-        data: {
+    // Ensure category exists (single lightweight upsert outside interactive transaction)
+    const category = categoryInfo[input.category];
+    const dbCategory = await prisma.category.upsert({
+      where: { slug: category.slug },
+      update: { isActive: true },
+      create: { ...category, isActive: true }
+    });
+
+    // Pre-generate IDs so Product + ProductImage + StoreProduct + InventoryMovement
+    // execute as ONE atomic nested Prisma write (no 5s interactive transaction timeout, no 500KB readback)
+    const productId = randomUUID();
+    const imageId = imageDataBuffer && imageMimeType ? randomUUID() : undefined;
+    const sku = `ETK-${randomUUID().slice(0, 12).toUpperCase()}`;
+    const slugBase = input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120) || "material";
+    const productSlug = `${slugBase}-${randomUUID().slice(0, 8)}`;
+    const resolvedRadiusKm = input.deliveryRadiusKm ?? store.serviceRadiusKm ?? 25;
+
+    const baseCreateData = {
+      sku,
+      priceMinor: input.priceMinor,
+      discountMinor: input.discountMinor ?? 0,
+      stockQuantity: input.stockQuantity,
+      minOrderQuantity: input.minOrderQuantity ?? 1,
+      isActive: approved,
+      store: { connect: { id: store.id } },
+      product: {
+        create: {
+          id: productId,
           categoryId: dbCategory.id,
           name: input.name,
-          slug: `${input.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 120)}-${randomUUID().slice(0, 8)}`,
+          slug: productSlug,
           description: input.description ?? input.name,
-          unit: input.unit
+          unit: input.unit,
+          ...(imageId && imageDataBuffer && imageMimeType
+            ? {
+                images: {
+                  create: {
+                    id: imageId,
+                    url: `/api/v1/products/${productId}/images/${imageId}`,
+                    altText: input.name,
+                    sortOrder: 0,
+                    metadata: {
+                      imageData: imageDataBuffer.toString("base64"),
+                      mimeType: imageMimeType,
+                      sizeBytes: imageSizeBytes
+                    }
+                  }
+                }
+              }
+            : {})
         }
-      });
-      // Create product image if provided
-      if (imageDataBuffer && imageMimeType) {
-        const prodImg = await transaction.productImage.create({
-          data: {
-            productId: product.id,
-            url: "",
-            altText: input.name,
-            sortOrder: 0,
-            metadata: {
-              imageData: imageDataBuffer.toString("base64"),
-              mimeType: imageMimeType,
-              sizeBytes: imageSizeBytes
+      },
+      ...(input.stockQuantity > 0
+        ? {
+            inventoryMoves: {
+              create: {
+                type: "STOCK_IN" as const,
+                quantity: input.stockQuantity,
+                reason: "Initial seller listing"
+              }
             }
           }
-        });
-        await transaction.productImage.update({
-          where: { id: prodImg.id },
-          data: { url: `/api/v1/products/${product.id}/images/${prodImg.id}` }
-        });
-      }
-      const newListing = await transaction.storeProduct.create({
+        : {})
+    };
+
+    let listing: any;
+    try {
+      listing = await prisma.storeProduct.create({
         data: {
-          productId: product.id,
-          storeId: store.id,
-          sku: `ETK-${randomUUID().slice(0, 12).toUpperCase()}`,
-          priceMinor: input.priceMinor,
-          discountMinor: input.discountMinor ?? 0,
-          stockQuantity: input.stockQuantity,
-          minOrderQuantity: input.minOrderQuantity ?? 1,
-          deliveryRadiusKm: input.deliveryRadiusKm ?? store.serviceRadiusKm ?? 25,
-          isActive: approved
+          ...baseCreateData,
+          deliveryRadiusKm: resolvedRadiusKm
         },
-        include: {
-          product: { include: { images: true, category: true } },
-          store: true
-        }
+        include: SELLER_LISTING_INCLUDE
       });
-      if (input.stockQuantity > 0) {
-        await transaction.inventoryMovement.create({
-          data: {
-            storeProductId: newListing.id,
-            type: "STOCK_IN",
-            quantity: input.stockQuantity,
-            reason: "Initial seller listing"
-          }
-        });
-      }
-      return newListing;
-    });
-    return sendCreated(res, listing);
+    } catch (err) {
+      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+      // Graceful fallback if production DB hasn't applied the deliveryRadiusKm migration yet
+      listing = await prisma.storeProduct.create({
+        data: baseCreateData,
+        select: SELLER_LISTING_LEGACY_SELECT
+      });
+    }
+
+    return sendCreated(res, formatSellerListing(listing));
   } catch (error) {
     next(error);
   }
@@ -384,8 +445,11 @@ sellerRouter.post("/products", async (req, res, next) => {
 
 sellerRouter.patch("/products/:id", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
-    const listing = await prisma.storeProduct.findFirst({ where: { id: req.params.id, store: { sellerProfileId: profile.id } }, include: { product: true } });
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    const listing = await prisma.storeProduct.findFirst({
+      where: { id: req.params.id, store: { sellerProfileId: profile.id } },
+      select: { id: true, storeId: true, productId: true }
+    });
     if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
     if (req.body.isActive === true && profile.verificationStatus !== VerificationStatus.APPROVED) {
       throw new HttpError(403, "SELLER_NOT_APPROVED", "Only approved sellers can publish active listings");
@@ -405,12 +469,10 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
       throw new HttpError(403, "SELLER_NOT_APPROVED", "Only approved sellers can publish active listings");
     }
     if (updateInput.isActive === true) {
-      const store = await prisma.store.findFirst({ where: { id: listing.storeId, isActive: true } });
+      const store = await prisma.store.findFirst({ where: { id: listing.storeId, isActive: true }, select: { id: true } });
       if (!store) throw new HttpError(409, "STORE_INACTIVE", "Your store is inactive. Contact Etukas support.");
     }
-    // Separate product-level fields from listing-level fields
     const { name, unit, description, ...listingFields } = updateInput;
-    // Update product fields (name, unit, description) if any provided
     if (name !== undefined || unit !== undefined || description !== undefined) {
       await prisma.product.update({
         where: { id: listing.productId },
@@ -421,15 +483,23 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
         }
       });
     }
-    const updated = await prisma.storeProduct.update({
-      where: { id: listing.id },
-      data: Object.keys(listingFields).length > 0 ? listingFields : {},
-      include: {
-        product: { include: { images: true, category: true } },
-        store: true
-      }
-    });
-    return sendOk(res, updated);
+    let updated: any;
+    try {
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: Object.keys(listingFields).length > 0 ? listingFields : {},
+        include: SELLER_LISTING_INCLUDE
+      });
+    } catch (err) {
+      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
+      const { deliveryRadiusKm: _ignored, ...legacyFields } = listingFields;
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: Object.keys(legacyFields).length > 0 ? legacyFields : {},
+        select: SELLER_LISTING_LEGACY_SELECT
+      });
+    }
+    return sendOk(res, formatSellerListing(updated));
   } catch (error) {
     next(error);
   }
@@ -438,10 +508,10 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
 // Serve product image binary from DB metadata
 sellerRouter.get("/products/:listingId/images/:imageId/data", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
     const listing = await prisma.storeProduct.findFirst({
       where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
-      include: { product: true }
+      select: { productId: true }
     });
     if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
     const image = await prisma.productImage.findFirst({
@@ -461,15 +531,23 @@ sellerRouter.get("/products/:listingId/images/:imageId/data", async (req, res, n
 // Upload a new image for an existing product listing
 sellerRouter.post("/products/:listingId/images", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
     const listing = await prisma.storeProduct.findFirst({
       where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
-      include: { product: { include: { images: true } } }
+      select: {
+        productId: true,
+        product: {
+          select: {
+            name: true,
+            _count: { select: { images: true } }
+          }
+        }
+      }
     });
     if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
 
     const { imageBase64 } = z.object({ imageBase64: z.string() }).parse(req.body);
-    const match = imageBase64.match(/^data:([a-zA-Z0-9+/]+\/[a-zA-Z0-9+/]+);base64,(.+)$/);
+    const match = imageBase64.match(/^data:([a-zA-Z0-9.+/-]+\/[a-zA-Z0-9.+/-]+);base64,(.+)$/);
     if (!match) throw new HttpError(400, "INVALID_IMAGE", "Invalid image data format");
     const [, mimeType, b64data] = match;
     if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
@@ -480,28 +558,27 @@ sellerRouter.post("/products/:listingId/images", async (req, res, next) => {
       throw new HttpError(400, "IMAGE_TOO_LARGE", "Image must be under 500 KB");
     }
 
+    const imageId = randomUUID();
+    const publicUrl = `/api/v1/products/${listing.productId}/images/${imageId}`;
     const image = await prisma.productImage.create({
       data: {
+        id: imageId,
         productId: listing.productId,
-        url: "",
+        url: publicUrl,
         altText: listing.product.name,
-        sortOrder: listing.product.images.length,
+        sortOrder: listing.product._count.images,
         metadata: {
           imageData: imageBuffer.toString("base64"),
           mimeType,
           sizeBytes: imageBuffer.length
         }
-      }
-    });
-    const publicUrl = `/api/v1/products/${listing.productId}/images/${image.id}`;
-    await prisma.productImage.update({
-      where: { id: image.id },
-      data: { url: publicUrl }
+      },
+      select: { id: true, productId: true, url: true, altText: true, sortOrder: true }
     });
     return sendCreated(res, {
       id: image.id,
       productId: image.productId,
-      url: publicUrl,
+      url: image.url,
       altText: image.altText,
       sortOrder: image.sortOrder,
       sizeBytes: imageBuffer.length,
@@ -515,9 +592,10 @@ sellerRouter.post("/products/:listingId/images", async (req, res, next) => {
 // Delete a product image
 sellerRouter.delete("/products/:listingId/images/:imageId", async (req, res, next) => {
   try {
-    const profile = await sellerProfile(req.user!.id);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
     const listing = await prisma.storeProduct.findFirst({
-      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } }
+      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+      select: { productId: true }
     });
     if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
     const image = await prisma.productImage.findFirst({
