@@ -6,6 +6,17 @@
   "installCommand": "npm install",
   "rewrites": [
     {
+      "source": "/product/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|slackbot|discordbot|pinterest|applebot|googlebot|bingbot|skypeuripreview|viber|line|embedly|quora|outbrain|vkshare).*"
+        }
+      ],
+      "destination": "/api/product-og?id=:id"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
