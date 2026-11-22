@@ -8,7 +8,7 @@ export const notFoundHandler: RequestHandler = (req, _res, next) => {
   next(new HttpError(404, "NOT_FOUND", `Route not found: ${req.method} ${req.path}`));
 };
 
-export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+export const errorHandler: ErrorRequestHandler = (error, req, res, _next) => {
   if (error instanceof ZodError) {
     return res.status(400).json({
       ok: false,
@@ -24,6 +24,8 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   }
 
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    console.error(`[PrismaError ${error.code}] ${req.method} ${req.originalUrl}:`, error.message);
+
     if (error.code === "P2021" || error.code === "P2022") {
       return res.status(500).json({
         ok: false,
@@ -34,7 +36,29 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
         }
       });
     }
+
+    if (error.code === "P2002") {
+      return res.status(409).json({
+        ok: false,
+        error: {
+          code: "DUPLICATE_RECORD",
+          message: "A record with these unique details already exists. Please check and try again."
+        }
+      });
+    }
+
+    if (error.code === "P2028") {
+      return res.status(504).json({
+        ok: false,
+        error: {
+          code: "DATABASE_TIMEOUT",
+          message: "The database took too long to save your changes. Please try again in a moment."
+        }
+      });
+    }
   }
+
+  console.error(`[UnhandledError] ${req.method} ${req.originalUrl}:`, error);
 
   return res.status(500).json({
     ok: false,

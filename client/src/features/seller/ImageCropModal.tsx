@@ -125,7 +125,7 @@ export function ImageCropModal({
     const naturalH = img.naturalHeight;
     if (!naturalW || !naturalH) return;
 
-    const OUTPUT_SIZE = 800; // 800x800 square
+    const OUTPUT_SIZE = 640; // 640x640 square: crisp on product cards and fast to upload
     const canvas = document.createElement("canvas");
     canvas.width = OUTPUT_SIZE;
     canvas.height = OUTPUT_SIZE;
@@ -161,10 +161,12 @@ export function ImageCropModal({
 
     ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH);
 
-    // Export with quality check under 500 KB
-    let resultBase64 = canvas.toDataURL("image/jpeg", 0.9);
-    if (resultBase64.length * 0.75 > 490 * 1024) {
-      resultBase64 = canvas.toDataURL("image/jpeg", 0.78);
+    // Iteratively compress JPEG to guarantee compact payload (< 350 KB) under the 500 KB server cap
+    const maxBytes = 350 * 1024;
+    let resultBase64 = canvas.toDataURL("image/jpeg", 0.82);
+    for (const quality of [0.72, 0.62, 0.52, 0.42]) {
+      if (resultBase64.length * 0.75 <= maxBytes) break;
+      resultBase64 = canvas.toDataURL("image/jpeg", quality);
     }
 
     onCropComplete(resultBase64);

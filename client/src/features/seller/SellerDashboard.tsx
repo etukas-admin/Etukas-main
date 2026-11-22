@@ -132,12 +132,13 @@ export function SellerDashboard() {
 
   const queryClient = useQueryClient();
 
-  // Queries
+  // Queries (avoid background polling storms on Vercel Free while editing products)
   const { data: dashboardData } = useQuery({
     queryKey: ["seller-dashboard"],
     queryFn: ({ signal }) => marketplaceApi.sellerDashboard({ signal }).catch(() => null),
-    refetchInterval: 30000,
-    refetchIntervalInBackground: false
+    staleTime: 60_000,
+    refetchInterval: false,
+    refetchOnWindowFocus: true
   });
 
   const { data: profileData } = useQuery({
