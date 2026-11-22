@@ -255,6 +255,7 @@ model StoreProduct {
   stockQuantity    Int                 @default(0)
   minOrderQuantity Int                 @default(1)
   deliveryEta      String              @default("2-4 hrs")
+  deliveryRadiusKm Int                 @default(25)
   isActive         Boolean             @default(false)
   inventoryMoves   InventoryMovement[]
   cartItems        CartItem[]

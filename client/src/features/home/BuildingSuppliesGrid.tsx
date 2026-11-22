@@ -8,6 +8,7 @@ import { Skeleton } from "../../components/ui/Skeleton";
 interface BuildingSuppliesGridProps {
   products?: StoreProduct[];
   isLoading?: boolean;
+  locationCity?: string;
   onProductSelect?: (product: StoreProduct) => void;
 }
 
@@ -27,14 +28,13 @@ function getProductRating(id: string) {
   return { rating, reviewsCount };
 }
 
-export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: BuildingSuppliesGridProps) {
+export function BuildingSuppliesGrid({ products, isLoading, locationCity, onProductSelect }: BuildingSuppliesGridProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // Filter supplies for structured discovery (Tiles, Paints, Plumbing, Electrical, etc.)
   const heavySupplies = products?.filter((item) => {
     const slug = item.product.category?.slug;
     if (selectedCategory === "all") {
-      // Prioritize heavy/finishing supplies or all items
       return (
         slug === "tiles-flooring" ||
         slug === "paints" ||
@@ -59,12 +59,13 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
             <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-extrabold tracking-wide text-blue-700">
               <ShieldCheck size={12} /> VERIFIED LOCAL SUPPLIERS
             </span>
-            <span className="text-[11px] font-medium text-gray-500">
-              ðŸ“ Hyderabad & surrounding yards
+            <span className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500">
+              <MapPin size={11} className="text-etukas-red" />
+              {locationCity || "Local"} &amp; surrounding yards
             </span>
           </div>
           <h2 className="mt-1 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl">
-            Heavy & General Building Supplies
+            Heavy &amp; General Building Supplies
           </h2>
           <p className="mt-1 text-xs text-gray-600 sm:text-sm">
             Tiles, bathroom fittings, paints, and plumbing materials from authorized regional dealers
@@ -102,166 +103,184 @@ export function BuildingSuppliesGrid({ products, isLoading, onProductSelect }: B
       </div>
 
       {/* Multi-Column Grid (2-col mobile -> 3-col tablet -> 4-col desktop) */}
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 lg:gap-5">
-        {isLoading
-          ? Array.from({ length: 8 }).map((_, index) => (
-              <div
-                key={index}
-                className="overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm"
-              >
-                <Skeleton className="aspect-square w-full rounded-lg" />
-                <Skeleton className="mt-3 h-4 w-3/4" />
-                <Skeleton className="mt-2 h-3 w-1/2" />
-                <div className="mt-4 flex items-center justify-between">
-                  <Skeleton className="h-6 w-20" />
-                  <Skeleton className="h-8 w-14 rounded-lg" />
-                </div>
-              </div>
-            ))
-          : displayItems.map((item) => {
-              const discountMinor = item.discountMinor ?? 0;
-              const originalMrp =
-                discountMinor > 0
-                  ? item.priceMinor + discountMinor
-                  : Math.round(item.priceMinor * 1.18);
-              const discountPercent = Math.max(
-                5,
-                Math.round(((originalMrp - item.priceMinor) / originalMrp) * 100)
-              );
-              const savingsAmount = originalMrp - item.priceMinor;
-              const { rating, reviewsCount } = getProductRating(item.id);
-
-              return (
-                <article
-                  key={item.id}
-                  tabIndex={0}
-                  role="button"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onProductSelect?.(item);
-                    }
-                  }}
-                  onClick={() => onProductSelect?.(item)}
-                  className="group flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-red-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-etukas-red/40"
+      {!isLoading && displayItems.length === 0 ? (
+        <div className="mt-5 rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 p-8 text-center">
+          <p className="text-sm font-bold text-gray-800">
+            No building supplies currently deliver to {locationCity || "your selected area"}.
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Sellers configure a delivery radius per product. Change your delivery site to browse nearby yards.
+          </p>
+          <Link
+            to="/location"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-etukas-red px-4 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+          >
+            <MapPin size={13} /> Change Delivery Location
+          </Link>
+        </div>
+      ) : (
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 lg:gap-5">
+          {isLoading
+            ? Array.from({ length: 8 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-xl border border-gray-100 bg-white p-3 shadow-sm"
                 >
-                  {/* High-res Thumbnail & Overlay Tags */}
-                  <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
-                    <img
-                      src={getProductImageUrl(
-                        item.product.images[0],
-                        item.product.id,
-                        "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80"
-                      )}
-                      alt={item.product.images[0]?.altText || item.product.name}
-                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      loading="lazy"
-                      onError={(e) => {
-                        e.currentTarget.onerror = null;
-                        e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80";
-                      }}
-                    />
-
-                    {/* Discount Tag */}
-                    <div className="absolute left-2 top-2 flex flex-col gap-1">
-                      <span className="inline-flex items-center rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
-                        {discountPercent}% OFF
-                      </span>
-                    </div>
-
-                    {/* Category Label */}
-                    <div className="absolute right-2 top-2">
-                      <span className="rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-bold text-gray-800 shadow-sm backdrop-blur-sm">
-                        {item.product.category?.name ?? "Supplies"}
-                      </span>
-                    </div>
-
-                    {/* Verified Local Seller Banner on hover / bottom */}
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 text-white">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="flex items-center gap-1 font-semibold truncate max-w-[130px]">
-                          <MapPin size={10} className="text-red-400 shrink-0" />
-                          <span className="truncate">{item.store.name}</span>
-                        </span>
-                        <span className="text-gray-200 font-medium">{item.deliveryEta}</span>
-                      </div>
-                    </div>
+                  <Skeleton className="aspect-square w-full rounded-lg" />
+                  <Skeleton className="mt-3 h-4 w-3/4" />
+                  <Skeleton className="mt-2 h-3 w-1/2" />
+                  <div className="mt-4 flex items-center justify-between">
+                    <Skeleton className="h-6 w-20" />
+                    <Skeleton className="h-8 w-14 rounded-lg" />
                   </div>
+                </div>
+              ))
+            : displayItems.map((item) => {
+                const discountMinor = item.discountMinor ?? 0;
+                const originalMrp =
+                  discountMinor > 0
+                    ? item.priceMinor + discountMinor
+                    : Math.round(item.priceMinor * 1.18);
+                const discountPercent = Math.max(
+                  5,
+                  Math.round(((originalMrp - item.priceMinor) / originalMrp) * 100)
+                );
+                const savingsAmount = originalMrp - item.priceMinor;
+                const { rating, reviewsCount } = getProductRating(item.id);
 
-                  {/* Card Body */}
-                  <div className="flex flex-1 flex-col justify-between p-3 sm:p-4">
-                    <div>
-                      {/* Ratings & Stock Status */}
-                      <div className="flex items-center justify-between gap-1 text-[11px]">
-                        <span className="inline-flex items-center gap-1 font-bold text-amber-500">
-                          <Star size={12} className="fill-amber-400 text-amber-400" />
-                          <span className="text-gray-800">{rating}</span>
-                          <span className="text-gray-400 font-normal">({reviewsCount})</span>
-                        </span>
-
-                        {item.stockQuantity > 20 ? (
-                          <span className="text-[10px] font-semibold text-emerald-600">
-                            In Stock ({item.stockQuantity})
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-bold text-amber-600">
-                            Only {item.stockQuantity} left
-                          </span>
+                return (
+                  <article
+                    key={item.id}
+                    tabIndex={0}
+                    role="button"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onProductSelect?.(item);
+                      }
+                    }}
+                    onClick={() => onProductSelect?.(item)}
+                    className="group flex cursor-pointer flex-col justify-between overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-red-200 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-etukas-red/40"
+                  >
+                    {/* High-res Thumbnail & Overlay Tags */}
+                    <div className="relative aspect-square w-full overflow-hidden bg-gray-50">
+                      <img
+                        src={getProductImageUrl(
+                          item.product.images[0],
+                          item.product.id,
+                          "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80"
                         )}
+                        alt={item.product.images[0]?.altText || item.product.name}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=800&q=80";
+                        }}
+                      />
+
+                      {/* Discount Tag */}
+                      <div className="absolute left-2 top-2 flex flex-col gap-1">
+                        <span className="inline-flex items-center rounded-md bg-emerald-600 px-2 py-0.5 text-[10px] font-extrabold text-white shadow-sm">
+                          {discountPercent}% OFF
+                        </span>
                       </div>
 
-                      {/* Product Title */}
-                      <span
-                        className="mt-1.5 block line-clamp-2 text-xs font-bold leading-snug text-gray-900 transition-colors group-hover:text-etukas-red sm:text-sm"
-                        title={item.product.name}
-                      >
-                        {item.product.name}
-                      </span>
+                      {/* Category Label */}
+                      <div className="absolute right-2 top-2">
+                        <span className="rounded-md bg-white/90 px-2 py-0.5 text-[10px] font-bold text-gray-800 shadow-sm backdrop-blur-sm">
+                          {item.product.category?.name ?? "Supplies"}
+                        </span>
+                      </div>
 
-                      {/* Product Description */}
-                      {item.product.description && item.product.description !== item.product.name && (
-                        <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-500">
-                          {item.product.description}
-                        </p>
-                      )}
-
-                      {/* Updated Price Note */}
-                      <p className="mt-1 text-[10px] text-gray-500">
-                        Live seller price • updated today
-                      </p>
-                    </div>
-
-                    {/* Pricing Block & Action Button */}
-                    <div className="mt-3.5 border-t border-gray-100 pt-2.5">
-                      <div className="flex items-baseline justify-between">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-base font-extrabold text-gray-900 sm:text-lg">
-                            {formatMoney(item.priceMinor)}
+                      {/* Verified Local Seller Banner on hover / bottom */}
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-2 text-white">
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="flex items-center gap-1 font-semibold truncate max-w-[130px]">
+                            <MapPin size={10} className="text-red-400 shrink-0" />
+                            <span className="truncate">{item.store.name}</span>
                           </span>
-                          <span className="text-[11px] font-semibold text-gray-500">
-                            /{item.product.unit}
+                          <span className="text-gray-200 font-medium">
+                            {item.distanceKm != null ? `${item.distanceKm} km away` : item.deliveryEta}
                           </span>
                         </div>
-                        <span className="text-[11px] text-gray-400 line-through">
-                          {formatMoney(originalMrp)}
-                        </span>
                       </div>
-
-                      <div className="mt-0.5 flex items-center justify-between text-[11px]">
-                        <span className="font-semibold text-emerald-600">
-                          Save {formatMoney(savingsAmount)}
-                        </span>
-                        <span className="text-[10px] text-gray-500">
-                          Min Order {item.minOrderQuantity}
-                        </span>
-                      </div>
-
                     </div>
-                  </div>
-                </article>
-              );
-            })}
-      </div>
+
+                    {/* Card Body */}
+                    <div className="flex flex-1 flex-col justify-between p-3 sm:p-4">
+                      <div>
+                        {/* Ratings & Stock Status */}
+                        <div className="flex items-center justify-between gap-1 text-[11px]">
+                          <span className="inline-flex items-center gap-1 font-bold text-amber-500">
+                            <Star size={12} className="fill-amber-400 text-amber-400" />
+                            <span className="text-gray-800">{rating}</span>
+                            <span className="text-gray-400 font-normal">({reviewsCount})</span>
+                          </span>
+
+                          {item.stockQuantity > 20 ? (
+                            <span className="text-[10px] font-semibold text-emerald-600">
+                              In Stock ({item.stockQuantity})
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-amber-600">
+                              Only {item.stockQuantity} left
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Product Title */}
+                        <span
+                          className="mt-1.5 block line-clamp-2 text-xs font-bold leading-snug text-gray-900 transition-colors group-hover:text-etukas-red sm:text-sm"
+                          title={item.product.name}
+                        >
+                          {item.product.name}
+                        </span>
+
+                        {/* Product Description */}
+                        {item.product.description && item.product.description !== item.product.name && (
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-gray-500">
+                            {item.product.description}
+                          </p>
+                        )}
+
+                        {/* Updated Price & Delivery Range Note */}
+                        <p className="mt-1 text-[10px] text-gray-500">
+                          Delivers up to {item.deliveryRadiusKm ?? item.store.serviceRadiusKm ?? 25} km • Live seller price
+                        </p>
+                      </div>
+
+                      {/* Pricing Block & Action Button */}
+                      <div className="mt-3.5 border-t border-gray-100 pt-2.5">
+                        <div className="flex items-baseline justify-between">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-base font-extrabold text-gray-900 sm:text-lg">
+                              {formatMoney(item.priceMinor)}
+                            </span>
+                            <span className="text-[11px] font-semibold text-gray-500">
+                              /{item.product.unit}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-gray-400 line-through">
+                            {formatMoney(originalMrp)}
+                          </span>
+                        </div>
+
+                        <div className="mt-0.5 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-emerald-600">
+                            Save {formatMoney(savingsAmount)}
+                          </span>
+                          <span className="text-[10px] text-gray-500">
+                            Min Order {item.minOrderQuantity}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+        </div>
+      )}
     </section>
   );
 }

@@ -126,7 +126,7 @@ const defaultPromoSlides = [
   {
     eyebrow: "LOCAL STORES, EASY DISCOVERY",
     title: "Your next project\nstarts here.",
-    description: "Browse products available around Hyderabad.",
+    description: "Browse products delivered by verified sellers near your site.",
     className: "from-[#262137] via-[#633d75] to-[#c14854]"
   }
 ] as const;
@@ -184,12 +184,18 @@ export function HomePage() {
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
+  const locationCity = activeAddress?.city || activeAddress?.district || "your area";
   const products = useProducts({
     pageSize: 24,
+    city: activeAddress?.city || activeAddress?.district,
     latitude: activeAddress?.latitude,
     longitude: activeAddress?.longitude
   });
-  const stores = useStores({ city: activeAddress?.city || activeAddress?.district });
+  const stores = useStores({
+    city: activeAddress?.city || activeAddress?.district,
+    latitude: activeAddress?.latitude,
+    longitude: activeAddress?.longitude
+  });
 
   useEffect(() => {
     const handleAddressChange = () => setActiveAddress(getSelectedAddress());
@@ -308,7 +314,7 @@ export function HomePage() {
       <section className="hidden bg-etukas-black px-4 py-2 text-xs font-semibold text-white md:block">
         <div className="mx-auto flex max-w-7xl items-center gap-3 overflow-hidden">
           <span className="h-2 w-2 rounded-full bg-etukas-red" />
-          Verified sellers, live yard stock checks, COD-ready checkout, and city-based discovery for Hyderabad
+          Verified sellers, live yard stock checks, COD-ready checkout, and radius-based delivery discovery for {locationCity}
         </div>
       </section>
 
@@ -346,7 +352,12 @@ export function HomePage() {
       </section>
 
       {/* 1. Horizontal Side-Scroll Product Grid (Carousel) */}
-      <FlashDealsCarousel products={products.data} isLoading={products.isLoading} onProductSelect={(product) => navigate(`/product/${product.id}`)} />
+      <FlashDealsCarousel
+        products={products.data}
+        isLoading={products.isLoading}
+        locationCity={locationCity}
+        onProductSelect={(product) => navigate(`/product/${product.id}`)}
+      />
 
       {/* 2. Technicians & Professionals Grid (Flipkart-style) */}
       <TechniciansGrid />
@@ -408,7 +419,12 @@ export function HomePage() {
       </section>
 
       {/* 3. Vertical Blocks Grid (Multi-Column Grid) */}
-      <BuildingSuppliesGrid products={products.data} isLoading={products.isLoading} onProductSelect={(product) => navigate(`/product/${product.id}`)} />
+      <BuildingSuppliesGrid
+        products={products.data}
+        isLoading={products.isLoading}
+        locationCity={locationCity}
+        onProductSelect={(product) => navigate(`/product/${product.id}`)}
+      />
 
       {sectionThreeAds.length ? <section className="mx-auto max-w-7xl px-4 py-4 lg:px-6"><AdBannerDisplay images={sectionThreeAds} section={3} className="h-[190px] sm:h-[240px] lg:h-[280px]" /></section> : null}
 

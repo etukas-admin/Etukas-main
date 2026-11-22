@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { marketplaceApi, type RequestOptions } from "../services/api";
+import { marketplaceApi } from "../services/api";
 import { queryKeys } from "../lib/queryKeys";
 
 /**
@@ -16,6 +16,8 @@ export function useCategories() {
 
 export function useProducts(params?: {
   category?: string;
+  brand?: string;
+  city?: string;
   pageSize?: number;
   q?: string;
   latitude?: number;
@@ -28,9 +30,21 @@ export function useProducts(params?: {
   });
 }
 
-export function useStores(params?: { city?: string }) {
+export function useProduct(
+  id?: string,
+  params?: { latitude?: number; longitude?: number; city?: string }
+) {
   return useQuery({
-    queryKey: queryKeys.stores.nearby(params?.city),
+    queryKey: queryKeys.products.detail(id || "", params),
+    queryFn: ({ signal }) => marketplaceApi.productById(id || "", params, { signal }),
+    enabled: Boolean(id),
+    staleTime: 2 * 60 * 1000
+  });
+}
+
+export function useStores(params?: { city?: string; latitude?: number; longitude?: number }) {
+  return useQuery({
+    queryKey: queryKeys.stores.nearby(params),
     queryFn: ({ signal }) => marketplaceApi.stores(params, { signal }),
     staleTime: 5 * 60 * 1000 // 5 minutes
   });

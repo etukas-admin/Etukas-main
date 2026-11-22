@@ -78,10 +78,15 @@ function CementBrandGrid() {
 export function ProductsPage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category");
+  const brand = searchParams.get("brand");
+  const q = searchParams.get("q");
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const products = useProducts({
     category: category ?? undefined,
+    brand: brand ?? undefined,
+    q: q ?? undefined,
+    city: activeAddress?.city || activeAddress?.district,
     pageSize: 24,
     latitude: activeAddress?.latitude,
     longitude: activeAddress?.longitude
@@ -100,7 +105,7 @@ export function ProductsPage() {
   const scopeLabel =
     activeAddress.pricingScope === "district"
       ? `${activeAddress.district || "District"} Wholesale Pricing`
-      : `${activeAddress.city} 25 km Surroundings`;
+      : `Sellers Delivering to ${activeAddress.city || "Your Location"}`;
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
@@ -170,6 +175,16 @@ export function ProductsPage() {
                     {item.product.name}
                   </Link>
                   <p className="mt-1 text-sm text-gray-500">{item.store.name}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                    {item.distanceKm != null && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">
+                        <MapPin size={10} /> {item.distanceKm} km away
+                      </span>
+                    )}
+                    <span className="rounded-full bg-orange-50 px-2 py-0.5 font-semibold text-orange-800">
+                      Delivers up to {item.deliveryRadiusKm ?? item.store.serviceRadiusKm ?? 25} km
+                    </span>
+                  </div>
                   {item.product.description && item.product.description !== item.product.name && (
                     <p className="mt-1 text-xs text-gray-500 line-clamp-2 leading-relaxed">{item.product.description}</p>
                   )}
@@ -188,9 +203,20 @@ export function ProductsPage() {
           ))}
         </div>
       ) : (
-        <p className="rounded-md border border-gray-100 p-6 text-center text-gray-600">
-          No products are currently listed{category ? " in this category" : ""}.
-        </p>
+        <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-8 text-center">
+          <p className="text-base font-bold text-gray-900">
+            No sellers currently deliver{category ? ` ${category.replace(/-/g, " ")}` : " products"} to {activeAddress.city || "your selected location"}.
+          </p>
+          <p className="mt-1 text-xs text-gray-500">
+            Products are displayed based on each partner&apos;s configured delivery radius from their store.
+          </p>
+          <Link
+            to="/location"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+          >
+            <MapPin size={14} /> Change Delivery Location
+          </Link>
+        </div>
       )}
 
       {/* 1-sec Material Icons Refresh Transition */}

@@ -102,7 +102,7 @@ export function getDeliveryLabel(): string {
     return `${selected.district} Dist.`;
   }
   if (selected.pricingScope === "radius_25km") {
-    return `${city} (25km)`;
+    return `${city} (${selected.radiusKm || 25}km)`;
   }
   return city;
 }

@@ -80,10 +80,13 @@ type InventoryRow = {
   discount: number;
   stock: number;
   minOrderQuantity: number;
+  deliveryRadiusKm: number;
   sku: string;
   isActive: boolean;
   description: string;
 };
+
+const DELIVERY_RADIUS_PRESETS = [5, 10, 25, 50, 100] as const;
 
 export function SellerDashboard() {
   const navigate = useNavigate();
@@ -105,6 +108,7 @@ export function SellerDashboard() {
   const [newProdDiscount, setNewProdDiscount] = useState("");
   const [newProdStock, setNewProdStock] = useState("");
   const [newProdMinOrder, setNewProdMinOrder] = useState("1");
+  const [newProdDeliveryRadius, setNewProdDeliveryRadius] = useState("25");
   const [newProdDescription, setNewProdDescription] = useState("");
   const [newProdImageBase64, setNewProdImageBase64] = useState<string | undefined>(undefined);
   const [newProdImagePreview, setNewProdImagePreview] = useState<string | null>(null);
@@ -114,7 +118,7 @@ export function SellerDashboard() {
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   // Edit product state
-  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; discount: string; stock: string; minOrder: string; description: string } | null>(null);
+  const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; discount: string; stock: string; minOrder: string; deliveryRadiusKm: string; description: string } | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
 
   // Manage images on existing product
@@ -306,6 +310,7 @@ export function SellerDashboard() {
       discountMinor: newProdDiscount ? Math.round(Number(newProdDiscount) * 100) : 0,
       stockQuantity: Number(newProdStock),
       minOrderQuantity: newProdMinOrder ? Math.max(1, Number(newProdMinOrder)) : 1,
+      deliveryRadiusKm: Math.min(500, Math.max(1, Math.round(Number(newProdDeliveryRadius) || 25))),
       imageBase64: newProdImageBase64,
       description: newProdDescription.trim() || newProdName.trim()
     }),
@@ -315,6 +320,7 @@ export function SellerDashboard() {
       setNewProdDiscount("");
       setNewProdStock("");
       setNewProdMinOrder("1");
+      setNewProdDeliveryRadius("25");
       setNewProdDescription("");
       setNewProdImageBase64(undefined);
       setNewProdImagePreview(null);
@@ -371,7 +377,7 @@ export function SellerDashboard() {
   });
 
   const editProductMutation = useMutation({
-    mutationFn: (vars: { id: string; name: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; description: string }) =>
+    mutationFn: (vars: { id: string; name: string; unit: string; priceMinor: number; discountMinor?: number; stockQuantity: number; minOrderQuantity?: number; deliveryRadiusKm?: number; description: string }) =>
       marketplaceApi.sellerUpdateProduct(vars.id, {
         name: vars.name,
         unit: vars.unit,
@@ -379,6 +385,7 @@ export function SellerDashboard() {
         discountMinor: vars.discountMinor,
         stockQuantity: vars.stockQuantity,
         minOrderQuantity: vars.minOrderQuantity,
+        deliveryRadiusKm: vars.deliveryRadiusKm,
         description: vars.description
       }),
     onSuccess: () => {
@@ -401,6 +408,7 @@ export function SellerDashboard() {
     discount: (listing.discountMinor ?? 0) / 100,
     stock: listing.stockQuantity,
     minOrderQuantity: listing.minOrderQuantity ?? 1,
+    deliveryRadiusKm: listing.deliveryRadiusKm ?? listing.store?.serviceRadiusKm ?? 25,
     sku: listing.sku,
     isActive: listing.isActive,
     description: listing.product.description ?? ""
@@ -1264,17 +1272,17 @@ export function SellerDashboard() {
                     <th className="px-6 py-3.5">Category</th>
                     <th className="px-6 py-3.5">Selling Unit</th>
                     <th className="px-6 py-3.5">Price & Discount (₹)</th>
-                    <th className="px-6 py-3.5">Stock & Min Order</th>
+                    <th className="px-6 py-3.5">Stock, Min Order &amp; Range</th>
                     <th className="px-6 py-3.5">Status</th>
                     <th className="px-6 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 font-medium">
                   {sellerProductsQuery.isLoading ? (
-                    <tr><td colSpan={7} className="px-6 py-12 text-center text-gray-500">Loading saved inventory...</td></tr>
+                    <tr><td colSpan={8} className="px-6 py-12 text-center text-gray-500">Loading saved inventory...</td></tr>
                   ) : null}
                   {sellerProductsQuery.error ? (
-                    <tr><td colSpan={7} role="alert" className="px-6 py-12 text-center text-red-700">{sellerProductsQuery.error.message}</td></tr>
+                    <tr><td colSpan={8} role="alert" className="px-6 py-12 text-center text-red-700">{sellerProductsQuery.error.message}</td></tr>
                   ) : null}
                   {filteredProducts.map((p) => {
                     const fullListing = (sellerProductsQuery.data ?? []).find((l) => l.id === p.id);
@@ -1337,6 +1345,10 @@ export function SellerDashboard() {
                         <div className="text-[11px] font-semibold text-gray-500 mt-0.5">
                           Min Order: {p.minOrderQuantity} {p.unit}s
                         </div>
+                        <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-orange-50 border border-orange-200 px-2 py-0.5 text-[11px] font-bold text-orange-800">
+                          <MapPin size={11} className="text-orange-600" />
+                          <span>Delivery Radius: {p.deliveryRadiusKm} km</span>
+                        </div>
                       </td>
                       <td className="px-6 py-4">
                         <button
@@ -1362,6 +1374,7 @@ export function SellerDashboard() {
                               discount: p.discount ? String(p.discount) : "0",
                               stock: String(p.stock),
                               minOrder: String(p.minOrderQuantity || 1),
+                              deliveryRadiusKm: String(p.deliveryRadiusKm || 25),
                               description: p.description
                             })}
                             className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
@@ -1390,7 +1403,7 @@ export function SellerDashboard() {
                   })}
                   {!sellerProductsQuery.isLoading && !sellerProductsQuery.error && filteredProducts.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-12 text-center text-gray-500">
+                      <td colSpan={8} className="px-6 py-12 text-center text-gray-500">
                         No materials found matching your filters. Click &ldquo;Add New Material&rdquo; to add your stock!
                       </td>
                     </tr>
@@ -1543,6 +1556,60 @@ export function SellerDashboard() {
                         placeholder="e.g. 100"
                         className="mt-1"
                       />
+                    </div>
+
+                    {/* ── Product Display & Delivery Radius Selector ── */}
+                    <div className="rounded-xl border border-orange-200 bg-orange-50/50 p-4 space-y-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-1.5 text-xs font-bold uppercase text-orange-900">
+                          <MapPin size={14} className="text-orange-600" />
+                          <span>Product Display &amp; Delivery Radius (km) *</span>
+                        </label>
+                        <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-black text-orange-800">
+                          {Number(newProdDeliveryRadius) || 25} km
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DELIVERY_RADIUS_PRESETS.map((km) => {
+                          const isSelected = Number(newProdDeliveryRadius) === km;
+                          return (
+                            <button
+                              key={km}
+                              type="button"
+                              onClick={() => setNewProdDeliveryRadius(String(km))}
+                              className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                                isSelected
+                                  ? "bg-orange-500 text-white shadow-xs"
+                                  : "bg-white text-gray-700 border border-orange-200 hover:border-orange-400"
+                              }`}
+                            >
+                              {km} km
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          required
+                          type="number"
+                          min="1"
+                          max="500"
+                          step="1"
+                          value={newProdDeliveryRadius}
+                          onChange={(e) => setNewProdDeliveryRadius(e.target.value)}
+                          placeholder="Enter radius in km (1 - 500)"
+                          className="bg-white"
+                        />
+                        <span className="text-xs font-bold text-gray-600 shrink-0">km from store</span>
+                      </div>
+                      <p className="text-[11px] text-orange-900/90 leading-relaxed">
+                        This material will be displayed in the customer marketplace only to buyers within <strong>{Number(newProdDeliveryRadius) || 25} km</strong> of your store{primaryStore?.city ? ` (${primaryStore.city})` : ""}.
+                      </p>
+                      {primaryStore && (primaryStore.latitude == null || primaryStore.longitude == null) && (
+                        <p className="text-[11px] font-semibold text-amber-800 bg-amber-100/80 rounded-lg px-2.5 py-1.5">
+                          Tip: Your store GPS coordinates are not set yet. Exact distance matching uses your store coordinates; otherwise buyers in {primaryStore.city} will see this item.
+                        </p>
+                      )}
                     </div>
 
                     {/* ── Product Photo Upload ── */}
@@ -1704,6 +1771,7 @@ export function SellerDashboard() {
                         discountMinor: editingProduct.discount ? Math.round(Number(editingProduct.discount) * 100) : 0,
                         stockQuantity: Number(editingProduct.stock),
                         minOrderQuantity: editingProduct.minOrder ? Math.max(1, Number(editingProduct.minOrder)) : 1,
+                        deliveryRadiusKm: Math.min(500, Math.max(1, Math.round(Number(editingProduct.deliveryRadiusKm) || 25))),
                         description: editingProduct.description.trim()
                       });
                     }}
@@ -1809,6 +1877,51 @@ export function SellerDashboard() {
                         placeholder="e.g. 100"
                         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
+                    </div>
+
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="flex items-center gap-1.5 text-xs font-bold uppercase text-indigo-900">
+                          <MapPin size={14} className="text-indigo-600" />
+                          <span>Product Display &amp; Delivery Radius (km) *</span>
+                        </label>
+                        <span className="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-black text-indigo-800">
+                          {Number(editingProduct.deliveryRadiusKm) || 25} km
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DELIVERY_RADIUS_PRESETS.map((km) => (
+                          <button
+                            key={km}
+                            type="button"
+                            onClick={() => setEditingProduct({ ...editingProduct, deliveryRadiusKm: String(km) })}
+                            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                              Number(editingProduct.deliveryRadiusKm) === km
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : "bg-white text-gray-700 border border-indigo-200 hover:border-indigo-400"
+                            }`}
+                          >
+                            {km} km
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          required
+                          type="number"
+                          min="1"
+                          max="500"
+                          step="1"
+                          value={editingProduct.deliveryRadiusKm}
+                          onChange={(e) => setEditingProduct({ ...editingProduct, deliveryRadiusKm: e.target.value })}
+                          placeholder="e.g. 25"
+                          className="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        />
+                        <span className="text-xs font-bold text-gray-600 shrink-0">km</span>
+                      </div>
+                      <p className="text-[11px] text-indigo-900/80">
+                        Only buyers within <strong>{Number(editingProduct.deliveryRadiusKm) || 25} km</strong> of your store will see this material.
+                      </p>
                     </div>
 
                     {editError && (

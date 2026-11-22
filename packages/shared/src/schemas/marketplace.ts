@@ -8,6 +8,8 @@ export const paginationSchema = z.object({
 export const productQuerySchema = paginationSchema.extend({
   q: z.string().trim().optional(),
   category: z.string().trim().optional(),
+  brand: z.string().trim().optional(),
+  city: z.string().trim().optional(),
   sort: z.enum(["relevance", "price_asc", "price_desc", "newest"]).default("relevance"),
   latitude: z.coerce.number().min(-90).max(90).optional(),
   longitude: z.coerce.number().min(-180).max(180).optional()
@@ -90,6 +92,7 @@ export const sellerProductSchema = z.object({
   discountMinor: z.coerce.number().int().min(0).default(0),
   stockQuantity: z.coerce.number().int().min(0),
   minOrderQuantity: z.coerce.number().int().positive().default(1),
+  deliveryRadiusKm: z.coerce.number().int().min(1).max(500).default(25),
   isActive: z.boolean().default(false)
 });
 

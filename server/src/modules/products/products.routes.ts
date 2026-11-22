@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { productQuerySchema } from "@etukas/shared";
 import { prisma } from "../../config/prisma.js";
+import { evaluateProductDeliveryRange, parseCoordinate } from "../../utils/geo.js";
 import { HttpError, sendOk } from "../../utils/http.js";
 import { loadOrders } from "../orders/orders.routes.js";
 
@@ -73,50 +74,140 @@ productsRouter.get("/", async (req, res, next) => {
   try {
     const query = productQuerySchema.parse(req.query);
     const skip = (query.page - 1) * query.pageSize;
+    const productFilters: Record<string, unknown> = {};
+    if (query.category) {
+      productFilters.category = { slug: query.category };
+    }
+    const andConditions: Record<string, unknown>[] = [];
+    if (query.q) {
+      andConditions.push({
+        OR: [
+          { name: { contains: query.q, mode: "insensitive" as const } },
+          { description: { contains: query.q, mode: "insensitive" as const } },
+          { brand: { contains: query.q, mode: "insensitive" as const } }
+        ]
+      });
+    }
+    if (query.brand) {
+      andConditions.push({
+        OR: [
+          { brand: { contains: query.brand, mode: "insensitive" as const } },
+          { name: { contains: query.brand, mode: "insensitive" as const } }
+        ]
+      });
+    }
+    if (andConditions.length > 0) {
+      productFilters.AND = andConditions;
+    }
+
     const where = {
       isActive: true,
       store: {
         isActive: true,
         sellerProfile: { verificationStatus: "APPROVED" as const }
       },
-      product: {
-        category: query.category ? { slug: query.category } : undefined,
-        OR: query.q
-          ? [
-              { name: { contains: query.q, mode: "insensitive" as const } },
-              { description: { contains: query.q, mode: "insensitive" as const } }
-            ]
-          : undefined
-      }
+      product: productFilters
     };
-    const orderBy = query.sort === "price_asc" ? { priceMinor: "asc" as const } : query.sort === "price_desc" ? { priceMinor: "desc" as const } : { updatedAt: "desc" as const };
+    const orderBy =
+      query.sort === "price_asc"
+        ? { priceMinor: "asc" as const }
+        : query.sort === "price_desc"
+        ? { priceMinor: "desc" as const }
+        : { updatedAt: "desc" as const };
+
+    const include = {
+      product: {
+        include: {
+          category: true,
+          images: {
+            select: {
+              id: true,
+              productId: true,
+              url: true,
+              altText: true,
+              sortOrder: true
+            }
+          }
+        }
+      },
+      store: true
+    };
+
+    const hasCoordinates = query.latitude !== undefined && query.longitude !== undefined;
+
+    if (hasCoordinates) {
+      // Fetch matching listings and strictly filter by each product's partner-configured delivery radius
+      const candidates = await prisma.storeProduct.findMany({
+        where,
+        include,
+        orderBy
+      });
+
+      const deliverableItems = candidates
+        .map((item) => {
+          const range = evaluateProductDeliveryRange({
+            customerLat: query.latitude,
+            customerLng: query.longitude,
+            customerCity: query.city,
+            storeLat: item.store.latitude,
+            storeLng: item.store.longitude,
+            storeCity: item.store.city,
+            productRadiusKm: item.deliveryRadiusKm,
+            storeRadiusKm: item.store.serviceRadiusKm
+          });
+          return {
+            ...formatStoreProduct(item),
+            deliveryRadiusKm: range.deliveryRadiusKm,
+            distanceKm: range.distanceKm,
+            isDeliverable: range.isDeliverable
+          };
+        })
+        .filter((item) => item.isDeliverable);
+
+      if (query.sort === "relevance") {
+        deliverableItems.sort((a, b) => {
+          const distA = a.distanceKm ?? Number.POSITIVE_INFINITY;
+          const distB = b.distanceKm ?? Number.POSITIVE_INFINITY;
+          if (distA !== distB) return distA - distB;
+          return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+        });
+      }
+
+      const total = deliverableItems.length;
+      const paged = deliverableItems.slice(skip, skip + query.pageSize);
+      return sendOk(res, paged, 200, {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        radiusFiltered: true
+      });
+    }
+
     const [items, total] = await Promise.all([
       prisma.storeProduct.findMany({
         where,
-        include: {
-          product: {
-            include: {
-              category: true,
-              images: {
-                select: {
-                  id: true,
-                  productId: true,
-                  url: true,
-                  altText: true,
-                  sortOrder: true
-                }
-              }
-            }
-          },
-          store: true
-        },
+        include,
         orderBy,
         skip,
         take: query.pageSize
       }),
       prisma.storeProduct.count({ where })
     ]);
-    return sendOk(res, items.map(formatStoreProduct), 200, { page: query.page, pageSize: query.pageSize, total });
+
+    const formatted = items.map((item) => {
+      const range = evaluateProductDeliveryRange({
+        productRadiusKm: item.deliveryRadiusKm,
+        storeRadiusKm: item.store.serviceRadiusKm
+      });
+      return {
+        ...formatStoreProduct(item),
+        deliveryRadiusKm: range.deliveryRadiusKm,
+        distanceKm: range.distanceKm,
+        isDeliverable: true
+      };
+    });
+
+    return sendOk(res, formatted, 200, { page: query.page, pageSize: query.pageSize, total });
   } catch (error) {
     next(error);
   }
@@ -149,7 +240,27 @@ productsRouter.get("/:id", async (req, res, next) => {
       }
     });
     if (!item) throw new HttpError(404, "PRODUCT_NOT_FOUND", "Product listing not found");
-    return sendOk(res, formatStoreProduct(item));
+
+    const customerLat = parseCoordinate(req.query.latitude);
+    const customerLng = parseCoordinate(req.query.longitude);
+    const customerCity = typeof req.query.city === "string" ? req.query.city : undefined;
+    const range = evaluateProductDeliveryRange({
+      customerLat,
+      customerLng,
+      customerCity,
+      storeLat: item.store.latitude,
+      storeLng: item.store.longitude,
+      storeCity: item.store.city,
+      productRadiusKm: item.deliveryRadiusKm,
+      storeRadiusKm: item.store.serviceRadiusKm
+    });
+
+    return sendOk(res, {
+      ...formatStoreProduct(item),
+      deliveryRadiusKm: range.deliveryRadiusKm,
+      distanceKm: range.distanceKm,
+      isDeliverable: range.isDeliverable
+    });
   } catch (error) {
     next(error);
   }

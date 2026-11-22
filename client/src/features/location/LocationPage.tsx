@@ -234,7 +234,7 @@ export function LocationPage() {
 
     setRefreshTarget({
       name: `${finalAddress.city}${finalAddress.district && finalAddress.district !== finalAddress.city ? `, ${finalAddress.district}` : ""}`,
-      scopeText: finalAddress.pricingScope === "district" ? "District Wholesale Mode" : "Village 25 km Surroundings"
+      scopeText: finalAddress.pricingScope === "district" ? "District Wholesale Mode" : `${finalAddress.radiusKm || 25} km Surroundings`
     });
 
     setPendingConfirmAction(() => () => {
