@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -111,6 +111,7 @@ export function ProductDetailsView({
   const [isDeliveryDetailsOpen, setIsDeliveryDetailsOpen] = useState<boolean>(true);
   const [isReviewsOpen, setIsReviewsOpen] = useState<boolean>(true);
   const [shareCopied, setShareCopied] = useState<boolean>(false);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
 
   // Address
   const activeAddress = getSelectedAddress();
@@ -173,18 +174,143 @@ export function ProductDetailsView({
     }
   };
 
-  // Share handler
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: product.product.name,
-        text: `Check out ${product.product.name} on Etukas`,
-        url: window.location.href,
-      }).catch(() => {});
-    } else {
-      navigator.clipboard?.writeText(window.location.href);
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2000);
+  const imageUrl = getProductImageUrl(
+    product.product.images[0],
+    product.product.id,
+    "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=900&q=80"
+  );
+
+  // Keep page title and Open Graph meta tags synced with the active product
+  useEffect(() => {
+    const prevTitle = document.title;
+    const priceLabel = `${formatMoney(adjustedUnitBasePrice)}/${product.product.unit}`;
+    const fullTitle = `${product.product.name} (${priceLabel}) | Etukas`;
+    const desc =
+      product.product.description && product.product.description !== product.product.name
+        ? product.product.description
+        : `Buy ${product.product.name} from ${product.store.name} on Etukas.`;
+    const absoluteImageUrl = imageUrl.startsWith("http")
+      ? imageUrl
+      : `${window.location.origin}${imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`}`;
+
+    document.title = fullTitle;
+
+    const upsertMeta = (attr: "property" | "name", key: string, content: string) => {
+      let tag = document.head.querySelector(`meta[${attr}="${key}"]`) as HTMLMetaElement | null;
+      if (!tag) {
+        tag = document.createElement("meta");
+        tag.setAttribute(attr, key);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute("content", content);
+    };
+
+    upsertMeta("property", "og:type", "product");
+    upsertMeta("property", "og:title", fullTitle);
+    upsertMeta("property", "og:description", desc);
+    upsertMeta("property", "og:image", absoluteImageUrl);
+    upsertMeta("property", "og:url", window.location.href);
+    upsertMeta("name", "twitter:card", "summary_large_image");
+    upsertMeta("name", "twitter:title", fullTitle);
+    upsertMeta("name", "twitter:description", desc);
+    upsertMeta("name", "twitter:image", absoluteImageUrl);
+
+    return () => {
+      document.title = prevTitle;
+    };
+  }, [adjustedUnitBasePrice, imageUrl, product]);
+
+  // Share handler: attaches the actual product image file on supported mobile browsers
+  // so Android/iOS Share Sheet & WhatsApp display the real product photo instead of the site favicon.
+  const handleShare = async () => {
+    if (isSharing) return;
+    const productUrl = window.location.href;
+    const priceText = `${formatMoney(adjustedUnitBasePrice)}/${product.product.unit}`;
+    const shareTitle = `${product.product.name} - ${priceText}`;
+    const shareCaption = `Check out ${product.product.name} (${priceText}) on Etukas\n${productUrl}`;
+
+    if (!navigator.share) {
+      try {
+        await navigator.clipboard?.writeText(productUrl);
+        setShareCopied(true);
+        setTimeout(() => setShareCopied(false), 2000);
+      } catch {}
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      let imageFile: File | null = null;
+      try {
+        const res = await fetch(imageUrl, { mode: "cors" });
+        if (res.ok) {
+          let blob = await res.blob();
+          if (blob.type.startsWith("image/") && blob.size > 0) {
+            // Convert WebP to JPEG for maximum compatibility with WhatsApp & Android Share Sheet
+            if (blob.type === "image/webp" && typeof createImageBitmap === "function") {
+              try {
+                const bitmap = await createImageBitmap(blob);
+                const canvas = document.createElement("canvas");
+                canvas.width = bitmap.width;
+                canvas.height = bitmap.height;
+                const ctx = canvas.getContext("2d");
+                if (ctx) {
+                  ctx.fillStyle = "#ffffff";
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(bitmap, 0, 0);
+                  const jpegBlob = await new Promise<Blob | null>((resolve) =>
+                    canvas.toBlob(resolve, "image/jpeg", 0.88)
+                  );
+                  if (jpegBlob) blob = jpegBlob;
+                }
+                bitmap.close();
+              } catch {
+                // Keep original image blob if conversion fails
+              }
+            }
+
+            const ext =
+              blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+            const safeSlug =
+              product.product.name
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-|-$/g, "")
+                .slice(0, 40) || "etukas-product";
+            imageFile = new File([blob], `${safeSlug}.${ext}`, {
+              type: blob.type || "image/jpeg"
+            });
+          }
+        }
+      } catch {
+        // Fallback to URL share if image fetch fails
+      }
+
+      if (imageFile && navigator.canShare?.({ files: [imageFile] })) {
+        await navigator.share({
+          title: shareTitle,
+          text: shareCaption,
+          files: [imageFile]
+        });
+        return;
+      }
+
+      await navigator.share({
+        title: shareTitle,
+        text: `Check out ${product.product.name} (${priceText}) on Etukas`,
+        url: productUrl
+      });
+    } catch (err) {
+      // Ignore user cancellation (AbortError); fallback to clipboard on other errors
+      if (err instanceof Error && err.name !== "AbortError") {
+        try {
+          await navigator.clipboard?.writeText(productUrl);
+          setShareCopied(true);
+          setTimeout(() => setShareCopied(false), 2000);
+        } catch {}
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -217,12 +343,6 @@ export function ProductDetailsView({
       navigate("/checkout", { state: { directItem } });
     }
   };
-
-  const imageUrl = getProductImageUrl(
-    product.product.images[0],
-    product.product.id,
-    "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=900&q=80"
-  );
 
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
@@ -321,12 +441,13 @@ export function ProductDetailsView({
                 {/* Share Button at Top Right Corner */}
                 <button
                   type="button"
-                  onClick={handleShare}
+                  onClick={() => void handleShare()}
+                  disabled={isSharing}
                   aria-label="Share product details"
-                  title="Share product link"
-                  className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md transition hover:bg-white hover:text-etukas-red active:scale-95"
+                  title="Share product with photo"
+                  className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md transition hover:bg-white hover:text-etukas-red active:scale-95 disabled:opacity-60"
                 >
-                  <Share2 size={18} />
+                  <Share2 size={18} className={isSharing ? "animate-pulse text-etukas-red" : ""} />
                 </button>
 
                 {shareCopied && (
