@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { Layout } from "./components/layout/Layout";
 import { LoginPage } from "./features/auth/LoginPage";
@@ -9,7 +9,8 @@ import {
   MyCouponsPage,
   MyOrdersPage,
   MyReviewsPage,
-  MyWishlistPage
+  MyWishlistPage,
+  OrderDetailsPage
 } from "./features/account";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { CartPage } from "./features/cart/CartPage";
@@ -29,6 +30,17 @@ import { StoresPage } from "./features/stores/StoresPage";
 import { TechniciansPage } from "./features/technicians/TechniciansPage";
 import { initMobileApp } from "./lib/mobile";
 
+const CustomerLiveTrackingPage = lazy(() =>
+  import("./features/tracking/CustomerLiveTrackingPage").then((m) => ({
+    default: m.CustomerLiveTrackingPage
+  }))
+);
+const DriverLiveTrackingPage = lazy(() =>
+  import("./features/tracking/DriverLiveTrackingPage").then((m) => ({
+    default: m.DriverLiveTrackingPage
+  }))
+);
+
 export default function App() {
   const navigate = useNavigate();
 
@@ -39,6 +51,24 @@ export default function App() {
   return (
     <Routes>
       <Route path="/admin-dashboard/:section?" element={<AdminDashboard />} />
+      {/* Driver lightweight mobile GPS page (no app required, token-authenticated) */}
+      <Route
+        path="/driver/live"
+        element={
+          <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-950 text-xs font-bold text-white">Loading driver GPS...</div>}>
+            <DriverLiveTrackingPage />
+          </Suspense>
+        }
+      />
+      {/* Customer full-viewport live vehicle tracking map */}
+      <Route
+        path="/track/:orderId"
+        element={
+          <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-slate-950 text-xs font-bold text-white">Loading live tracking map...</div>}>
+            <CustomerLiveTrackingPage />
+          </Suspense>
+        }
+      />
       {/* Product Details page as dedicated full page */}
       <Route path="/product/:id" element={<ProductDetailsPage />} />
       <Route element={<Layout />}>
@@ -53,6 +83,7 @@ export default function App() {
         <Route path="checkout" element={<CheckoutPage />} />
         <Route path="order-confirmed/:orderId" element={<OrderConfirmedPage />} />
         <Route path="orders" element={<MyOrdersPage />} />
+        <Route path="orders/:orderId" element={<OrderDetailsPage />} />
         <Route path="customer" element={<CustomerAccountPage />} />
         <Route path="account" element={<MyAccountPage />} />
         <Route path="account/wishlist" element={<MyWishlistPage />} />

@@ -47,6 +47,7 @@ import {
   isOrderTrackingTerminal
 } from "../checkout/DeliveryStepsTracker";
 import { ImageCropModal } from "./ImageCropModal";
+import { SellerTrackingShareButton } from "../tracking/SellerTrackingShareButton";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
 const MATERIAL_CATEGORIES = [
@@ -2516,27 +2517,39 @@ export function SellerDashboard() {
 
                             {/* Actions */}
                             <td className="px-4 py-4 text-right">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSelectedOrderForStatus(ord);
-                                  const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
-                                    : ord.status === "PREPARING" ? "LOADING_VEHICLE"
-                                    : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
-                                    : ord.status === "PLACED" ? "CONFIRMED"
-                                    : ord.status || "CONFIRMED";
-                                  setNewStatus(normalized);
-                                  setStatusVehicleNo(ord.vehicleNumber || "");
-                                  setStatusDriverName(ord.driverName || "");
-                                  setStatusDriverPhone(ord.driverPhone || "");
-                                  setStatusRejectionReason(ord.rejectionReason || "");
-                                  setStatusNote("");
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
-                              >
-                                <Truck size={13} />
-                                <span>{isOrderTrackingTerminal(ord.status) ? "View Tracking" : "Update Status"}</span>
-                              </button>
+                              <div className="flex flex-col items-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedOrderForStatus(ord);
+                                    const normalized = ord.status === "ACCEPTED" ? "CONFIRMED"
+                                      : ord.status === "PREPARING" ? "LOADING_VEHICLE"
+                                      : ord.status === "DISPATCHED" ? "ASSIGNED_DRIVER"
+                                      : ord.status === "PLACED" ? "CONFIRMED"
+                                      : ord.status || "CONFIRMED";
+                                    setNewStatus(normalized);
+                                    setStatusVehicleNo(ord.vehicleNumber || "");
+                                    setStatusDriverName(ord.driverName || "");
+                                    setStatusDriverPhone(ord.driverPhone || "");
+                                    setStatusRejectionReason(ord.rejectionReason || "");
+                                    setStatusNote("");
+                                  }}
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                                >
+                                  <Truck size={13} />
+                                  <span>{isOrderTrackingTerminal(ord.status) ? "View Tracking" : "Update Status"}</span>
+                                </button>
+                                {!isOrderTrackingTerminal(ord.status) && (
+                                  <SellerTrackingShareButton
+                                    orderId={ord.id}
+                                    orderNumber={ord.orderNumber}
+                                    driverName={ord.driverName}
+                                    driverPhone={ord.driverPhone}
+                                    vehicleNumber={ord.vehicleNumber}
+                                    compact
+                                  />
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2592,6 +2605,19 @@ export function SellerDashboard() {
                 Site: {livePartnerOrder.deliveryAddress?.line1 || "Customer Address"}{livePartnerOrder.deliveryAddress?.city ? `, ${livePartnerOrder.deliveryAddress.city}` : ""}
               </div>
             </div>
+
+            {/* Live Driver GPS Share Widget (for non-terminal orders) */}
+            {!isOrderTrackingTerminal(livePartnerOrder.status) && (
+              <div className="mt-4">
+                <SellerTrackingShareButton
+                  orderId={livePartnerOrder.id}
+                  orderNumber={livePartnerOrder.orderNumber}
+                  driverName={livePartnerOrder.driverName || statusDriverName}
+                  driverPhone={livePartnerOrder.driverPhone || statusDriverPhone}
+                  vehicleNumber={livePartnerOrder.vehicleNumber || statusVehicleNo}
+                />
+              </div>
+            )}
 
             {isOrderTrackingTerminal(livePartnerOrder.status) ? (
               <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">

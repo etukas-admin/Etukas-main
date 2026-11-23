@@ -52,7 +52,8 @@ const CSRF_EXEMPT_PATHS = [
   "/seller-enquiries",
   "/seller-registration",
   "/technicians/register",
-  "/technicians"
+  "/technicians",
+  "/driver/"
 ];
 
 export function requireCsrf(req: Request, _res: Response, next: NextFunction) {

@@ -5,7 +5,10 @@ import type {
   TechnicianRegistrationInput,
   TechnicianBookingInput,
   CheckoutInput,
-  OrderTrackingUpdateInput
+  OrderTrackingUpdateInput,
+  TruckLocationPayload,
+  TripSessionInfo,
+  TrackingLinkResponse
 } from "@etukas/shared";
 
 export type {
@@ -13,7 +16,10 @@ export type {
   TechnicianRegistrationInput,
   TechnicianBookingInput,
   CheckoutInput,
-  OrderTrackingUpdateInput
+  OrderTrackingUpdateInput,
+  TruckLocationPayload,
+  TripSessionInfo,
+  TrackingLinkResponse
 };
 
 export function normalizeApiBase(rawUrl?: string): string {
@@ -200,7 +206,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     path.startsWith("/auth/reset-password") ||
     path.startsWith("/auth/csrf") ||
     path.startsWith("/seller-enquiries") ||
-    path.startsWith("/seller-registration");
+    path.startsWith("/seller-registration") ||
+    path.startsWith("/driver/");
 
   if (requiresCsrf && !isAuthOrPublic && !csrfToken) {
     try {
@@ -393,6 +400,42 @@ export const marketplaceApi = {
     api<{ message: string; order: OrderRecord }>(`/orders/${encodeURIComponent(orderId)}/cancel`, {
       method: "POST",
       body: JSON.stringify({ reason })
+    }),
+  generateOrderTrackingLink: (
+    orderId: string,
+    body?: { clientOrigin?: string; expiresInHours?: number }
+  ) =>
+    api<TrackingLinkResponse>(`/orders/${encodeURIComponent(orderId)}/tracking-link`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {})
+    }),
+  getOrderTrackingSession: (orderId: string, options?: RequestOptions) =>
+    api<TripSessionInfo>(`/orders/${encodeURIComponent(orderId)}/tracking-session`, {
+      signal: options?.signal
+    }),
+  getDriverTripSession: (token: string, options?: RequestOptions) =>
+    api<TripSessionInfo>(`/driver/session/${encodeURIComponent(token)}`, {
+      signal: options?.signal
+    }),
+  sendDriverLocationSnapshot: (body: {
+    token: string;
+    lat: number;
+    lng: number;
+    bearing: number;
+    speedKmh: number;
+    timestamp?: number;
+  }) =>
+    api<{ saved: true; orderId: string; lastKnownLocation: TruckLocationPayload }>(
+      "/driver/location-snapshot",
+      {
+        method: "POST",
+        body: JSON.stringify(body)
+      }
+    ),
+  endDriverTrip: (token: string) =>
+    api<{ ended: true; orderId: string }>("/driver/end-trip", {
+      method: "POST",
+      body: JSON.stringify({ token })
     }),
   sellerNotifications: (options?: RequestOptions) =>
     api<SellerNotification[]>("/seller/notifications", { signal: options?.signal }),
@@ -784,7 +827,16 @@ export type OrderRecord = {
     postalCode: string;
     landmark?: string;
     label?: string;
+    latitude?: number;
+    longitude?: number;
   };
+  storeLocation?: {
+    lat: number;
+    lng: number;
+    address?: string;
+  };
+  lastKnownLocation?: TruckLocationPayload | null;
+  activeTripIsActive?: boolean;
   status: DeliveryStatus;
   subtotalMinor: number;
   taxMinor: number;

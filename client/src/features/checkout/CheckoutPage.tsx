@@ -61,7 +61,9 @@ export function CheckoutPage() {
       city: loc.city || "Kakinada",
       state: loc.state || "Andhra Pradesh",
       postalCode: loc.postalCode || "533462",
-      label: (loc.label as string) || "Home"
+      label: (loc.label as string) || "Home",
+      latitude: loc.latitude,
+      longitude: loc.longitude
     };
   }, [storedUser]);
 
@@ -220,7 +222,9 @@ export function CheckoutPage() {
         state: address.state,
         postalCode: address.postalCode,
         landmark: address.landmark,
-        label: address.label
+        label: address.label,
+        latitude: address.latitude,
+        longitude: address.longitude
       },
       items: items.map((it) => ({
         storeProductId: it.storeProductId,
@@ -392,7 +396,9 @@ export function CheckoutPage() {
                     city: String(form.get("city") || address.city),
                     state: String(form.get("state") || address.state),
                     postalCode: String(form.get("postalCode") || address.postalCode),
-                    label: String(form.get("label") || address.label)
+                    label: String(form.get("label") || address.label),
+                    latitude: address.latitude,
+                    longitude: address.longitude
                   });
                   setIsEditingAddress(false);
                   setCurrentStep(2);
