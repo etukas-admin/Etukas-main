@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -10,6 +10,7 @@ import {
   Edit3,
   ExternalLink,
   MapPin,
+  Navigation,
   Package,
   Phone,
   RefreshCw,
@@ -28,11 +29,10 @@ import { getStoredUser, marketplaceApi, type OrderRecord, type User } from "../.
 import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../../utils/imageFallback";
 import { CancelOrderModal } from "../../checkout/CancelOrderModal";
 import {
-  DeliveryStepsTracker,
   canCustomerCancelOrder,
+  canTrackVehicleLive,
   formatDeliveryStatusLabel,
-  getDeliveryStatusBadgeClass,
-  isOrderTrackingTerminal
+  getDeliveryStatusBadgeClass
 } from "../../checkout/DeliveryStepsTracker";
 import { AccountSubPageHeader } from "../components/AccountSubPageHeader";
 import { OrderReviewModal } from "../components/OrderReviewModal";
@@ -95,6 +95,7 @@ function getOrderHeadline(order: OrderRecord): string {
 }
 
 export function MyOrdersPage() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const initialTab = searchParams.get("tab") === "services" ? "services" : "all";
@@ -105,9 +106,15 @@ export function MyOrdersPage() {
   const [activePromo, setActivePromo] = useState(0);
 
   // Modals state
-  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
   const [cancellingOrder, setCancellingOrder] = useState<OrderRecord | null>(null);
   const [reviewTarget, setReviewTarget] = useState<{ order: OrderRecord; initialRating?: number } | null>(null);
+
+  const openOrderFullPage = (order: OrderRecord) => {
+    const id = order.orderNumber || order.id;
+    navigate(`/orders/${encodeURIComponent(id)}`, {
+      state: { initialOrder: order }
+    });
+  };
 
   useEffect(() => {
     const handleAuthChange = () => setCurrentUser(getStoredUser());
@@ -143,38 +150,6 @@ export function MyOrdersPage() {
     enabled: Boolean(currentUser) && activeChip === "services",
     staleTime: 30_000
   });
-
-  const cachedTrackingOrder = trackingOrderId
-    ? customerOrders.find((o) => o.id === trackingOrderId || o.orderNumber === trackingOrderId)
-    : undefined;
-
-  const {
-    data: liveTrackingOrder,
-    isFetching: isRefreshingLive,
-    refetch: refetchLiveTracking
-  } = useQuery({
-    queryKey: queryKeys.orders.detail(trackingOrderId || ""),
-    queryFn: ({ signal }) => marketplaceApi.getOrder(trackingOrderId || "", { signal }),
-    enabled: Boolean(currentUser && trackingOrderId),
-    placeholderData: cachedTrackingOrder,
-    staleTime: 15_000,
-    refetchOnWindowFocus: true,
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      if (!status || isOrderTrackingTerminal(status)) return false;
-      return 30_000;
-    },
-    refetchIntervalInBackground: false
-  });
-
-  const trackingOrder: OrderRecord | null = trackingOrderId
-    ? liveTrackingOrder ?? cachedTrackingOrder ?? null
-    : null;
-
-  const handleRefreshLiveTracking = async () => {
-    if (!trackingOrderId) return;
-    await Promise.all([refetchLiveTracking(), refetchOrders()]);
-  };
 
   const filteredOrders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -566,13 +541,13 @@ export function MyOrdersPage() {
                 <article key={order.id} className="p-4 transition hover:bg-gray-50/40 sm:p-5">
                   {/* Top Clickable Row: Thumbnail + Status Headline + Product Name + Chevron */}
                   <div
-                    onClick={() => setTrackingOrderId(order.orderNumber || order.id)}
+                    onClick={() => openOrderFullPage(order)}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setTrackingOrderId(order.orderNumber || order.id);
+                        openOrderFullPage(order);
                       }
                     }}
                     className="flex cursor-pointer items-center gap-3.5"
@@ -699,13 +674,23 @@ export function MyOrdersPage() {
                           </button>
                         ) : null}
 
+                        {canTrackVehicleLive(order.status) ? (
+                          <Link
+                            to={`/track/${encodeURIComponent(order.orderNumber || order.id)}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700"
+                          >
+                            <Navigation size={12} />
+                            <span>Live Map</span>
+                          </Link>
+                        ) : null}
+
                         <button
                           type="button"
-                          onClick={() => setTrackingOrderId(order.orderNumber || order.id)}
+                          onClick={() => openOrderFullPage(order)}
                           className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-red-700"
                         >
                           <Truck size={13} />
-                          <span>Track Live</span>
+                          <span>Order Status</span>
                         </button>
                       </div>
                     </div>
@@ -727,62 +712,12 @@ export function MyOrdersPage() {
         </div>
       </main>
 
-      {/* Live Order Tracking Modal */}
-      {trackingOrder ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-xs">
-          <div className="relative max-h-[90vh] w-full max-w-xl space-y-4 overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-              <div>
-                <h3 className="text-base font-black text-etukas-black">
-                  Order #{trackingOrder.orderNumber || trackingOrder.id}
-                </h3>
-                <p className="text-xs text-gray-500">Store: {trackingOrder.storeName}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTrackingOrderId(null)}
-                aria-label="Close tracking"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <DeliveryStepsTracker
-              order={trackingOrder}
-              onRefresh={handleRefreshLiveTracking}
-              isRefreshing={isRefreshingLive}
-              onReviewOrder={() =>
-                setReviewTarget({
-                  order: trackingOrder,
-                  initialRating: trackingOrder.review?.rating ?? 5
-                })
-              }
-              onCancelOrder={
-                canCustomerCancelOrder(trackingOrder.status)
-                  ? () => setCancellingOrder(trackingOrder)
-                  : undefined
-              }
-            />
-
-            <button
-              type="button"
-              onClick={() => setTrackingOrderId(null)}
-              className="w-full rounded-xl bg-etukas-black py-2.5 text-xs font-bold text-white hover:bg-gray-800"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      ) : null}
-
       {/* Cancel Order Modal */}
       <CancelOrderModal
         order={cancellingOrder}
         onClose={() => setCancellingOrder(null)}
         onCancelled={() => {
           void refetchOrders();
-          if (trackingOrderId) void refetchLiveTracking();
         }}
       />
 

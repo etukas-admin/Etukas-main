@@ -318,17 +318,39 @@ model Order {
   discountMinor       Int           @default(0)
   deliveryChargeMinor Int           @default(0)
   totalMinor          Int
-  currency            String        @default("INR")
+  currency            String                @default("INR")
   trackingMetadata    Json?
+  lastLat             Float?
+  lastLng             Float?
+  lastBearing         Float?
+  lastSpeedKmh        Float?
+  lastSeenAt          DateTime?
+  tripSessions        DeliveryTripSession[]
   items               OrderItem[]
   payment             Payment?
   reviews             Review[]
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   @@index([customerId, status])
   @@index([storeId, status])
   @@index([parentCheckoutId])
+}
+
+model DeliveryTripSession {
+  id        String    @id @default(cuid())
+  token     String    @unique
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  isActive  Boolean   @default(true)
+  startedAt DateTime?
+  endedAt   DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([orderId, isActive])
+  @@index([expiresAt])
 }
 
 model OrderItem {

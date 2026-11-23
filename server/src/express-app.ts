@@ -31,6 +31,7 @@ import { sellerRouter } from "./modules/seller-profiles/seller.routes.js";
 import { storesRouter } from "./modules/stores/stores.routes.js";
 import { techniciansRouter } from "./modules/technicians/technicians.routes.js";
 import { chatRouter, adminChatRouter } from "./modules/chat/chat.routes.js";
+import { driverRouter, orderTrackingRouter } from "./modules/tracking/tracking.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { apiLimiter, requireCsrf } from "./middleware/security.js";
@@ -170,7 +171,12 @@ export function createApp() {
   app.use("/api/v1/stores", storesRouter);
   app.use("/api/v1/technicians", techniciansRouter);
   app.use("/api/v1/cart", cartsRouter);
+  app.use("/api/v1/orders", orderTrackingRouter);
   app.use("/api/v1/orders", ordersRouter);
+  app.use("/api/v1/driver", driverRouter);
+  // Direct /api aliases for tracking & driver endpoints
+  app.use("/api/orders", apiLimiter, orderTrackingRouter);
+  app.use("/api/driver", apiLimiter, driverRouter);
   app.use("/api/v1/seller-enquiries", sellerEnquiriesRouter);
   app.use("/api/v1/seller-registration", sellerRegistrationRouter);
   app.use("/api/v1/seller", sellerRouter);

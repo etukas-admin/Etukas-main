@@ -1,4 +1,6 @@
-import { CheckCircle2, Clock, Truck, UserCheck, Phone, AlertCircle, RefreshCw, FileText, Star, XCircle, Info } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CheckCircle2, Clock, Truck, UserCheck, Phone, AlertCircle, RefreshCw, FileText, Star, XCircle, Info, MapPin, Navigation } from "lucide-react";
+import { isVehicleTrackingEnabledStatus } from "@etukas/shared";
 import type { OrderRecord, DeliveryStatus } from "../../services/api";
 
 export const TERMINAL_DELIVERY_STATUSES: ReadonlySet<string> = new Set([
@@ -13,6 +15,10 @@ export function isOrderTrackingTerminal(status?: string | null): boolean {
 
 export function canCustomerCancelOrder(status?: string | null): boolean {
   return status === "PLACED" || status === "CONFIRMED";
+}
+
+export function canTrackVehicleLive(status?: string | null): boolean {
+  return isVehicleTrackingEnabledStatus(status);
 }
 
 export function formatDeliveryStatusLabel(status?: string | null): string {
@@ -244,11 +250,24 @@ export function DeliveryStepsTracker({
                   {step.desc}
                 </p>
 
-                {/* Loading Vehicle Details (Step 3) */}
-                {step.status === "LOADING_VEHICLE" && order.vehicleNumber && (
-                  <div className="mt-2 inline-flex items-center gap-2 rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-900">
-                    <Truck size={14} className="text-purple-600" />
-                    <span>Vehicle No: <strong className="font-mono text-purple-950">{order.vehicleNumber}</strong></span>
+                {/* Loading Vehicle Details (Step 3) + Live Vehicle Map Track trigger */}
+                {step.status === "LOADING_VEHICLE" && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {order.vehicleNumber && (
+                      <div className="inline-flex items-center gap-2 rounded-xl bg-purple-50 border border-purple-200 px-3 py-1.5 text-xs font-bold text-purple-900">
+                        <Truck size={14} className="text-purple-600" />
+                        <span>Vehicle No: <strong className="font-mono text-purple-950">{order.vehicleNumber}</strong></span>
+                      </div>
+                    )}
+                    {canTrackVehicleLive(order.status) && (
+                      <Link
+                        to={`/track/${encodeURIComponent(order.orderNumber || order.id)}`}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                      >
+                        <Navigation size={13} />
+                        <span>Live Track Vehicle</span>
+                      </Link>
+                    )}
                   </div>
                 )}
 
@@ -270,15 +289,26 @@ export function DeliveryStepsTracker({
                         </div>
                       </div>
 
-                      {order.driverPhone && (
-                        <a
-                          href={`tel:${order.driverPhone}`}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition"
-                        >
-                          <Phone size={13} />
-                          <span>Call Driver</span>
-                        </a>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {canTrackVehicleLive(order.status) && (
+                          <Link
+                            to={`/track/${encodeURIComponent(order.orderNumber || order.id)}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-red-700 active:scale-95 transition"
+                          >
+                            <MapPin size={13} />
+                            <span>Live Map</span>
+                          </Link>
+                        )}
+                        {order.driverPhone && (
+                          <a
+                            href={`tel:${order.driverPhone}`}
+                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700 active:scale-95 transition"
+                          >
+                            <Phone size={13} />
+                            <span>Call Driver</span>
+                          </a>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}

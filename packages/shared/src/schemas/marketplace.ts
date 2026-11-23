@@ -33,7 +33,9 @@ export const deliveryAddressSchema = z.object({
   state: z.string().trim().min(2).max(100),
   postalCode: z.string().trim().min(4).max(12),
   landmark: z.string().trim().max(150).optional(),
-  label: z.string().trim().max(50).default("Home")
+  label: z.string().trim().max(50).default("Home"),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional()
 });
 
 export const checkoutItemSchema = z.object({

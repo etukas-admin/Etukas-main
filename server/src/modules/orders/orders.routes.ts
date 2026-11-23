@@ -9,12 +9,14 @@ import {
   orderTrackingUpdateSchema,
   orderReviewSchema,
   type CheckoutInput,
-  type OrderTrackingUpdateInput
+  type OrderTrackingUpdateInput,
+  type TruckLocationPayload
 } from "@etukas/shared";
 import { AdminNotificationType, OrderStatus, Role } from "@prisma/client";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth, requireRole, type AuthUser } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
+import { deactivateOrderTripSessions } from "../tracking/tracking.service.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -70,7 +72,18 @@ export interface OrderRecord {
     postalCode: string;
     landmark?: string;
     label?: string;
+    latitude?: number;
+    longitude?: number;
   };
+  storeLocation?: {
+    lat: number;
+    lng: number;
+    address?: string;
+  };
+  lastKnownLocation?: TruckLocationPayload | null;
+  activeTripToken?: string;
+  activeTripExpiresAt?: string;
+  activeTripIsActive?: boolean;
   status: DeliveryStatus;
   subtotalMinor: number;
   taxMinor: number;
@@ -376,7 +389,12 @@ export function buildTrackingMetadata(order: OrderRecord) {
     statusNote: order.statusNote,
     review: order.review,
     statusHistory: order.statusHistory,
-    items: order.items
+    items: order.items,
+    storeLocation: order.storeLocation,
+    lastKnownLocation: order.lastKnownLocation ?? null,
+    activeTripToken: order.activeTripToken,
+    activeTripExpiresAt: order.activeTripExpiresAt,
+    activeTripIsActive: order.activeTripIsActive
   };
 }
 
@@ -441,7 +459,9 @@ export function mapDbOrderToRecord(dbOrder: any): OrderRecord {
         city: dbOrder.address.city,
         state: dbOrder.address.state,
         postalCode: dbOrder.address.postalCode,
-        label: dbOrder.address.label || undefined
+        label: dbOrder.address.label || undefined,
+        latitude: dbOrder.address.latitude !== null && dbOrder.address.latitude !== undefined ? Number(dbOrder.address.latitude) : undefined,
+        longitude: dbOrder.address.longitude !== null && dbOrder.address.longitude !== undefined ? Number(dbOrder.address.longitude) : undefined
       }
     : {
         contactName: dbOrder.customer?.name || "Customer",
@@ -451,6 +471,38 @@ export function mapDbOrderToRecord(dbOrder: any): OrderRecord {
         state: "",
         postalCode: ""
       });
+
+  const resolvedStoreLocation = meta.storeLocation ?? (
+    dbOrder.store?.latitude !== null &&
+    dbOrder.store?.latitude !== undefined &&
+    dbOrder.store?.longitude !== null &&
+    dbOrder.store?.longitude !== undefined
+      ? {
+          lat: Number(dbOrder.store.latitude),
+          lng: Number(dbOrder.store.longitude),
+          address: [dbOrder.store.addressLine1, dbOrder.store.city, dbOrder.store.state, dbOrder.store.postalCode]
+            .filter(Boolean)
+            .join(", ")
+        }
+      : undefined
+  );
+
+  const dbLastKnownLocation: TruckLocationPayload | null =
+    typeof dbOrder.lastLat === "number" && typeof dbOrder.lastLng === "number"
+      ? {
+          orderId: dbOrder.id,
+          lat: dbOrder.lastLat,
+          lng: dbOrder.lastLng,
+          bearing: typeof dbOrder.lastBearing === "number" ? dbOrder.lastBearing : 0,
+          speedKmh: typeof dbOrder.lastSpeedKmh === "number" ? dbOrder.lastSpeedKmh : 0,
+          timestamp: dbOrder.lastSeenAt ? new Date(dbOrder.lastSeenAt).getTime() : Date.now()
+        }
+      : null;
+
+  const resolvedLastKnownLocation =
+    dbLastKnownLocation && (!meta.lastKnownLocation || dbLastKnownLocation.timestamp >= meta.lastKnownLocation.timestamp)
+      ? dbLastKnownLocation
+      : (meta.lastKnownLocation ?? null);
 
   return {
     id: dbOrder.id,
@@ -466,6 +518,11 @@ export function mapDbOrderToRecord(dbOrder: any): OrderRecord {
     sellerPhone: meta.sellerPhone || dbOrder.store?.phone || dbOrder.store?.sellerProfile?.user?.mobile || undefined,
     addressId: dbOrder.addressId,
     deliveryAddress,
+    storeLocation: resolvedStoreLocation,
+    lastKnownLocation: resolvedLastKnownLocation,
+    activeTripToken: meta.activeTripToken,
+    activeTripExpiresAt: meta.activeTripExpiresAt,
+    activeTripIsActive: meta.activeTripIsActive,
     status: normalizedStatus,
     subtotalMinor: dbOrder.subtotalMinor,
     taxMinor: dbOrder.taxMinor,
@@ -762,6 +819,11 @@ export async function updateOrderTracking(
 
   await syncOrderTrackingToDb(order, id);
 
+  // Deactivate any active live GPS trip tokens once the order is delivered or terminated
+  if (TERMINAL_STATUSES.has(normalizedStatus)) {
+    await deactivateOrderTripSessions(order.id);
+  }
+
   return order;
 }
 
@@ -976,7 +1038,9 @@ ordersRouter.post("/", async (req, res, next) => {
             line2: deliveryAddress.line2,
             city: deliveryAddress.city,
             state: deliveryAddress.state,
-            postalCode: deliveryAddress.postalCode
+            postalCode: deliveryAddress.postalCode,
+            latitude: deliveryAddress.latitude ?? undefined,
+            longitude: deliveryAddress.longitude ?? undefined
           }
         });
         dbAddressId = createdAddr.id;
@@ -1295,6 +1359,7 @@ export async function cancelCustomerOrder(
 
   saveOrder(order);
   await syncOrderTrackingToDb(order, id);
+  await deactivateOrderTripSessions(order.id);
 
   // Notify the fulfilling Partner / Seller with the customer's cancellation reason
   const displayId = order.orderNumber || order.id;
