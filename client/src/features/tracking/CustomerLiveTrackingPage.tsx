@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import * as maplibregl from "maplibre-gl";
+import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   AlertTriangle,
@@ -40,6 +41,30 @@ import {
 } from "./osrm";
 
 const OPENFREEMAP_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty";
+const OSM_RASTER_FALLBACK_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      attribution: "© OpenStreetMap contributors"
+    }
+  },
+  layers: [
+    {
+      id: "osm-tiles",
+      type: "raster",
+      source: "osm",
+      minzoom: 0,
+      maxzoom: 19
+    }
+  ]
+};
+
+// Configure MapLibre GL v6 Web Worker URL explicitly so Vite bundles & serves it cleanly on Vercel
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
+
 const INTERPOLATION_DURATION_MS = 30_000; // Smoothly glide over 30s between pings
 const STALE_SIGNAL_THRESHOLD_MS = 90_000; // Show "Last seen X mins ago" after 90s silence
 const ROUTE_DEVIATION_METERS = 1_500; // Only re-fetch OSRM if truck deviates > 1.5 km
@@ -88,6 +113,7 @@ function createTruckMarkerElement(): { root: HTMLDivElement; rotator: HTMLDivEle
   root.style.alignItems = "center";
   root.style.justifyContent = "center";
   root.style.cursor = "pointer";
+  root.style.zIndex = "10";
 
   const rotator = document.createElement("div");
   rotator.style.width = "48px";
@@ -179,7 +205,7 @@ export function CustomerLiveTrackingPage() {
   // Helper to paint or update GeoJSON route polyline on MapLibre
   const drawRouteOnMap = useCallback((coordinates: [number, number][]) => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded() || coordinates.length < 2) return;
+    if (!map || coordinates.length < 2) return;
 
     const geojson: GeoJSON.Feature<GeoJSON.LineString> = {
       type: "Feature",
@@ -190,40 +216,46 @@ export function CustomerLiveTrackingPage() {
       }
     };
 
-    const existing = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
-    if (existing) {
-      existing.setData(geojson);
-      return;
+    try {
+      const existing = map.getSource(ROUTE_SOURCE_ID) as maplibregl.GeoJSONSource | undefined;
+      if (existing) {
+        existing.setData(geojson);
+        return;
+      }
+
+      if (!map.getStyle()) return;
+
+      map.addSource(ROUTE_SOURCE_ID, {
+        type: "geojson",
+        data: geojson
+      });
+
+      map.addLayer({
+        id: ROUTE_CASING_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#FFFFFF",
+          "line-width": 8,
+          "line-opacity": 0.9
+        }
+      });
+
+      map.addLayer({
+        id: ROUTE_LINE_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE_ID,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: {
+          "line-color": "#C52228",
+          "line-width": 4.5,
+          "line-opacity": 0.95
+        }
+      });
+    } catch {
+      // Style not ready yet; style.load / load handler will retry automatically
     }
-
-    map.addSource(ROUTE_SOURCE_ID, {
-      type: "geojson",
-      data: geojson
-    });
-
-    map.addLayer({
-      id: ROUTE_CASING_LAYER_ID,
-      type: "line",
-      source: ROUTE_SOURCE_ID,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": "#FFFFFF",
-        "line-width": 8,
-        "line-opacity": 0.9
-      }
-    });
-
-    map.addLayer({
-      id: ROUTE_LINE_LAYER_ID,
-      type: "line",
-      source: ROUTE_SOURCE_ID,
-      layout: { "line-join": "round", "line-cap": "round" },
-      paint: {
-        "line-color": "#C52228",
-        "line-width": 4.5,
-        "line-opacity": 0.95
-      }
-    });
   }, []);
 
   // Smoothly interpolate truck position & compass bearing over 30s using requestAnimationFrame
@@ -321,64 +353,80 @@ export function CustomerLiveTrackingPage() {
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
     mapRef.current = map;
 
-    map.on("load", () => {
+    // Add DOM markers immediately so Store pin, Customer drop pin, and Truck icon appear
+    // right away without waiting for all remote vector tiles to finish loading.
+    storeMarkerRef.current = new maplibregl.Marker({
+      element: createStorePinElement(session.storeName || session.storeLocation.label || "Store"),
+      anchor: "bottom"
+    })
+      .setLngLat([session.storeLocation.lng, session.storeLocation.lat])
+      .addTo(map);
+
+    customerMarkerRef.current = new maplibregl.Marker({
+      element: createCustomerPinElement(
+        session.customerLocation.label || session.customerName || "Site"
+      ),
+      anchor: "bottom"
+    })
+      .setLngLat([session.customerLocation.lng, session.customerLocation.lat])
+      .addTo(map);
+
+    const truckInit = session.lastKnownLocation ?? {
+      lat: session.storeLocation.lat,
+      lng: session.storeLocation.lng,
+      bearing: 0
+    };
+    const { root, rotator } = createTruckMarkerElement();
+    truckRotatorRef.current = rotator;
+    rotator.style.transform = `rotate(${truckInit.bearing}deg)`;
+    renderedPosRef.current = {
+      lat: truckInit.lat,
+      lng: truckInit.lng,
+      bearing: truckInit.bearing
+    };
+
+    truckMarkerRef.current = new maplibregl.Marker({
+      element: root,
+      anchor: "center"
+    })
+      .setLngLat([truckInit.lng, truckInit.lat])
+      .addTo(map);
+
+    // Fit bounds cleanly around pickup, drop, and truck immediately
+    const bounds = new maplibregl.LngLatBounds();
+    bounds.extend([session.storeLocation.lng, session.storeLocation.lat]);
+    bounds.extend([session.customerLocation.lng, session.customerLocation.lat]);
+    if (session.lastKnownLocation) {
+      bounds.extend([session.lastKnownLocation.lng, session.lastKnownLocation.lat]);
+    }
+    map.fitBounds(bounds, {
+      padding: { top: 155, bottom: 175, left: 48, right: 48 },
+      maxZoom: 15,
+      duration: 0
+    });
+
+    const handleStyleReady = () => {
       setMapReady(true);
-
-      // Store pin
-      storeMarkerRef.current = new maplibregl.Marker({
-        element: createStorePinElement(session.storeName || session.storeLocation.label || "Store"),
-        anchor: "bottom"
-      })
-        .setLngLat([session.storeLocation.lng, session.storeLocation.lat])
-        .addTo(map);
-
-      // Customer drop pin
-      customerMarkerRef.current = new maplibregl.Marker({
-        element: createCustomerPinElement(
-          session.customerLocation.label || session.customerName || "Site"
-        ),
-        anchor: "bottom"
-      })
-        .setLngLat([session.customerLocation.lng, session.customerLocation.lat])
-        .addTo(map);
-
-      // Truck marker (placed at lastKnownLocation or storeLocation initially)
-      const truckInit = session.lastKnownLocation ?? {
-        lat: session.storeLocation.lat,
-        lng: session.storeLocation.lng,
-        bearing: 0
-      };
-      const { root, rotator } = createTruckMarkerElement();
-      truckRotatorRef.current = rotator;
-      rotator.style.transform = `rotate(${truckInit.bearing}deg)`;
-      renderedPosRef.current = {
-        lat: truckInit.lat,
-        lng: truckInit.lng,
-        bearing: truckInit.bearing
-      };
-
-      truckMarkerRef.current = new maplibregl.Marker({
-        element: root,
-        anchor: "center"
-      })
-        .setLngLat([truckInit.lng, truckInit.lat])
-        .addTo(map);
-
-      // Fit bounds cleanly around pickup, drop, and truck
-      const bounds = new maplibregl.LngLatBounds();
-      bounds.extend([session.storeLocation.lng, session.storeLocation.lat]);
-      bounds.extend([session.customerLocation.lng, session.customerLocation.lat]);
-      if (session.lastKnownLocation) {
-        bounds.extend([session.lastKnownLocation.lng, session.lastKnownLocation.lat]);
-      }
-      map.fitBounds(bounds, {
-        padding: { top: 150, bottom: 180, left: 50, right: 50 },
-        maxZoom: 15,
-        duration: 800
-      });
-
       if (routeCoordsRef.current.length >= 2) {
         drawRouteOnMap(routeCoordsRef.current);
+      }
+    };
+
+    map.on("style.load", handleStyleReady);
+    map.on("load", handleStyleReady);
+
+    // Graceful fallback to free OSM raster tiles if vector style fails to load on a restricted network
+    let usedFallback = false;
+    map.on("error", (ev) => {
+      if (usedFallback) return;
+      const msg = String((ev as { error?: { message?: string } })?.error?.message ?? "");
+      if (
+        msg.toLowerCase().includes("failed to fetch") ||
+        msg.toLowerCase().includes("style") ||
+        msg.toLowerCase().includes("worker")
+      ) {
+        usedFallback = true;
+        map.setStyle(OSM_RASTER_FALLBACK_STYLE);
       }
     });
 
