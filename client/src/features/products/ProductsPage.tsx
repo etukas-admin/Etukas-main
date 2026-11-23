@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, MapPin, SlidersHorizontal, Sparkles, Truck } from "lucide-react";
+import { ArrowRight, Heart, MapPin, SlidersHorizontal, Sparkles, Truck } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useProducts } from "../../hooks/useMarketplace";
 import { formatMoney } from "../../lib/utils";
 import { getProductImageUrl } from "../../services/api";
+import { useWishlist } from "../account";
 import { ADDRESS_CHANGE_EVENT, getDeliveryLabel, getSelectedAddress } from "../location/locationStore";
 import { LocationRefreshingOverlay } from "../location/LocationRefreshingOverlay";
 
@@ -82,6 +83,7 @@ export function ProductsPage() {
   const q = searchParams.get("q");
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const { isWishlisted, toggle: toggleWishlist } = useWishlist();
   const products = useProducts({
     category: category ?? undefined,
     brand: brand ?? undefined,
@@ -157,8 +159,18 @@ export function ProductsPage() {
         </div>
       ) : products.data?.length ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {products.data.map((item) => (
-              <article key={item.id} className="rounded-md border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow group">
+          {products.data.map((item) => {
+            const wishlisted = isWishlisted(item.id);
+            return (
+              <article key={item.id} className="relative rounded-md border border-gray-100 flex flex-col justify-between hover:shadow-md transition-shadow group">
+                <button
+                  type="button"
+                  onClick={() => toggleWishlist(item)}
+                  aria-label={wishlisted ? `Remove ${item.product.name} from wishlist` : `Save ${item.product.name} to wishlist`}
+                  className="absolute right-2.5 top-2.5 z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/95 text-gray-600 shadow-sm transition hover:scale-105 hover:text-etukas-red"
+                >
+                  <Heart size={16} className={wishlisted ? "fill-etukas-red text-etukas-red" : ""} />
+                </button>
                 <Link to={`/product/${item.id}`} className="block">
                   <img
                     className="h-40 w-full rounded-t-md object-cover"
@@ -200,7 +212,8 @@ export function ProductsPage() {
                   </div>
                 </div>
               </article>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-8 text-center">

@@ -5,6 +5,7 @@ import {
   ArrowRight,
   ChevronDown,
   ChevronUp,
+  Heart,
   MapPin,
   Share2,
   ShoppingBag,
@@ -28,6 +29,7 @@ import { useCartQuery } from "../cart/useCart";
 import { marketplaceApi, getStoredUser } from "../../services/api";
 import { queryKeys } from "../../lib/queryKeys";
 import { FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
+import { recordRecentlyViewedProduct, useWishlist } from "../account";
 
 interface ProductDetailsViewProps {
   product: StoreProduct;
@@ -67,6 +69,12 @@ export function ProductDetailsView({
   const { addToCart, isLoading: isAdding, notice } = useAddToCart();
   const [isBuying, setIsBuying] = useState(false);
   const currentUser = getStoredUser();
+  const { isWishlisted, toggle: toggleWishlist } = useWishlist();
+  const wishlisted = isWishlisted(product.id);
+
+  useEffect(() => {
+    recordRecentlyViewedProduct(product);
+  }, [product]);
 
   // Fetch genuine customer reviews for this material from verified delivered orders
   const { data: reviewsData } = useQuery({
@@ -438,17 +446,32 @@ export function ProductDetailsView({
                   )}
                 </div>
 
-                {/* Share Button at Top Right Corner */}
-                <button
-                  type="button"
-                  onClick={() => void handleShare()}
-                  disabled={isSharing}
-                  aria-label="Share product details"
-                  title="Share product with photo"
-                  className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md transition hover:bg-white hover:text-etukas-red active:scale-95 disabled:opacity-60"
-                >
-                  <Share2 size={18} className={isSharing ? "animate-pulse text-etukas-red" : ""} />
-                </button>
+                {/* Wishlist & Share Buttons at Top Right Corner */}
+                <div className="absolute right-3 top-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleWishlist(product)}
+                    aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+                    title={wishlisted ? "Saved in Wishlist" : "Add to Wishlist"}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md transition hover:bg-white hover:text-etukas-red active:scale-95"
+                  >
+                    <Heart
+                      size={18}
+                      className={wishlisted ? "fill-etukas-red text-etukas-red" : ""}
+                    />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void handleShare()}
+                    disabled={isSharing}
+                    aria-label="Share product details"
+                    title="Share product with photo"
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-white/95 text-gray-700 shadow-md transition hover:bg-white hover:text-etukas-red active:scale-95 disabled:opacity-60"
+                  >
+                    <Share2 size={18} className={isSharing ? "animate-pulse text-etukas-red" : ""} />
+                  </button>
+                </div>
 
                 {shareCopied && (
                   <div className="absolute right-3 top-14 rounded-md bg-black/80 px-2.5 py-1 text-[11px] font-bold text-white shadow-md backdrop-blur">

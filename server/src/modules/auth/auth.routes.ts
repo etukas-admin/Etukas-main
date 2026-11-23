@@ -426,3 +426,33 @@ authRouter.get("/me", requireAuth, async (req, res, next) => {
     next(error);
   }
 });
+
+authRouter.patch("/me", requireAuth, async (req, res, next) => {
+  try {
+    const rawName = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const rawMobile = typeof req.body?.mobile === "string" ? req.body.mobile.trim() : undefined;
+
+    if (!rawName || rawName.length < 2) {
+      throw new HttpError(400, "INVALID_NAME", "Name must be at least 2 characters");
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: {
+        name: rawName,
+        ...(rawMobile ? { mobile: rawMobile } : {})
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        mobile: true,
+        roles: true
+      }
+    });
+
+    return sendOk(res, updated);
+  } catch (error) {
+    next(error);
+  }
+});

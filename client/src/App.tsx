@@ -4,6 +4,13 @@ import { Layout } from "./components/layout/Layout";
 import { LoginPage } from "./features/auth/LoginPage";
 import { RegisterPage } from "./features/auth/RegisterPage";
 import { CustomerAccountPage } from "./features/customer/CustomerAccountPage";
+import {
+  MyAccountPage,
+  MyCouponsPage,
+  MyOrdersPage,
+  MyReviewsPage,
+  MyWishlistPage
+} from "./features/account";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { CartPage } from "./features/cart/CartPage";
 import { CheckoutPage } from "./features/checkout/CheckoutPage";
@@ -45,8 +52,12 @@ export default function App() {
         <Route path="cart" element={<CartPage />} />
         <Route path="checkout" element={<CheckoutPage />} />
         <Route path="order-confirmed/:orderId" element={<OrderConfirmedPage />} />
-        <Route path="orders" element={<CustomerAccountPage />} />
+        <Route path="orders" element={<MyOrdersPage />} />
         <Route path="customer" element={<CustomerAccountPage />} />
+        <Route path="account" element={<MyAccountPage />} />
+        <Route path="account/wishlist" element={<MyWishlistPage />} />
+        <Route path="account/coupons" element={<MyCouponsPage />} />
+        <Route path="account/reviews" element={<MyReviewsPage />} />
         <Route path="partner-hub" element={<PartnerHubPage />} />
         <Route path="seller-hub" element={<Navigate to="/partner-hub" replace />} />
         <Route path="seller-enquiry" element={<SellerHubPage />} />

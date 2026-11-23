@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, MapPin, Store as StoreIcon, Truck } from "lucide-react";
 import { useStores } from "../../hooks/useMarketplace";
+import { recordRecentlyViewedStore } from "../account";
 import { ADDRESS_CHANGE_EVENT, getSelectedAddress } from "../location/locationStore";
 import { LocationRefreshingOverlay } from "../location/LocationRefreshingOverlay";
 
@@ -91,6 +92,7 @@ export function StoresPage() {
               </span>
               <Link
                 to={`/products?q=${encodeURIComponent(store.name)}`}
+                onClick={() => recordRecentlyViewedStore(store)}
                 className="font-bold text-etukas-red hover:underline"
               >
                 View Products →
