@@ -20,14 +20,18 @@ import {
   Wrench,
   RefreshCw,
   Star,
-  Edit3
+  Edit3,
+  XCircle,
+  Info
 } from "lucide-react";
 import {
   DeliveryStepsTracker,
+  canCustomerCancelOrder,
   formatDeliveryStatusLabel,
   getDeliveryStatusBadgeClass,
   isOrderTrackingTerminal
 } from "../checkout/DeliveryStepsTracker";
+import { CancelOrderModal } from "../checkout/CancelOrderModal";
 import { queryKeys } from "../../lib/queryKeys";
 import type { OrderRecord } from "../../services/api";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
@@ -39,6 +43,7 @@ export function CustomerAccountPage() {
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [activeTab, setActiveTab] = useState<"orders" | "services" | "overview">("orders");
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
+  const [cancellingOrder, setCancellingOrder] = useState<OrderRecord | null>(null);
 
   // Review modal state
   const [reviewingOrder, setReviewingOrder] = useState<OrderRecord | null>(null);
@@ -415,7 +420,25 @@ export function CustomerAccountPage() {
                         </div>
                       )}
 
-                      {/* Action Bar with Track Delivery and Review Buttons */}
+                      {/* Cancellation reason notice if cancelled */}
+                      {order.status === "CANCELLED" && (order.cancellationReason || order.rejectionReason) && (
+                        <div className="rounded-xl border border-red-200 bg-red-50/70 p-3 text-xs text-red-900">
+                          <span className="font-extrabold">
+                            {order.cancelledBy === "Customer" ? "Cancelled by you" : "Order Cancelled"}:
+                          </span>{" "}
+                          <span>{order.cancellationReason || order.rejectionReason}</span>
+                        </div>
+                      )}
+
+                      {/* Cancellation policy note before vehicle loading */}
+                      {canCustomerCancelOrder(order.status) && (
+                        <div className="flex items-center gap-1.5 rounded-lg bg-amber-50/80 border border-amber-200/80 px-3 py-1.5 text-[11px] font-semibold text-amber-900">
+                          <Info size={13} className="shrink-0 text-amber-600" />
+                          <span>You can cancel this order before loading the vehicle.</span>
+                        </div>
+                      )}
+
+                      {/* Action Bar with Track Delivery, Cancel, and Review Buttons */}
                       <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
                         <div className="text-xs text-gray-500">
                           {order.vehicleNumber && (
@@ -431,7 +454,18 @@ export function CustomerAccountPage() {
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {canCustomerCancelOrder(order.status) && (
+                            <button
+                              type="button"
+                              onClick={() => setCancellingOrder(order)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3 py-1.5 text-xs font-extrabold text-red-700 shadow-xs hover:bg-red-50 hover:border-red-400 active:scale-95 transition"
+                            >
+                              <XCircle size={13} />
+                              <span>Cancel Order</span>
+                            </button>
+                          )}
+
                           {isDelivered && !order.review && (
                             <button
                               type="button"
@@ -661,6 +695,11 @@ export function CustomerAccountPage() {
               onRefresh={handleRefreshLiveTracking}
               isRefreshing={isRefreshingLive}
               onReviewOrder={() => handleOpenReviewModal(trackingOrder)}
+              onCancelOrder={
+                canCustomerCancelOrder(trackingOrder.status)
+                  ? () => setCancellingOrder(trackingOrder)
+                  : undefined
+              }
             />
 
             <div className="pt-2">
@@ -675,6 +714,18 @@ export function CustomerAccountPage() {
           </div>
         </div>
       )}
+
+      {/* Customer Order Cancellation Modal */}
+      <CancelOrderModal
+        order={cancellingOrder}
+        onClose={() => setCancellingOrder(null)}
+        onCancelled={() => {
+          void refetchOrders();
+          if (trackingOrderId) {
+            void refetchLiveTracking();
+          }
+        }}
+      />
 
       {/* Customer Review & Rating Submission Modal */}
       {reviewingOrder && (

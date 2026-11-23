@@ -3,6 +3,7 @@ import { Role } from "@prisma/client";
 import { prisma } from "../config/prisma.js";
 import {
   buildTrackingMetadata,
+  cancelCustomerOrder,
   canUserAccessOrder,
   mapDbOrderToRecord,
   orderMatchesSeller,
@@ -183,5 +184,78 @@ describe("Order Live Tracking & Security", () => {
     expect(mapped.paymentMethod).toBe("UPI");
     expect(mapped.paymentStatus).toBe("PAID");
     expect(mapped.items).toHaveLength(1);
+  });
+
+  it("allows customer cancellation with reason before vehicle loading, notifies seller, and blocks cancellation once loading starts", async () => {
+    vi.spyOn(prisma.order, "findFirst").mockResolvedValue(null);
+    vi.spyOn(prisma.order, "updateMany").mockResolvedValue({ count: 1 } as never);
+    vi.spyOn(prisma.store, "findUnique").mockResolvedValue({
+      sellerProfile: { userId: "seller-user-1" }
+    } as never);
+    const notifCreateSpy = vi
+      .spyOn(prisma.notification, "create")
+      .mockResolvedValue({ id: "notif-1" } as never);
+    vi.spyOn(prisma.adminNotification, "create").mockResolvedValue({ id: "anotif-1" } as never);
+
+    // 1. Order in CONFIRMED state -> customer cancels with reason
+    const cancellable = makeOrder({
+      id: "ETORD999101",
+      orderNumber: "ETORD999101",
+      status: "CONFIRMED",
+      customerId: "cust-1",
+      customerEmail: "raju@example.com"
+    });
+    saveOrder(cancellable);
+
+    // Must provide a reason >= 5 chars
+    await expect(
+      cancelCustomerOrder(cancellable.id, { id: "cust-1", email: "raju@example.com", roles: [Role.CUSTOMER] }, "no")
+    ).rejects.toThrow(/cancellation reason/i);
+
+    // Another customer cannot cancel
+    await expect(
+      cancelCustomerOrder(
+        cancellable.id,
+        { id: "cust-other", email: "other@example.com", roles: [Role.CUSTOMER] },
+        "Ordered by mistake"
+      )
+    ).rejects.toThrow(/only cancel your own orders/i);
+
+    // Owner cancels cleanly before loading
+    const cancelled = await cancelCustomerOrder(
+      cancellable.id,
+      { id: "cust-1", email: "raju@example.com", roles: [Role.CUSTOMER] },
+      "Construction schedule delayed by 1 week"
+    );
+    expect(cancelled.status).toBe("CANCELLED");
+    expect(cancelled.cancellationReason).toBe("Construction schedule delayed by 1 week");
+    expect(cancelled.cancelledBy).toBe("Customer");
+    expect(notifCreateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          userId: "seller-user-1",
+          title: expect.stringContaining("ETORD999101"),
+          body: expect.stringContaining("Construction schedule delayed by 1 week")
+        })
+      })
+    );
+
+    // 2. Order already in LOADING_VEHICLE state -> customer CANNOT cancel
+    const loadingOrder = makeOrder({
+      id: "ETORD999102",
+      orderNumber: "ETORD999102",
+      status: "LOADING_VEHICLE",
+      customerId: "cust-1",
+      customerEmail: "raju@example.com"
+    });
+    saveOrder(loadingOrder);
+
+    await expect(
+      cancelCustomerOrder(
+        loadingOrder.id,
+        { id: "cust-1", email: "raju@example.com", roles: [Role.CUSTOMER] },
+        "Changed my mind"
+      )
+    ).rejects.toThrow(/vehicle loading has already started/i);
   });
 });

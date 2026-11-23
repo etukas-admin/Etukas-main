@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import {
+  cancelOrderSchema,
   checkoutSchema,
   orderTrackingUpdateSchema,
   orderReviewSchema,
@@ -85,6 +86,9 @@ export interface OrderRecord {
   driverName?: string;
   driverPhone?: string;
   rejectionReason?: string;
+  cancellationReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
   deliveryOtp?: string;
   estimatedDeliveryDate?: string;
   gstin?: string;
@@ -362,6 +366,9 @@ export function buildTrackingMetadata(order: OrderRecord) {
     driverName: order.driverName,
     driverPhone: order.driverPhone,
     rejectionReason: order.rejectionReason,
+    cancellationReason: order.cancellationReason,
+    cancelledBy: order.cancelledBy,
+    cancelledAt: order.cancelledAt,
     deliveryOtp: order.deliveryOtp,
     estimatedDeliveryDate: order.estimatedDeliveryDate,
     gstin: order.gstin,
@@ -474,6 +481,9 @@ export function mapDbOrderToRecord(dbOrder: any): OrderRecord {
     driverName: meta.driverName,
     driverPhone: meta.driverPhone,
     rejectionReason: meta.rejectionReason,
+    cancellationReason: meta.cancellationReason,
+    cancelledBy: meta.cancelledBy,
+    cancelledAt: meta.cancelledAt,
     deliveryOtp: meta.deliveryOtp,
     estimatedDeliveryDate: meta.estimatedDeliveryDate,
     gstin: meta.gstin,
@@ -1223,6 +1233,140 @@ ordersRouter.patch(
     }
   }
 );
+
+export const CANCELLABLE_ORDER_STATUSES = new Set<DeliveryStatus>(["PLACED", "CONFIRMED"]);
+
+export function canCustomerCancelStatus(status: string): boolean {
+  return CANCELLABLE_ORDER_STATUSES.has(normalizeDeliveryStatus(status));
+}
+
+export async function cancelCustomerOrder(
+  id: string,
+  user: AuthUser,
+  reason: string
+): Promise<OrderRecord> {
+  const cleanReason = reason.trim();
+  if (cleanReason.length < 5) {
+    throw new HttpError(400, "CANCELLATION_REASON_REQUIRED", "Please provide a cancellation reason (at least 5 characters).");
+  }
+
+  const order = await findOrderById(id);
+  if (!order) {
+    throw new HttpError(404, "ORDER_NOT_FOUND", "Order not found");
+  }
+
+  const isAdmin = user.roles.includes(Role.ADMIN);
+  const isOwner =
+    order.customerId === user.id ||
+    (Boolean(order.customerEmail) && Boolean(user.email) && order.customerEmail!.toLowerCase() === user.email.toLowerCase());
+
+  if (!isOwner && !isAdmin) {
+    throw new HttpError(403, "FORBIDDEN", "You can only cancel your own orders");
+  }
+
+  const currentStatus = normalizeDeliveryStatus(order.status);
+  if (currentStatus === "CANCELLED") {
+    throw new HttpError(409, "ORDER_ALREADY_CANCELLED", "This order has already been cancelled.");
+  }
+  if (!canCustomerCancelStatus(currentStatus)) {
+    throw new HttpError(
+      409,
+      "CANNOT_CANCEL_AFTER_LOADING",
+      "This order can no longer be cancelled because vehicle loading has already started or the order is finalized."
+    );
+  }
+
+  const nowIso = new Date().toISOString();
+  order.status = "CANCELLED";
+  order.cancellationReason = cleanReason;
+  order.cancelledBy = "Customer";
+  order.cancelledAt = nowIso;
+  order.statusNote = `Cancelled by customer: ${cleanReason}`;
+  if (!Array.isArray(order.statusHistory)) {
+    order.statusHistory = [];
+  }
+  order.statusHistory.push({
+    status: "CANCELLED",
+    timestamp: nowIso,
+    note: `Cancelled by customer: ${cleanReason}`,
+    actor: "Customer"
+  });
+  order.updatedAt = nowIso;
+
+  saveOrder(order);
+  await syncOrderTrackingToDb(order, id);
+
+  // Notify the fulfilling Partner / Seller with the customer's cancellation reason
+  const displayId = order.orderNumber || order.id;
+  const notifTitle = `Order Cancelled by Customer (#${displayId})`;
+  const notifBody = `${order.customerName} cancelled order #${displayId}. Reason: ${cleanReason}`;
+
+  try {
+    let sellerUserId: string | null = null;
+    if (order.storeId) {
+      const store = await prisma.store.findUnique({
+        where: { id: order.storeId },
+        select: { sellerProfile: { select: { userId: true } } }
+      });
+      sellerUserId = store?.sellerProfile?.userId ?? null;
+    }
+    if (!sellerUserId && order.sellerId) {
+      const sp = await prisma.sellerProfile.findFirst({
+        where: { sellerId: { equals: order.sellerId, mode: "insensitive" } },
+        select: { userId: true }
+      });
+      sellerUserId = sp?.userId ?? null;
+    }
+    if (sellerUserId) {
+      await prisma.notification.create({
+        data: {
+          userId: sellerUserId,
+          title: notifTitle,
+          body: notifBody
+        }
+      });
+    }
+  } catch (err) {
+    console.warn("[orders] Could not create partner cancellation notification:", err);
+  }
+
+  // Notify Admin as well
+  try {
+    await prisma.adminNotification.create({
+      data: {
+        type: AdminNotificationType.SYSTEM,
+        title: notifTitle,
+        body: notifBody,
+        metadata: {
+          orderId: order.id,
+          orderNumber: displayId,
+          storeId: order.storeId,
+          storeName: order.storeName,
+          cancellationReason: cleanReason
+        } as any
+      }
+    });
+  } catch {}
+
+  return order;
+}
+
+/**
+ * POST /api/v1/orders/:id/cancel
+ * Customer cancels their own order before vehicle loading with a mandatory reason.
+ */
+ordersRouter.post("/:id/cancel", async (req, res, next) => {
+  try {
+    const input = cancelOrderSchema.parse(req.body);
+    const cancelled = await cancelCustomerOrder(req.params.id, req.user!, input.reason);
+    return sendOk(res, {
+      message: "Order cancelled successfully. The store partner has been notified.",
+      order: cancelled
+    });
+  } catch (error) {
+    next(error);
+  }
+});
 
 /**
  * POST /api/v1/orders/:id/reviews

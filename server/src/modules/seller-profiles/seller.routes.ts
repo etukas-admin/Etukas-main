@@ -717,6 +717,36 @@ sellerRouter.patch("/orders/:id/status", async (req, res, next) => {
   }
 });
 
+sellerRouter.get("/notifications", async (req, res, next) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where: { userId: req.user!.id },
+      orderBy: { createdAt: "desc" },
+      take: 30
+    });
+    return sendOk(res, notifications);
+  } catch (error) {
+    next(error);
+  }
+});
+
+sellerRouter.patch("/notifications/read", async (req, res, next) => {
+  try {
+    const { ids } = z.object({ ids: z.array(z.string()).optional() }).parse(req.body ?? {});
+    await prisma.notification.updateMany({
+      where: {
+        userId: req.user!.id,
+        readAt: null,
+        ...(ids && ids.length > 0 ? { id: { in: ids } } : {})
+      },
+      data: { readAt: new Date() }
+    });
+    return sendOk(res, { success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 sellerRouter.get("/inventory", async (req, res, next) => {
   try {
     const profile = await sellerProfile(req.user!.id);

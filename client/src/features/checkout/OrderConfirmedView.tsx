@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Copy, Check, MapPin, Phone, ShoppingBag, ArrowRight, Truck, ShieldCheck, IndianRupee } from "lucide-react";
+import { CheckCircle2, Copy, Check, MapPin, Phone, ShoppingBag, ArrowRight, Info } from "lucide-react";
 import type { OrderRecord } from "../../services/api";
-import { DeliveryStepsTracker } from "./DeliveryStepsTracker";
+import { DeliveryStepsTracker, canCustomerCancelOrder } from "./DeliveryStepsTracker";
 import { formatMoney } from "../../lib/utils";
 import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 
@@ -10,12 +10,14 @@ export function OrderConfirmedView({
   order,
   onRefresh,
   isRefreshing,
-  onReviewOrder
+  onReviewOrder,
+  onCancelOrder
 }: {
   order: OrderRecord;
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onReviewOrder?: () => void;
+  onCancelOrder?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -71,6 +73,14 @@ export function OrderConfirmedView({
           <span>•</span>
           <span className="font-bold text-gray-900">Total: {formatMoney(order.totalMinor)}</span>
         </div>
+
+        {/* Cancellation Policy Note shown immediately after order placement */}
+        {canCustomerCancelOrder(order.status) && (
+          <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-900">
+            <Info size={14} className="shrink-0 text-amber-600" />
+            <span>Note: You can cancel this order before loading the vehicle.</span>
+          </div>
+        )}
       </div>
 
       {/* ─── Live Delivery Process Steps Tracker ─── */}
@@ -79,6 +89,7 @@ export function OrderConfirmedView({
         onRefresh={onRefresh}
         isRefreshing={isRefreshing}
         onReviewOrder={onReviewOrder}
+        onCancelOrder={onCancelOrder}
       />
 
       {/* ─── Order Details Card ─── */}

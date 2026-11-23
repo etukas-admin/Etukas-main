@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Clock } from "lucide-react";
@@ -5,11 +6,13 @@ import { marketplaceApi, type OrderRecord } from "../../services/api";
 import { queryKeys } from "../../lib/queryKeys";
 import { OrderConfirmedView } from "./OrderConfirmedView";
 import { isOrderTrackingTerminal } from "./DeliveryStepsTracker";
+import { CancelOrderModal } from "./CancelOrderModal";
 
 export function OrderConfirmedPage() {
   const { orderId } = useParams<{ orderId: string }>();
   const location = useLocation();
   const initialOrder = (location.state as { initialOrder?: OrderRecord } | null)?.initialOrder;
+  const [cancellingOrder, setCancellingOrder] = useState<OrderRecord | null>(null);
 
   const {
     data: order,
@@ -63,10 +66,18 @@ export function OrderConfirmedPage() {
   }
 
   return (
-    <OrderConfirmedView
-      order={order}
-      onRefresh={() => void refetch()}
-      isRefreshing={isFetching}
-    />
+    <>
+      <OrderConfirmedView
+        order={order}
+        onRefresh={() => void refetch()}
+        isRefreshing={isFetching}
+        onCancelOrder={() => setCancellingOrder(order)}
+      />
+      <CancelOrderModal
+        order={cancellingOrder}
+        onClose={() => setCancellingOrder(null)}
+        onCancelled={() => void refetch()}
+      />
+    </>
   );
 }

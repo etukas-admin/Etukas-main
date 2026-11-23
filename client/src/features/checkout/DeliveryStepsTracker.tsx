@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Truck, UserCheck, Phone, AlertCircle, RefreshCw, FileText, Star } from "lucide-react";
+import { CheckCircle2, Clock, Truck, UserCheck, Phone, AlertCircle, RefreshCw, FileText, Star, XCircle, Info } from "lucide-react";
 import type { OrderRecord, DeliveryStatus } from "../../services/api";
 
 export const TERMINAL_DELIVERY_STATUSES: ReadonlySet<string> = new Set([
@@ -9,6 +9,10 @@ export const TERMINAL_DELIVERY_STATUSES: ReadonlySet<string> = new Set([
 
 export function isOrderTrackingTerminal(status?: string | null): boolean {
   return Boolean(status && TERMINAL_DELIVERY_STATUSES.has(status));
+}
+
+export function canCustomerCancelOrder(status?: string | null): boolean {
+  return status === "PLACED" || status === "CONFIRMED";
 }
 
 export function formatDeliveryStatusLabel(status?: string | null): string {
@@ -85,18 +89,29 @@ export function DeliveryStepsTracker({
   order,
   onRefresh,
   isRefreshing,
-  onReviewOrder
+  onReviewOrder,
+  onCancelOrder
 }: {
   order: OrderRecord;
   onRefresh?: () => void;
   isRefreshing?: boolean;
   onReviewOrder?: () => void;
+  onCancelOrder?: () => void;
 }) {
   const isRejected = order.status === "REJECTED" || order.status === "CANCELLED";
   const isFullyDelivered = order.status === "DELIVERED";
+  const isCancellable = canCustomerCancelOrder(order.status);
   const currentStepIdx = getStepIndex(order.status);
 
   if (isRejected) {
+    const isCustomerCancelled = order.status === "CANCELLED" && order.cancelledBy === "Customer";
+    const displayReason =
+      order.cancellationReason ||
+      order.rejectionReason ||
+      (order.status === "CANCELLED"
+        ? "Cancelled before vehicle loading"
+        : "Store inventory or delivery route unavailable");
+
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-4 sm:p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -106,13 +121,19 @@ export function DeliveryStepsTracker({
             </div>
             <div>
               <h4 className="font-extrabold text-red-900 text-sm sm:text-base">
-                {order.status === "CANCELLED" ? "Order Cancelled" : "Order Rejected"}
+                {isCustomerCancelled
+                  ? "Order Cancelled by Customer"
+                  : order.status === "CANCELLED"
+                  ? "Order Cancelled"
+                  : "Order Rejected"}
               </h4>
               <p className="mt-1 text-xs sm:text-sm text-red-800">
-                Reason: <strong>{order.rejectionReason || "Store inventory or delivery route unavailable"}</strong>
+                Reason: <strong>{displayReason}</strong>
               </p>
               <p className="mt-1 text-xs text-red-600">
-                Our customer care executive is reviewing alternatives. You will be contacted shortly.
+                {isCustomerCancelled
+                  ? `The store partner (${order.storeName}) has been notified of this cancellation.`
+                  : "Our customer care executive is reviewing alternatives. You will be contacted shortly."}
               </p>
             </div>
           </div>
@@ -266,6 +287,24 @@ export function DeliveryStepsTracker({
           );
         })}
       </div>
+
+      {/* Customer Cancellation Window Notice & Action (only before vehicle loading) */}
+      {isCancellable && onCancelOrder && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs">
+          <div className="flex items-center gap-2 text-amber-950 font-semibold">
+            <Info size={15} className="shrink-0 text-amber-600" />
+            <span>You can cancel this order before loading the vehicle.</span>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelOrder}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-3 py-1.5 text-xs font-extrabold text-red-700 hover:bg-red-50 hover:border-red-400 active:scale-95 transition"
+          >
+            <XCircle size={13} />
+            <span>Cancel Order</span>
+          </button>
+        </div>
+      )}
 
       {/* Live Status Note from Store Partner / Admin */}
       {latestPartnerNote && (

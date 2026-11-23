@@ -387,6 +387,18 @@ export const marketplaceApi = {
       method: "POST",
       body: JSON.stringify(body)
     }),
+  cancelOrder: (orderId: string, reason: string) =>
+    api<{ message: string; order: OrderRecord }>(`/orders/${encodeURIComponent(orderId)}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({ reason })
+    }),
+  sellerNotifications: (options?: RequestOptions) =>
+    api<SellerNotification[]>("/seller/notifications", { signal: options?.signal }),
+  sellerMarkNotificationsRead: (ids?: string[]) =>
+    api<{ success: boolean }>("/seller/notifications/read", {
+      method: "PATCH",
+      body: JSON.stringify({ ids })
+    }),
   getOrderReview: (orderId: string) =>
     api<{ rating: number; comment?: string; createdAt: string } | null>(`/orders/${encodeURIComponent(orderId)}/reviews`),
   sellerAddProductImage: (listingId: string, imageBase64: string) =>
@@ -786,6 +798,9 @@ export type OrderRecord = {
   driverName?: string;
   driverPhone?: string;
   rejectionReason?: string;
+  cancellationReason?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
   deliveryOtp?: string;
   estimatedDeliveryDate?: string;
   gstin?: string;
@@ -814,6 +829,15 @@ export type SellerOrder = {
   createdAt: string;
   customer: { name: string; mobile: string };
   items: Array<{ productName: string; quantity: number; priceMinorSnapshot: number }>;
+};
+
+export type SellerNotification = {
+  id: string;
+  userId: string;
+  title: string;
+  body: string;
+  readAt?: string | null;
+  createdAt: string;
 };
 
 export type ChatMessage = {

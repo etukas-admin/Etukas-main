@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   BadgeAlert,
   BadgeCheck,
+  Bell,
   Boxes, Wrench,
   Building2, Phone, ExternalLink,
   Calendar,
@@ -185,6 +186,27 @@ export function SellerDashboard() {
   });
 
   const partnerOrders = partnerOrdersQuery.data || [];
+
+  // Partner notifications (including customer order cancellations with reason)
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const sellerNotificationsQuery = useQuery({
+    queryKey: ["seller-notifications"],
+    queryFn: ({ signal }) => marketplaceApi.sellerNotifications({ signal }).catch(() => []),
+    staleTime: 30_000,
+    refetchInterval: false,
+    refetchOnWindowFocus: true
+  });
+  const sellerNotifications = sellerNotificationsQuery.data || [];
+  const unreadSellerNotifications = sellerNotifications.filter((n) => !n.readAt);
+  const unreadCancellationNotifs = unreadSellerNotifications.filter((n) =>
+    n.title.toLowerCase().includes("cancel")
+  );
+  const markSellerNotifsReadMutation = useMutation({
+    mutationFn: (ids?: string[]) => marketplaceApi.sellerMarkNotificationsRead(ids),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["seller-notifications"] });
+    }
+  });
 
   const [selectedOrderForStatus, setSelectedOrderForStatus] = useState<any | null>(null);
   const [newStatus, setNewStatus] = useState<string>("CONFIRMED");
@@ -1050,8 +1072,102 @@ export function SellerDashboard() {
               </div>
             </div>
 
-            {/* Verification status pill & Logout */}
+            {/* Verification status pill, Notifications Bell & Logout */}
             <div className="flex items-center gap-3">
+              {/* Partner Notifications Bell (Customer Order Cancellations & Updates) */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowNotifDropdown((prev) => !prev);
+                    void sellerNotificationsQuery.refetch();
+                  }}
+                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-700 bg-gray-800/90 text-gray-200 hover:border-orange-400 hover:text-orange-400 transition"
+                  title="Partner Notifications"
+                  aria-label="Partner Notifications"
+                >
+                  <Bell size={18} />
+                  {unreadSellerNotifications.length > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-etukas-red px-1 text-[10px] font-black text-white shadow">
+                      {unreadSellerNotifications.length > 9 ? "9+" : unreadSellerNotifications.length}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifDropdown && (
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl z-50 overflow-hidden">
+                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 bg-gray-50">
+                      <div>
+                        <h4 className="text-xs font-extrabold uppercase tracking-wider text-gray-900">
+                          Partner Notifications
+                        </h4>
+                        <p className="text-[11px] text-gray-500">
+                          {unreadSellerNotifications.length} unread
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {unreadSellerNotifications.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => markSellerNotifsReadMutation.mutate(undefined)}
+                            className="text-[11px] font-bold text-orange-600 hover:underline"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setShowNotifDropdown(false)}
+                          className="rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                      {sellerNotifications.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-gray-500">
+                          No notifications yet. Customer order cancellations and alerts will appear here.
+                        </div>
+                      ) : (
+                        sellerNotifications.map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => {
+                              if (!n.readAt) markSellerNotifsReadMutation.mutate([n.id]);
+                              setActiveTab("orders");
+                              setShowNotifDropdown(false);
+                              void partnerOrdersQuery.refetch();
+                            }}
+                            className={`w-full text-left px-4 py-3 hover:bg-orange-50/60 transition ${
+                              !n.readAt ? "bg-red-50/50" : "bg-white"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <span className="text-xs font-extrabold text-gray-900">{n.title}</span>
+                              {!n.readAt && (
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-etukas-red" />
+                              )}
+                            </div>
+                            <p className="mt-1 text-xs text-gray-600 leading-relaxed">{n.body}</p>
+                            <p className="mt-1 text-[10px] text-gray-400">
+                              {new Date(n.createdAt).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit"
+                              })}
+                            </p>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {verificationStatus === "APPROVED" ? (
                 <div className="flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-2 text-emerald-400">
                   <BadgeCheck size={20} />
@@ -2220,6 +2336,37 @@ export function SellerDashboard() {
               </div>
             </div>
 
+            {unreadCancellationNotifs.length > 0 && (
+              <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 shadow-xs space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-red-900">
+                    <AlertTriangle size={18} className="text-etukas-red shrink-0" />
+                    <h3 className="text-sm font-extrabold">
+                      {unreadCancellationNotifs.length === 1
+                        ? "Customer Cancelled an Order"
+                        : `${unreadCancellationNotifs.length} Orders Cancelled by Customers`}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      markSellerNotifsReadMutation.mutate(unreadCancellationNotifs.map((n) => n.id))
+                    }
+                    className="rounded-lg border border-red-200 bg-white px-2.5 py-1 text-[11px] font-bold text-red-700 hover:bg-red-100"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {unreadCancellationNotifs.slice(0, 3).map((n) => (
+                    <p key={n.id} className="text-xs text-red-800 leading-relaxed">
+                      <strong>{n.title}:</strong> {n.body}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {partnerOrdersQuery.isLoading ? (
               <div className="rounded-2xl border border-gray-200 bg-white p-12 text-center text-sm text-gray-500">
                 Loading received customer orders...
@@ -2330,6 +2477,12 @@ export function SellerDashboard() {
                               <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${getDeliveryStatusBadgeClass(ord.status)}`}>
                                 {formatDeliveryStatusLabel(ord.status)}
                               </span>
+                              {ord.status === "CANCELLED" && (ord.cancellationReason || ord.rejectionReason) && (
+                                <p className="mt-1.5 text-[11px] text-red-700 font-semibold max-w-[190px] leading-snug">
+                                  {ord.cancelledBy === "Customer" ? "Cancelled by Customer: " : "Reason: "}
+                                  <span className="font-normal">{ord.cancellationReason || ord.rejectionReason}</span>
+                                </p>
+                              )}
                               {ord.review && (
                                 <div className="mt-1.5 flex items-center gap-1 rounded bg-amber-50 px-2 py-0.5 border border-amber-200 text-[11px] font-bold text-amber-900">
                                   <Star size={11} className="fill-amber-400 text-amber-400 shrink-0" />

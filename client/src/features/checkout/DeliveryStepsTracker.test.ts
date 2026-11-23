@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canCustomerCancelOrder,
   formatDeliveryStatusLabel,
   getDeliveryStatusBadgeClass,
   isOrderTrackingTerminal
@@ -32,5 +33,16 @@ describe("DeliveryStepsTracker helpers", () => {
     expect(getDeliveryStatusBadgeClass("CANCELLED")).toContain("red");
     expect(getDeliveryStatusBadgeClass("LOADING_VEHICLE")).toContain("purple");
     expect(getDeliveryStatusBadgeClass("ASSIGNED_DRIVER")).toContain("blue");
+  });
+
+  it("allows customer cancellation strictly before vehicle loading", () => {
+    expect(canCustomerCancelOrder("PLACED")).toBe(true);
+    expect(canCustomerCancelOrder("CONFIRMED")).toBe(true);
+
+    expect(canCustomerCancelOrder("LOADING_VEHICLE")).toBe(false);
+    expect(canCustomerCancelOrder("ASSIGNED_DRIVER")).toBe(false);
+    expect(canCustomerCancelOrder("DELIVERED")).toBe(false);
+    expect(canCustomerCancelOrder("REJECTED")).toBe(false);
+    expect(canCustomerCancelOrder("CANCELLED")).toBe(false);
   });
 });

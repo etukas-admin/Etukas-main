@@ -102,3 +102,13 @@ export const orderReviewSchema = z.object({
 });
 
 export type OrderReviewInput = z.infer<typeof orderReviewSchema>;
+
+export const cancelOrderSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(5, "Please provide a cancellation reason (at least 5 characters)")
+    .max(500, "Cancellation reason must be 500 characters or fewer")
+});
+
+export type CancelOrderInput = z.infer<typeof cancelOrderSchema>;
