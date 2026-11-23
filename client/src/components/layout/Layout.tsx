@@ -11,6 +11,11 @@ export function Layout() {
   const isHomePage = location.pathname === "/";
   const isCheckoutPage = location.pathname === "/checkout";
   const isOrderPage = location.pathname.startsWith("/order-confirmed");
+  const isAccountHubPage =
+    location.pathname === "/customer" || location.pathname === "/account";
+  const isAccountSubPage =
+    location.pathname === "/orders" ||
+    location.pathname.startsWith("/account/");
   const isPartnerPage =
     location.pathname === "/partner-hub" ||
     location.pathname === "/seller-hub" ||
@@ -18,9 +23,25 @@ export function Layout() {
     location.pathname === "/seller";
 
   return (
-    <div className={`min-h-screen ${isPartnerPage ? "bg-slate-950 pb-0" : isCheckoutPage || isOrderPage ? "bg-white pb-0 md:pb-0" : "bg-white pb-16 md:pb-0"}`}>
-      {/* Dynamic Header: Dedicated PartnerHeader for Partner pages, default Header for Customer store */}
-      {isCategoriesPage ? null : isPartnerPage ? <PartnerHeader /> : <Header />}
+    <div
+      className={`min-h-screen ${
+        isPartnerPage
+          ? "bg-slate-950 pb-0"
+          : isCheckoutPage || isOrderPage || isAccountSubPage
+          ? "bg-white pb-0 md:pb-0"
+          : "bg-white pb-16 md:pb-0"
+      }`}
+    >
+      {/* Dynamic Header: Dedicated PartnerHeader for Partner pages, desktop-only Header on mobile Account views */}
+      {isCategoriesPage ? null : isPartnerPage ? (
+        <PartnerHeader />
+      ) : isAccountHubPage || isAccountSubPage ? (
+        <div className="hidden md:block">
+          <Header />
+        </div>
+      ) : (
+        <Header />
+      )}
 
       {/* Page Content */}
       <Outlet />
@@ -166,8 +187,8 @@ export function Layout() {
         </footer>
       ) : null}
 
-      {/* Customer bottom navigation is shown only on customer pages (not on checkout or order pages) */}
-      {isPartnerPage || isCheckoutPage || isOrderPage ? null : <BottomNav />}
+      {/* Customer bottom navigation is shown only on customer pages (not on checkout, order, or account subpages) */}
+      {isPartnerPage || isCheckoutPage || isOrderPage || isAccountSubPage ? null : <BottomNav />}
 
       {/* Floating Chat Widget for direct User/Partner with Admin interaction */}
       <UserChatWidget />

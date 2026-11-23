@@ -309,6 +309,8 @@ export const marketplaceApi = {
     clearSession();
   },
   me: (options?: RequestOptions) => api<User>("/auth/me", { signal: options?.signal }),
+  updateProfile: (body: { name: string; mobile?: string }) =>
+    api<User>("/auth/me", { method: "PATCH", body: JSON.stringify(body) }),
   register: (body: { name: string; email: string; mobile: string; password: string }) => api<User>("/auth/register", { method: "POST", body: JSON.stringify(body) }),
   submitSellerEnquiry: (body: SellerEnquiryInput) => api<SellerEnquiry>("/seller-enquiries", { method: "POST", body: JSON.stringify(body) }),
   adminSellerEnquiries: (options?: RequestOptions) => api<SellerEnquiry[]>("/admin/seller-enquiries", { signal: options?.signal }),

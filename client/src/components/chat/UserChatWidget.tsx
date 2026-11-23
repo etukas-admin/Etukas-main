@@ -104,6 +104,21 @@ export function UserChatWidget() {
     }
   };
 
+  useEffect(() => {
+    const onOpenSupportChat = () => {
+      setIsVisible(true);
+      setPopIn(true);
+      setIsOpen(true);
+      setIsMinimized(false);
+      setErrorMessage(null);
+      if (user && !sessionId) {
+        startSession.mutate();
+      }
+    };
+    window.addEventListener("etukas_open_support_chat", onOpenSupportChat);
+    return () => window.removeEventListener("etukas_open_support_chat", onOpenSupportChat);
+  }, [user, sessionId]);
+
   const handleSend = async () => {
     const trimmed = text.trim();
     if (!trimmed || isSending) return;
