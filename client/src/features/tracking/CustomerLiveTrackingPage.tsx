@@ -31,7 +31,8 @@ import {
   type TripSessionInfo,
   type TruckLocationPayload
 } from "@etukas/shared";
-import { marketplaceApi } from "../../services/api";
+import { getStoredUser, marketplaceApi } from "../../services/api";
+import { getTrackingReturnTarget } from "../../lib/authRoles";
 import { getSupabaseClient, isSupabaseConfigured } from "../../lib/supabase";
 import {
   fetchOsrmRoute,
@@ -622,7 +623,9 @@ export function CustomerLiveTrackingPage() {
   };
 
   const isDelivered = session?.status === "DELIVERED" || tripEndedByDriver;
-  const backOrderUrl = `/orders/${encodeURIComponent(orderId)}`;
+  const currentUser = getStoredUser();
+  const returnTarget = getTrackingReturnTarget(currentUser, orderId);
+  const backOrderUrl = returnTarget.path;
 
   if (isLoading && !session) {
     return (
@@ -651,13 +654,13 @@ export function CustomerLiveTrackingPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-etukas-red px-4 py-2.5 text-xs font-extrabold text-white"
             >
               <ArrowLeft size={14} />
-              <span>Back to Order Details</span>
+              <span>Back to {returnTarget.label}</span>
             </Link>
             <Link
-              to="/orders"
+              to={returnTarget.secondaryPath}
               className="inline-flex items-center justify-center rounded-xl border border-gray-200 px-4 py-2 text-xs font-bold text-gray-700"
             >
-              Go to My Orders
+              {returnTarget.secondaryLabel}
             </Link>
           </div>
         </div>
@@ -857,7 +860,7 @@ export function CustomerLiveTrackingPage() {
                 to={backOrderUrl}
                 className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-800 hover:bg-gray-100 transition"
               >
-                <span>Order Steps</span>
+                <span>{returnTarget.label}</span>
               </Link>
             </div>
           </div>

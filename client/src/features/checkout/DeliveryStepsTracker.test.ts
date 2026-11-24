@@ -53,12 +53,13 @@ describe("DeliveryStepsTracker helpers", () => {
     expect(canCustomerCancelOrder("CANCELLED")).toBe(false);
   });
 
-  it("enables live vehicle map tracking once vehicle loading starts", () => {
+  it("enables live vehicle map tracking once a delivery partner is assigned", () => {
     expect(canTrackVehicleLive("PLACED")).toBe(false);
     expect(canTrackVehicleLive("CONFIRMED")).toBe(false);
+    expect(canTrackVehicleLive("LOADING_VEHICLE")).toBe(false);
 
-    expect(canTrackVehicleLive("LOADING_VEHICLE")).toBe(true);
     expect(canTrackVehicleLive("ASSIGNED_DRIVER")).toBe(true);
+    expect(canTrackVehicleLive("DISPATCHED")).toBe(true);
 
     expect(canTrackVehicleLive("DELIVERED")).toBe(false);
     expect(canTrackVehicleLive("CANCELLED")).toBe(false);

@@ -1,11 +1,20 @@
 import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { Navigate, useParams, useNavigate } from "react-router-dom";
 import { useProduct, useProducts } from "../../hooks/useMarketplace";
 import { ProductDetailsView } from "./ProductDetailsView";
 import { getSelectedAddress, ADDRESS_CHANGE_EVENT } from "../location/locationStore";
 import { Skeleton } from "../../components/ui/Skeleton";
+import { getStoredUser } from "../../services/api";
+import { isPartnerUser } from "../../lib/authRoles";
 
 export function ProductDetailsPage() {
+  if (isPartnerUser(getStoredUser())) {
+    return <Navigate to="/partner-dashboard" replace />;
+  }
+  return <ProductDetailsPageContent />;
+}
+
+function ProductDetailsPageContent() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);

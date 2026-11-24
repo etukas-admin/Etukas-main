@@ -1,12 +1,36 @@
-import { Link, Outlet, useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Header } from "./Header";
 import { PartnerHeader } from "./PartnerHeader";
 import { BottomNav } from "./BottomNav";
 import { UserChatWidget } from "../chat/UserChatWidget";
 import { Facebook, Instagram, Linkedin, Youtube } from "lucide-react";
+import { getStoredUser, marketplaceApi, type User } from "../../services/api";
+import { isPartnerUser } from "../../lib/authRoles";
 
 export function Layout() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
+
+  useEffect(() => {
+    const handleAuthChange = () => setCurrentUser(getStoredUser());
+    window.addEventListener("etukas_auth_change", handleAuthChange);
+    return () => window.removeEventListener("etukas_auth_change", handleAuthChange);
+  }, []);
+
+  const signedInPartner = isPartnerUser(currentUser);
+
+  // Keep authenticated Sellers / Partners strictly inside the Partner Dashboard.
+  // To browse or buy on the Customer Marketplace, partners must sign out and use customer credentials.
+  if (signedInPartner && location.pathname !== "/partner-dashboard") {
+    return <Navigate to="/partner-dashboard" replace />;
+  }
+
+  const handleSwitchToCustomerMarketplace = async () => {
+    await marketplaceApi.logout();
+    navigate("/login");
+  };
   const isCategoriesPage = location.pathname === "/categories";
   const isHomePage = location.pathname === "/";
   const isCheckoutPage = location.pathname === "/checkout";
@@ -75,10 +99,28 @@ export function Layout() {
             <div>
               <h3 className="font-bold text-white text-sm">Partner Resources</h3>
               <ul className="mt-3 space-y-2 text-xs text-slate-400">
-                <li><Link to="/partner-hub" className="hover:text-orange-400 transition-colors">Become an Etukas Partner</Link></li>
-                <li><button onClick={() => window.dispatchEvent(new Event("open_partner_login"))} className="hover:text-orange-400 transition-colors text-left cursor-pointer">Partner Dashboard Login</button></li>
-                <li><a href="tel:18001234567" className="hover:text-orange-400 transition-colors">Toll-free Partner Support</a></li>
-                <li><Link to="/" className="hover:text-orange-400 transition-colors">Return to Etukas Marketplace</Link></li>
+                {signedInPartner ? (
+                  <>
+                    <li><Link to="/partner-dashboard" className="hover:text-orange-400 transition-colors">Partner Dashboard</Link></li>
+                    <li><a href="mailto:partners@etukas.com" className="hover:text-orange-400 transition-colors">Partner Support Desk</a></li>
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => void handleSwitchToCustomerMarketplace()}
+                        className="hover:text-orange-400 transition-colors text-left cursor-pointer"
+                      >
+                        Sign Out to Visit Customer Marketplace
+                      </button>
+                    </li>
+                  </>
+                ) : (
+                  <>
+                    <li><Link to="/partner-hub" className="hover:text-orange-400 transition-colors">Become an Etukas Partner</Link></li>
+                    <li><button type="button" onClick={() => window.dispatchEvent(new Event("open_partner_login"))} className="hover:text-orange-400 transition-colors text-left cursor-pointer">Partner Dashboard Login</button></li>
+                    <li><a href="mailto:partners@etukas.com" className="hover:text-orange-400 transition-colors">Partner Support Desk</a></li>
+                    <li><Link to="/" className="hover:text-orange-400 transition-colors">Return to Etukas Marketplace</Link></li>
+                  </>
+                )}
               </ul>
             </div>
             <div>
