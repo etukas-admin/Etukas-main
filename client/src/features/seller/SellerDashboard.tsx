@@ -222,6 +222,25 @@ function SellerDashboardContent() {
 
   // Partner notifications (including customer order cancellations with reason)
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showNotifDropdown) return;
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (notifDropdownRef.current && !notifDropdownRef.current.contains(event.target as Node)) {
+        setShowNotifDropdown(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowNotifDropdown(false);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showNotifDropdown]);
   const sellerNotificationsQuery = useQuery({
     queryKey: ["seller-notifications"],
     queryFn: ({ signal }) => marketplaceApi.sellerNotifications({ signal }).catch(() => []),
@@ -549,52 +568,54 @@ function SellerDashboardContent() {
     const isApproved = verificationStatus === "APPROVED";
 
     return (
-      <main className="min-h-screen bg-gray-50 pb-16">
+      <main className="min-h-screen overflow-x-clip bg-gray-50 pb-16">
         {/* Top Banner with Technician ID, Status & Navigation */}
         <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white shadow-md">
-          <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 font-extrabold text-white shadow-lg shadow-orange-500/20">
-                  <Wrench size={28} />
+              <div className="flex min-w-0 items-center gap-3.5 sm:gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 font-extrabold text-white shadow-lg shadow-orange-500/20 sm:h-14 sm:w-14">
+                  <Wrench size={26} />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h1 className="text-2xl font-black tracking-tight">{technician?.businessName || businessName}</h1>
-                    <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono text-xs font-bold text-orange-400 border border-orange-500/30">
+                    <h1 className="break-words text-xl font-black tracking-tight sm:text-2xl">
+                      {technician?.businessName || businessName}
+                    </h1>
+                    <span className="shrink-0 rounded-full border border-orange-500/30 bg-orange-500/20 px-2.5 py-0.5 font-mono text-[11px] font-bold text-orange-400 sm:text-xs">
                       Partner ID: {sellerId}
                     </span>
-                    <span className="rounded-full bg-blue-500/20 px-2.5 py-0.5 text-xs font-semibold text-blue-300 border border-blue-500/30">
-                      Technician & Professional
+                    <span className="shrink-0 rounded-full border border-blue-500/30 bg-blue-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-blue-300 sm:text-xs">
+                      Technician &amp; Professional
                     </span>
                   </div>
-                  <p className="text-sm text-gray-400 mt-0.5">
+                  <p className="mt-0.5 text-xs text-gray-400 sm:text-sm">
                     Welcome, <strong className="text-gray-200">{technician?.name ?? contactPerson}</strong> | Authorized Service Partner
                   </p>
                 </div>
               </div>
 
-              {/* Status & Actions */}
-              <div className="flex flex-wrap items-center gap-3">
+              {/* Status & Desktop Logout (mobile uses menu drawer) */}
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
                 {isApproved ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-2 text-emerald-400">
-                    <BadgeCheck size={20} />
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-2 text-emerald-400 sm:px-3.5">
+                    <BadgeCheck size={19} className="shrink-0" />
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wider">Verified Partner</div>
                       <div className="text-[11px] text-emerald-300/80">Active on marketplace</div>
                     </div>
                   </div>
                 ) : verificationStatus === "REJECTED" ? (
-                  <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-500/40 px-3.5 py-2 text-red-300">
-                    <AlertTriangle size={20} className="text-red-400" />
+                  <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/20 px-3 py-2 text-red-300 sm:px-3.5">
+                    <AlertTriangle size={19} className="shrink-0 text-red-400" />
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wider">Verification Rejected</div>
-                      <div className="text-[11px] text-red-200/80">{(profileData as any)?.rejectionReason || "Contact Etukas support"}</div>
+                      <div className="text-[11px] text-red-200/80">{profileData?.rejectionReason || "Contact Etukas support"}</div>
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3.5 py-2 text-amber-300">
-                    <Clock size={20} className="animate-spin text-amber-400" />
+                  <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/20 px-3 py-2 text-amber-300 sm:px-3.5">
+                    <Clock size={19} className="shrink-0 text-amber-400" />
                     <div>
                       <div className="text-xs font-bold uppercase tracking-wider">Verification Pending</div>
                       <div className="text-[11px] text-amber-200/80">Under review by onboarding team</div>
@@ -603,8 +624,9 @@ function SellerDashboardContent() {
                 )}
 
                 <button
+                  type="button"
                   onClick={handleLogout}
-                  className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 hover:bg-red-600 hover:border-red-600 hover:text-white transition-all shadow-sm"
+                  className="hidden items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 shadow-sm transition-all hover:border-red-600 hover:bg-red-600 hover:text-white md:flex"
                   title="Log out of Partner Dashboard"
                 >
                   <LogOut size={16} />
@@ -613,8 +635,11 @@ function SellerDashboardContent() {
               </div>
             </div>
 
-            {/* Navigation Tabs */}
-            <nav className="mt-6 flex space-x-2 border-t border-gray-700/60 pt-4">
+            {/* Horizontally Side-Scrollable Navigation Tabs */}
+            <nav
+              aria-label="Technician dashboard sections"
+              className="no-scrollbar -mx-4 mt-5 flex items-center gap-2 overflow-x-auto border-t border-gray-700/60 px-4 pb-1 pt-4 sm:mx-0 sm:mt-6 sm:px-0"
+            >
               {[
                 { id: "overview", label: "Overview", icon: Layers },
                 { id: "bookings", label: `Customer Bookings (${bookings.length})`, icon: ShoppingBag },
@@ -622,15 +647,16 @@ function SellerDashboardContent() {
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
+                  type="button"
                   onClick={() => setTechTab(id as typeof techTab)}
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                  className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm ${
                     techTab === id
                       ? "bg-orange-500 text-white shadow"
-                      : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                      : "text-gray-300 hover:bg-gray-800 hover:text-white"
                   }`}
                 >
-                  <Icon size={16} />
-                  {label}
+                  <Icon size={16} className="shrink-0" />
+                  <span>{label}</span>
                 </button>
               ))}
             </nav>
@@ -681,57 +707,71 @@ function SellerDashboardContent() {
           {techTab === "overview" && (
             <div className="space-y-6">
               {/* Metric Cards */}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Hourly Rate</span>
-                    <div className="rounded-lg bg-orange-50 p-2 text-orange-600">
-                      <IndianRupee size={20} />
+              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Hourly Rate</span>
+                    <div className="rounded-lg bg-orange-50 p-1.5 text-orange-600 sm:p-2">
+                      <IndianRupee size={18} />
                     </div>
                   </div>
-                  <div className="mt-3 text-3xl font-black text-gray-900">
-                    ₹{technician?.chargePerHour ?? 350}<span className="text-sm font-normal text-gray-500">/hr</span>
+                  <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
+                    {technician?.chargePerHour != null ? (
+                      <>
+                        ₹{technician.chargePerHour}
+                        <span className="text-xs font-normal text-gray-500 sm:text-sm">/hr</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">Standard service charge</div>
+                  <div className="mt-1 text-[11px] text-gray-500 sm:text-xs">Standard service charge</div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Full Day Rate</span>
-                    <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                      <Calendar size={20} />
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Full Day Rate</span>
+                    <div className="rounded-lg bg-emerald-50 p-1.5 text-emerald-600 sm:p-2">
+                      <Calendar size={18} />
                     </div>
                   </div>
-                  <div className="mt-3 text-3xl font-black text-gray-900">
-                    ₹{technician?.chargePerDay ?? 1800}<span className="text-sm font-normal text-gray-500">/day</span>
+                  <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
+                    {technician?.chargePerDay != null ? (
+                      <>
+                        ₹{technician.chargePerDay}
+                        <span className="text-xs font-normal text-gray-500 sm:text-sm">/day</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </div>
-                  <div className="mt-1 text-xs text-emerald-600 font-semibold">For 8-hour continuous work</div>
+                  <div className="mt-1 text-[11px] font-semibold text-emerald-600 sm:text-xs">For 8-hour continuous work</div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Bookings Received</span>
-                    <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                      <ShoppingBag size={20} />
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Bookings</span>
+                    <div className="rounded-lg bg-blue-50 p-1.5 text-blue-600 sm:p-2">
+                      <ShoppingBag size={18} />
                     </div>
                   </div>
-                  <div className="mt-3 text-3xl font-black text-gray-900">
+                  <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
                     {bookings.length}
                   </div>
-                  <div className="mt-1 text-xs text-blue-600 font-semibold">Total customer requests</div>
+                  <div className="mt-1 text-[11px] font-semibold text-blue-600 sm:text-xs">Total customer requests</div>
                 </div>
 
-                <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Service Radius</span>
-                    <div className="rounded-lg bg-purple-50 p-2 text-purple-600">
-                      <MapPin size={20} />
+                <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Service Radius</span>
+                    <div className="rounded-lg bg-purple-50 p-1.5 text-purple-600 sm:p-2">
+                      <MapPin size={18} />
                     </div>
                   </div>
-                  <div className="mt-3 text-3xl font-black text-gray-900">
-                    {technician?.serviceRadiusKm ?? 25} km
+                  <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
+                    {technician?.serviceRadiusKm != null ? `${technician.serviceRadiusKm} km` : "—"}
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">From {technician?.city || "Registered City"}</div>
+                  <div className="mt-1 truncate text-[11px] text-gray-500 sm:text-xs">From {technician?.city || "Registered City"}</div>
                 </div>
               </div>
 
@@ -1075,41 +1115,42 @@ function SellerDashboardContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-16">
-      {/* Top Banner with Seller ID and Status */}
+    <main className="min-h-screen overflow-x-clip bg-gray-50 pb-16">
+      {/* Top Banner with Partner ID and Status */}
       <div className="bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white shadow-md">
-        <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-6 lg:px-8">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 font-extrabold text-white shadow-lg shadow-orange-500/20">
-                <StoreIcon size={28} />
+            <div className="flex min-w-0 items-center gap-3.5 sm:gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 font-extrabold text-white shadow-lg shadow-orange-500/20 sm:h-14 sm:w-14">
+                <StoreIcon size={26} />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-black tracking-tight">{businessName}</h1>
-                  <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono text-xs font-bold text-orange-400 border border-orange-500/30">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="break-words text-xl font-black tracking-tight sm:text-2xl">{businessName}</h1>
+                  <span className="shrink-0 rounded-full border border-orange-500/30 bg-orange-500/20 px-2.5 py-0.5 font-mono text-[11px] font-bold text-orange-400 sm:text-xs">
                     Partner ID: {sellerId}
                   </span>
                 </div>
-                <p className="text-sm text-gray-400">
+                <p className="mt-0.5 text-xs text-gray-400 sm:text-sm">
                   Welcome, <strong className="text-gray-200">{contactPerson}</strong> | Authorized Etukas Partner
                 </p>
               </div>
             </div>
 
-            {/* Verification status pill, Notifications Bell & Logout */}
-            <div className="flex items-center gap-3">
+            {/* Verification status pill, Notifications Bell & Desktop Logout (mobile Logout stays in menu) */}
+            <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
               {/* Partner Notifications Bell (Customer Order Cancellations & Updates) */}
-              <div className="relative">
+              <div className="relative" ref={notifDropdownRef}>
                 <button
                   type="button"
                   onClick={() => {
                     setShowNotifDropdown((prev) => !prev);
                     void sellerNotificationsQuery.refetch();
                   }}
-                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-700 bg-gray-800/90 text-gray-200 hover:border-orange-400 hover:text-orange-400 transition"
+                  className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-gray-700 bg-gray-800/90 text-gray-200 transition hover:border-orange-400 hover:text-orange-400"
                   title="Partner Notifications"
                   aria-label="Partner Notifications"
+                  aria-expanded={showNotifDropdown}
                 >
                   <Bell size={18} />
                   {unreadSellerNotifications.length > 0 && (
@@ -1120,8 +1161,8 @@ function SellerDashboardContent() {
                 </button>
 
                 {showNotifDropdown && (
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl z-50 overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 bg-gray-50">
+                  <div className="absolute left-0 z-50 mt-2 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900 shadow-2xl sm:w-96 md:left-auto md:right-0">
+                    <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50 px-4 py-3">
                       <div>
                         <h4 className="text-xs font-extrabold uppercase tracking-wider text-gray-900">
                           Partner Notifications
@@ -1144,13 +1185,14 @@ function SellerDashboardContent() {
                           type="button"
                           onClick={() => setShowNotifDropdown(false)}
                           className="rounded-lg p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+                          aria-label="Close notifications"
                         >
                           <X size={14} />
                         </button>
                       </div>
                     </div>
 
-                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                    <div className="max-h-80 divide-y divide-gray-100 overflow-y-auto">
                       {sellerNotifications.length === 0 ? (
                         <div className="p-6 text-center text-xs text-gray-500">
                           No notifications yet. Customer order cancellations and alerts will appear here.
@@ -1166,7 +1208,7 @@ function SellerDashboardContent() {
                               setShowNotifDropdown(false);
                               void partnerOrdersQuery.refetch();
                             }}
-                            className={`w-full text-left px-4 py-3 hover:bg-orange-50/60 transition ${
+                            className={`w-full px-4 py-3 text-left transition hover:bg-orange-50/60 ${
                               !n.readAt ? "bg-red-50/50" : "bg-white"
                             }`}
                           >
@@ -1176,7 +1218,7 @@ function SellerDashboardContent() {
                                 <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-etukas-red" />
                               )}
                             </div>
-                            <p className="mt-1 text-xs text-gray-600 leading-relaxed">{n.body}</p>
+                            <p className="mt-1 text-xs leading-relaxed text-gray-600">{n.body}</p>
                             <p className="mt-1 text-[10px] text-gray-400">
                               {new Date(n.createdAt).toLocaleString("en-IN", {
                                 day: "numeric",
@@ -1194,13 +1236,13 @@ function SellerDashboardContent() {
               </div>
 
               {verificationStatus === "APPROVED" ? (
-                <div className="flex items-center gap-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40 px-3.5 py-2 text-emerald-400">
-                  <BadgeCheck size={20} />
-                  <span className="text-sm font-bold">Verified Partner</span>
+                <div className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/20 px-3 py-2 text-emerald-400 sm:px-3.5">
+                  <BadgeCheck size={19} className="shrink-0" />
+                  <span className="text-xs font-bold sm:text-sm">Verified Partner</span>
                 </div>
               ) : verificationStatus === "REJECTED" ? (
-                <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-500/40 px-3.5 py-2 text-red-300">
-                  <AlertTriangle size={20} className="text-red-400" />
+                <div className="flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/20 px-3 py-2 text-red-300 sm:px-3.5">
+                  <AlertTriangle size={19} className="shrink-0 text-red-400" />
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider">Verification Rejected</div>
                     <div className="text-[11px] text-red-200/80">
@@ -1209,8 +1251,8 @@ function SellerDashboardContent() {
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3.5 py-2 text-amber-300">
-                  <Clock size={20} className="animate-spin text-amber-400" />
+                <div className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/20 px-3 py-2 text-amber-300 sm:px-3.5">
+                  <Clock size={19} className="shrink-0 text-amber-400" />
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider">Verification Pending</div>
                     <div className="text-[11px] text-amber-200/80">Our team will connect shortly</div>
@@ -1219,8 +1261,9 @@ function SellerDashboardContent() {
               )}
 
               <button
+                type="button"
                 onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 hover:bg-red-600 hover:border-red-600 hover:text-white transition-all shadow-sm"
+                className="hidden items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 shadow-sm transition-all hover:border-red-600 hover:bg-red-600 hover:text-white md:flex"
                 title="Log out of Partner Dashboard"
               >
                 <LogOut size={16} />
@@ -1229,48 +1272,61 @@ function SellerDashboardContent() {
             </div>
           </div>
 
-          {/* Navigation Tabs */}
-          <nav className="mt-6 flex space-x-2 border-t border-gray-700/60 pt-4">
+          {/* Horizontally Side-Scrollable Navigation Tabs (Orders 3rd, Store & Location last) */}
+          <nav
+            aria-label="Partner dashboard sections"
+            className="no-scrollbar -mx-4 mt-5 flex items-center gap-2 overflow-x-auto border-t border-gray-700/60 px-4 pb-1 pt-4 sm:mx-0 sm:mt-6 sm:px-0"
+          >
             {[
               { id: "overview", label: "Overview", icon: Layers },
               { id: "products", label: "Products & Materials", icon: Boxes },
-              { id: "store", label: "Store & Location", icon: StoreIcon },
-              { id: "orders", label: "Orders", icon: ShoppingBag }
-            ].map(({ id, label, icon: Icon }) => (
+              { id: "orders", label: "Orders", icon: ShoppingBag, badge: partnerOrders.length },
+              { id: "store", label: "Store & Location", icon: StoreIcon }
+            ].map(({ id, label, icon: Icon, badge }) => (
               <button
                 key={id}
+                type="button"
                 onClick={() => setActiveTab(id as typeof activeTab)}
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-all ${
+                className={`flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm ${
                   activeTab === id
                     ? "bg-orange-500 text-white shadow"
-                    : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white"
                 }`}
               >
-                <Icon size={16} />
-                {label}
+                <Icon size={16} className="shrink-0" />
+                <span>{label}</span>
+                {typeof badge === "number" && badge > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-extrabold leading-none ${
+                      activeTab === id ? "bg-white/25 text-white" : "bg-gray-700 text-gray-200"
+                    }`}
+                  >
+                    {badge}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
         </div>
       </div>
 
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
         {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
-          <div className="space-y-8">
+          <div className="space-y-6 sm:space-y-8">
             {/* Verification Alert Callout */}
             {verificationStatus !== "APPROVED" && (
-              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-5 shadow-sm">
-                <div className="flex items-start gap-4">
-                  <div className="rounded-xl bg-amber-100 p-2.5 text-amber-700">
-                    <BadgeAlert size={24} />
+              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 shadow-sm sm:p-5">
+                <div className="flex items-start gap-3.5 sm:gap-4">
+                  <div className="shrink-0 rounded-xl bg-amber-100 p-2.5 text-amber-700">
+                    <BadgeAlert size={22} />
                   </div>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <h3 className="font-bold text-amber-900">
-                      Thanks for registering with Etukas Seller Hub!
+                      Thanks for registering with Etukas Partner Hub!
                     </h3>
-                    <p className="mt-1 text-sm text-amber-800">
-                      Your Seller ID is <strong className="font-mono bg-amber-200/60 px-1.5 py-0.5 rounded">{sellerId}</strong>. Our onboarding team is reviewing your shop documents and store location. You can prepare and organize your product catalog (Cement, Iron, Bricks, Sand, Stones, Tiles, etc.) right now!
+                    <p className="mt-1 text-xs leading-relaxed text-amber-800 sm:text-sm">
+                      Your Partner ID is <strong className="rounded bg-amber-200/60 px-1.5 py-0.5 font-mono">{sellerId}</strong>. Our onboarding team is reviewing your shop documents and store location. You can prepare and organize your product catalog (Cement, Iron, Bricks, Sand, Stones, Tiles, etc.) right now!
                     </p>
                   </div>
                 </div>
@@ -1293,66 +1349,66 @@ function SellerDashboardContent() {
               const totalRevenueMinor = dashboardData?.revenueMinor ?? 0;
 
               return (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Gross Revenue</span>
-                      <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                        <IndianRupee size={20} />
+                <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Gross Revenue</span>
+                      <div className="shrink-0 rounded-lg bg-emerald-50 p-1.5 text-emerald-600 sm:p-2">
+                        <IndianRupee size={18} />
                       </div>
                     </div>
-                    <div className="mt-3 text-3xl font-black text-gray-900">
+                    <div className="mt-2.5 truncate text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
                       ₹{(totalRevenueMinor / 100).toLocaleString("en-IN")}
                     </div>
-                    <div className="mt-1 text-xs text-emerald-600 font-semibold">
+                    <div className="mt-1 text-[11px] font-semibold text-emerald-600 sm:text-xs">
                       {deliveredOrdersCount} delivered · {pendingOrdersCount} active
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Orders Received</span>
-                      <div className="rounded-lg bg-orange-50 p-2 text-orange-600">
-                        <ShoppingBag size={20} />
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Orders Received</span>
+                      <div className="shrink-0 rounded-lg bg-orange-50 p-1.5 text-orange-600 sm:p-2">
+                        <ShoppingBag size={18} />
                       </div>
                     </div>
-                    <div className="mt-3 text-3xl font-black text-gray-900">
+                    <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
                       {totalOrdersCount}
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
+                    <div className="mt-1 text-[11px] text-gray-500 sm:text-xs">
                       {pendingOrdersCount} pending fulfillment
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Materials Listed</span>
-                      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                        <Boxes size={20} />
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Materials Listed</span>
+                      <div className="shrink-0 rounded-lg bg-blue-50 p-1.5 text-blue-600 sm:p-2">
+                        <Boxes size={18} />
                       </div>
                     </div>
-                    <div className="mt-3 text-3xl font-black text-gray-900">
-                      {inventoryRows.length} items
+                    <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
+                      {inventoryRows.length} <span className="text-sm font-bold text-gray-500 sm:text-base">items</span>
                     </div>
-                    <div className="mt-1 text-xs text-blue-600 font-semibold">
+                    <div className="mt-1 text-[11px] font-semibold text-blue-600 sm:text-xs">
                       {activeCategoryCount === 0
                         ? "No categories active yet"
-                        : `Across ${activeCategoryCount} active categor${activeCategoryCount === 1 ? "y" : "ies"}`}
+                        : `Across ${activeCategoryCount} categor${activeCategoryCount === 1 ? "y" : "ies"}`}
                     </div>
                   </div>
 
-                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Stock Alerts</span>
-                      <div className="rounded-lg bg-red-50 p-2 text-red-600">
-                        <AlertTriangle size={20} />
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-4 shadow-sm sm:p-5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 sm:text-xs">Stock Alerts</span>
+                      <div className="shrink-0 rounded-lg bg-red-50 p-1.5 text-red-600 sm:p-2">
+                        <AlertTriangle size={18} />
                       </div>
                     </div>
-                    <div className="mt-3 text-3xl font-black text-gray-900">
-                      {lowStockCount} items
+                    <div className="mt-2.5 text-2xl font-black text-gray-900 sm:mt-3 sm:text-3xl">
+                      {lowStockCount} <span className="text-sm font-bold text-gray-500 sm:text-base">items</span>
                     </div>
-                    <div className="mt-1 text-xs text-red-600 font-semibold">
-                      {lowStockCount === 0 ? "All stock levels healthy" : "Low inventory (< 20 units)"}
+                    <div className="mt-1 text-[11px] font-semibold text-red-600 sm:text-xs">
+                      {lowStockCount === 0 ? "All stock healthy" : "Low stock (< 20)"}
                     </div>
                   </div>
                 </div>
@@ -1360,23 +1416,28 @@ function SellerDashboardContent() {
             })()}
 
             {/* Category Quick Stats */}
-            <div className="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
+            <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm sm:p-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">Material Categories Supported</h2>
-                  <p className="text-sm text-gray-500">Etukas buyers search locally for these bulk materials</p>
+                  <h2 className="text-base font-bold text-gray-900 sm:text-lg">Material Categories Supported</h2>
+                  <p className="text-xs text-gray-500 sm:text-sm">Etukas buyers search locally for these bulk materials</p>
                 </div>
-                <Button onClick={() => setActiveTab("products")} className="bg-orange-500 hover:bg-orange-600">
+                <Button
+                  type="button"
+                  onClick={() => setActiveTab("products")}
+                  className="w-full bg-orange-500 hover:bg-orange-600 sm:w-auto"
+                >
                   Manage Catalog
                 </Button>
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+              <div className="mt-5 grid grid-cols-2 gap-3 sm:mt-6 sm:grid-cols-4 lg:grid-cols-8">
                 {MATERIAL_CATEGORIES.filter((c) => c.id !== "all").map((cat) => {
                   const count = inventoryRows.filter((p) => p.category === cat.id).length;
                   const Icon = cat.icon;
                   return (
-                    <div
+                    <button
+                      type="button"
                       key={cat.id}
                       onClick={() => {
                         setSelectedCategory(cat.id);
@@ -1389,7 +1450,7 @@ function SellerDashboardContent() {
                       </div>
                       <div className="mt-2 text-xs font-bold text-gray-800">{cat.name}</div>
                       <div className="text-[11px] text-gray-500">{count} listed</div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -1413,16 +1474,17 @@ function SellerDashboardContent() {
               </Button>
             </div>
 
-            {/* Category Filter Pills */}
-            <div className="flex flex-wrap gap-2">
+            {/* Category Filter Pills (side-scrollable on mobile) */}
+            <div className="no-scrollbar flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
               {MATERIAL_CATEGORIES.map((cat) => (
                 <button
+                  type="button"
                   key={cat.id}
                   onClick={() => setSelectedCategory(cat.id)}
-                  className={`rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
+                  className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-bold transition-all ${
                     selectedCategory === cat.id
                       ? "bg-orange-500 text-white shadow-sm"
-                      : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-100"
+                      : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-100"
                   }`}
                 >
                   {cat.name}
@@ -1626,14 +1688,11 @@ function SellerDashboardContent() {
                         }}
                         className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-sm focus:border-orange-500 focus:outline-none"
                       >
-                        <option value="cement">Cement</option>
-                        <option value="iron">Iron & Steel (TMT)</option>
-                        <option value="electricals">Electricals & Wiring</option>
-                        <option value="bricks">Bricks & AAC Blocks</option>
-                        <option value="sand">Sand & M-Sand</option>
-                        <option value="stones">Stones & Aggregates</option>
-                        <option value="tiles">Tiles & Flooring</option>
-                        <option value="plumbing">Plumbing & Sanitary</option>
+                        {MATERIAL_CATEGORIES.filter((c) => c.id !== "all").map((cat) => (
+                          <option key={cat.id} value={cat.id}>
+                            {cat.name}
+                          </option>
+                        ))}
                       </select>
                     </div>
 

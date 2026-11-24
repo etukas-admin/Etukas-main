@@ -905,6 +905,14 @@ export type ChatMessage = {
   sender: { id: string; name: string; roles: string[] };
 };
 
+export type PartnerChatInfo = {
+  partnerId?: string | null;
+  storeName?: string | null;
+  serviceName?: string | null;
+  partnerType?: "SELLER" | "TECHNICIAN";
+  city?: string | null;
+};
+
 export type ChatSession = {
   id: string;
   userId: string;
@@ -913,7 +921,9 @@ export type ChatSession = {
   createdAt: string;
   updatedAt: string;
   messages?: ChatMessage[];
-  user?: { id: string; name: string; email: string; roles: string[] };
+  unreadCount?: number;
+  user?: { id: string; name: string; email: string; mobile?: string | null; roles: string[] };
+  partnerInfo?: PartnerChatInfo | null;
 };
 
 export type AdminNotification = {

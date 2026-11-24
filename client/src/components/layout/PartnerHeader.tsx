@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { PartnerMobileNav } from "./PartnerMobileNav";
 import { PartnerLoginModal } from "../auth/PartnerLoginModal";
+import { CustomerSupportPillButton } from "./CustomerSupportPillButton";
+import { OPEN_SUPPORT_CHAT_EVENT } from "../chat/UserChatWidget";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 import { isPartnerUser } from "../../lib/authRoles";
 import { useHeaderHeightCssVar, useHeaderScroll } from "../../hooks/useMobileScrollState";
@@ -73,6 +75,9 @@ export function PartnerHeader() {
 
   const openMobileNav = useCallback(() => setIsMobileNavOpen(true), []);
   const closeMobileNav = useCallback(() => setIsMobileNavOpen(false), []);
+  const openSupportChat = useCallback(() => {
+    window.dispatchEvent(new Event(OPEN_SUPPORT_CHAT_EVENT));
+  }, []);
 
   const scrollToSection = (targetId: string) => {
     const element = document.getElementById(targetId);
@@ -220,10 +225,13 @@ export function PartnerHeader() {
             ) : null}
 
             {currentUser ? (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-2 sm:gap-2.5">
                 <Link
                   to="/partner-dashboard"
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-amber-600 sm:gap-2 sm:px-3 sm:py-2"
+                  className={cn(
+                    "items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 px-2.5 py-1.5 text-xs font-bold text-white shadow-md shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-amber-600 sm:gap-2 sm:px-3 sm:py-2",
+                    isDashboardView ? "hidden sm:flex" : "flex"
+                  )}
                 >
                   <UserRound size={15} className="shrink-0" />
                   <span className="hidden sm:inline">Partner Dashboard</span>
@@ -234,6 +242,15 @@ export function PartnerHeader() {
                     </span>
                   ) : null}
                 </Link>
+
+                {/* Partner Support Live Chat icon (opens shared UserChatWidget wired to Admin Enquiries) */}
+                <CustomerSupportPillButton
+                  onClick={openSupportChat}
+                  label="Partner Support"
+                  variant="dark"
+                  size={28}
+                  animateOnLoad
+                />
 
                 <button
                   type="button"
@@ -264,6 +281,14 @@ export function PartnerHeader() {
                   <span className="hidden sm:inline">Register as Partner</span>
                   <ArrowRight size={13} className="shrink-0 sm:h-3.5 sm:w-3.5" />
                 </button>
+
+                <CustomerSupportPillButton
+                  onClick={openSupportChat}
+                  label="Partner Support"
+                  variant="dark"
+                  size={26}
+                  animateOnLoad={false}
+                />
               </div>
             )}
           </div>

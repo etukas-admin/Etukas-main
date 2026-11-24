@@ -1,21 +1,26 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { marketplaceApi, type ChatMessage, type ChatSession, getStoredUser } from "../../services/api";
+import { marketplaceApi, type ChatMessage, type ChatSession, getStoredUser, type User } from "../../services/api";
+import { isPartnerUser } from "../../lib/authRoles";
 import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn, AlertCircle, CheckCheck } from "lucide-react";
 
 export const OPEN_SUPPORT_CHAT_EVENT = "etukas_open_support_chat";
 
 export function UserChatWidget() {
-  const storedUser = getStoredUser();
+  const [storedUser, setStoredUser] = useState<User | null>(() => getStoredUser());
+  const queryClient = useQueryClient();
+
   const { data: currentUser } = useQuery({
-    queryKey: ["auth", "me"],
+    queryKey: ["auth", "me", storedUser?.id ?? "guest"],
     queryFn: marketplaceApi.me,
     initialData: storedUser ?? undefined,
+    enabled: Boolean(storedUser),
     retry: false
   });
   const user = currentUser ?? storedUser;
-  const userName = user?.name ? user.name.trim().split(" ")[0] : "there";
+  const partnerAccount = isPartnerUser(user);
+  const userName = user?.name ? user.name.trim().split(/\s+/)[0] : "there";
 
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
@@ -28,20 +33,45 @@ export function UserChatWidget() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const queryClient = useQueryClient();
 
-  // Show chat bubble after app load with a pop animation
+  // Stay reactive to login/logout/account switching so chat sessions never leak across accounts
   useEffect(() => {
+    const syncAuth = () => {
+      const next = getStoredUser();
+      setStoredUser((prev) => {
+        if (prev?.id !== next?.id) {
+          setSessionId(null);
+          setText("");
+          setErrorMessage(null);
+          void queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
+        }
+        return next;
+      });
+    };
+    window.addEventListener("etukas_auth_change", syncAuth);
+    window.addEventListener("storage", syncAuth);
+    return () => {
+      window.removeEventListener("etukas_auth_change", syncAuth);
+      window.removeEventListener("storage", syncAuth);
+    };
+  }, [queryClient]);
+
+  // Show chat bubble after app load with a pop animation (desktop/tablet)
+  useEffect(() => {
+    let popTimer: ReturnType<typeof setTimeout> | null = null;
     const showTimer = setTimeout(() => {
       setIsVisible(true);
-      // Trigger pop animation shortly after becoming visible
-      setTimeout(() => setPopIn(true), 30);
-    }, 2000);
-    return () => clearTimeout(showTimer);
+      popTimer = setTimeout(() => setPopIn(true), 30);
+    }, 1800);
+    return () => {
+      clearTimeout(showTimer);
+      if (popTimer) clearTimeout(popTimer);
+    };
   }, []);
-  const pollInterval = isOpen && sessionId ? 4000 : undefined;
 
-  // Query existing messages
+  const pollInterval = isOpen && !isMinimized && sessionId ? 4000 : undefined;
+
+  // Query existing messages for the active session
   const messages = useQuery<ChatMessage[]>({
     queryKey: ["chat", "messages", sessionId],
     queryFn: ({ signal }) => marketplaceApi.chatMessages(sessionId!, { signal }),
@@ -50,34 +80,41 @@ export function UserChatWidget() {
     refetchIntervalInBackground: false
   });
 
-  // Query user's sessions to resume an open one immediately
+  // Query user's sessions to resume an existing OPEN session immediately
   const userSessions = useQuery<ChatSession[]>({
-    queryKey: ["chat", "my-sessions"],
+    queryKey: ["chat", "my-sessions", user?.id ?? "guest"],
     queryFn: ({ signal }) => marketplaceApi.chatMySessions({ signal }),
     enabled: Boolean(user && isOpen),
     retry: 1
   });
 
-  // Automatically pick existing open session or set from userSessions
+  // Only auto-select an OPEN session (never trap the user inside a CLOSED session)
   useEffect(() => {
-    if (userSessions.data && userSessions.data.length > 0 && !sessionId) {
-      const openSession = userSessions.data.find((s) => s.status === "OPEN") ?? userSessions.data[0];
+    if (userSessions.data && !sessionId) {
+      const openSession = userSessions.data.find((s) => s.status === "OPEN");
       if (openSession) {
         setSessionId(openSession.id);
       }
     }
   }, [userSessions.data, sessionId]);
 
-  // Mutation to initialize support session
+  const chatSubject = partnerAccount ? "Partner Support Chat" : "Support Chat";
+
+  // Mutation to initialize or resume an open support session
   const startSession = useMutation({
-    mutationFn: () => marketplaceApi.chatStartSession("Support Chat"),
+    mutationFn: () => marketplaceApi.chatStartSession(chatSubject),
     onSuccess: (session: ChatSession) => {
       setSessionId(session.id);
-      queryClient.setQueryData(["chat", "messages", session.id], session.messages ?? []);
-      queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
+      setErrorMessage(null);
+      if (session.messages && session.messages.length > 0) {
+        queryClient.setQueryData(["chat", "messages", session.id], session.messages);
+      }
+      void queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       console.warn("Could not auto-start chat session:", err);
+      const message = err instanceof Error ? err.message : "Could not connect to support right now.";
+      setErrorMessage(message);
     }
   });
 
@@ -91,39 +128,33 @@ export function UserChatWidget() {
   // Focus textarea when chat window opens
   useEffect(() => {
     if (isOpen && !isMinimized && user) {
-      setTimeout(() => {
+      const focusTimer = setTimeout(() => {
         textareaRef.current?.focus();
       }, 100);
+      return () => clearTimeout(focusTimer);
     }
   }, [isOpen, isMinimized, user]);
 
-  const handleOpen = () => {
+  const handleOpen = useCallback(() => {
+    setIsVisible(true);
+    setPopIn(true);
     setIsOpen(true);
     setIsMinimized(false);
     setErrorMessage(null);
-    if (user && !sessionId) {
+    if (user && !sessionId && !startSession.isPending) {
       startSession.mutate();
     }
-  };
+  }, [user, sessionId, startSession]);
 
   useEffect(() => {
-    const onOpenSupportChat = () => {
-      setIsVisible(true);
-      setPopIn(true);
-      setIsOpen(true);
-      setIsMinimized(false);
-      setErrorMessage(null);
-      if (user && !sessionId) {
-        startSession.mutate();
-      }
-    };
+    const onOpenSupportChat = () => handleOpen();
     window.addEventListener(OPEN_SUPPORT_CHAT_EVENT, onOpenSupportChat);
     return () => window.removeEventListener(OPEN_SUPPORT_CHAT_EVENT, onOpenSupportChat);
-  }, [user, sessionId]);
+  }, [handleOpen]);
 
   const handleSend = async () => {
     const trimmed = text.trim();
-    if (!trimmed || isSending) return;
+    if (!trimmed || isSending || !user) return;
 
     setIsSending(true);
     setErrorMessage(null);
@@ -131,38 +162,60 @@ export function UserChatWidget() {
     try {
       let activeSessionId = sessionId;
 
-      // If session not ready yet, initialize on the fly before sending
       if (!activeSessionId) {
-        const session = await marketplaceApi.chatStartSession("Support Chat");
+        const session = await marketplaceApi.chatStartSession(chatSubject);
         activeSessionId = session.id;
         setSessionId(session.id);
       }
 
-      const newMsg = await marketplaceApi.chatSendMessage(activeSessionId, trimmed);
+      let newMsg: ChatMessage;
+      try {
+        newMsg = await marketplaceApi.chatSendMessage(activeSessionId, trimmed);
+      } catch (sendErr: unknown) {
+        // If an admin closed the previous session while the window was open, start a fresh open session automatically
+        const msg = sendErr instanceof Error ? sendErr.message.toLowerCase() : "";
+        if (msg.includes("closed") || msg.includes("not found")) {
+          const freshSession = await marketplaceApi.chatStartSession(chatSubject);
+          activeSessionId = freshSession.id;
+          setSessionId(freshSession.id);
+          newMsg = await marketplaceApi.chatSendMessage(activeSessionId, trimmed);
+        } else {
+          throw sendErr;
+        }
+      }
+
       queryClient.setQueryData<ChatMessage[]>(["chat", "messages", activeSessionId], (prev) => [
         ...(prev ?? []),
         newMsg
       ]);
       setText("");
-
-      // Refresh session lists
-      queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
-    } catch (err: any) {
+      void queryClient.invalidateQueries({ queryKey: ["chat", "my-sessions"] });
+    } catch (err: unknown) {
       console.error("Failed to send support message:", err);
-      setErrorMessage(err?.message || "Failed to send message. Please check your connection and try again.");
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to send message. Please check your connection and try again.";
+      setErrorMessage(errMsg);
     } finally {
       setIsSending(false);
-      // Refocus input
       textareaRef.current?.focus();
     }
   };
 
   const hasUnread = messages.data?.some((m) => m.senderRole === "ADMIN" && !m.readAt);
+  const messageList = messages.data ?? [];
+  const showFallbackGreeting = !messages.isLoading && messageList.length === 0;
 
   const getMessageStatusColor = (msg: ChatMessage) => {
     if (msg.senderRole !== "USER") return "transparent";
     return msg.readAt ? "#c7f9ff" : "rgba(255,255,255,0.7)";
   };
+
+  const headerTitle = partnerAccount ? "Etukas Partner Support" : "Etukas Support Team";
+  const partnerSubtitle = partnerAccount
+    ? [user?.sellerId ? `ID: ${user.sellerId}` : null, "Support Team is active"].filter(Boolean).join(" · ")
+    : "Support Team is active";
 
   return (
     <div className="fixed bottom-[86px] right-3 z-[9999] md:right-[18px]">
@@ -191,7 +244,7 @@ export function UserChatWidget() {
             }}
             onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
-            title="Chat with Support Team"
+            title={partnerAccount ? "Chat with Etukas Partner Support" : "Chat with Support Team"}
           >
             <MessageCircle size={27} color="#fff" />
             {hasUnread && (
@@ -229,28 +282,34 @@ export function UserChatWidget() {
             justifyContent: "space-between",
             flexShrink: 0
           }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
               <div style={{
                 width: "38px", height: "38px", borderRadius: "50%",
                 background: "rgba(255,255,255,0.2)",
-                display: "flex", alignItems: "center", justifyContent: "center"
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0
               }}>
                 <Headphones size={20} color="#fff" />
               </div>
-              <div>
-                <p style={{ color: "#fff", fontWeight: 700, fontSize: "15px", margin: 0 }}>Etukas Support Team</p>
+              <div style={{ minWidth: 0 }}>
+                <p style={{ color: "#fff", fontWeight: 700, fontSize: "15px", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {headerTitle}
+                </p>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
-                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4ade80", display: "inline-block" }} />
-                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "12px", margin: 0 }}>Support Team is active</p>
+                  <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "#4ade80", display: "inline-block", flexShrink: 0 }} />
+                  <p style={{ color: "rgba(255,255,255,0.88)", fontSize: "12px", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {partnerSubtitle}
+                  </p>
                 </div>
               </div>
             </div>
-            <div style={{ display: "flex", gap: "4px" }}>
+            <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
               <button
                 type="button"
                 onClick={() => setIsMinimized(true)}
                 style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}
                 title="Minimize"
+                aria-label="Minimize support chat"
               >
                 <ChevronDown size={16} />
               </button>
@@ -259,6 +318,7 @@ export function UserChatWidget() {
                 onClick={() => setIsOpen(false)}
                 style={{ background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "8px", cursor: "pointer", padding: "6px", color: "#fff", display: "flex" }}
                 title="Close"
+                aria-label="Close support chat"
               >
                 <X size={16} />
               </button>
@@ -278,6 +338,7 @@ export function UserChatWidget() {
               <Link
                 to="/login"
                 id="user-chat-signin-btn"
+                onClick={() => setIsOpen(false)}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -302,37 +363,47 @@ export function UserChatWidget() {
             <>
               {/* Message Stream */}
               <div style={{ flex: 1, overflowY: "auto", padding: "16px", background: "#f8f9fb" }}>
-                {/* Automatic Welcome Hi message from Support Team with user name */}
-                <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "14px" }}>
-                  <div style={{
-                    width: "30px", height: "30px", borderRadius: "50%",
-                    background: "linear-gradient(135deg,#e11d48,#be123c)",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    marginRight: "8px", flexShrink: 0, fontSize: "11px", color: "#fff", fontWeight: 700
-                  }}>
-                    <Headphones size={15} color="#fff" />
-                  </div>
-                  <div style={{
-                    maxWidth: "82%",
-                    padding: "12px 14px",
-                    borderRadius: "18px 18px 18px 4px",
-                    background: "#fff",
-                    color: "#1f2937",
-                    fontSize: "13.5px",
-                    lineHeight: "1.5",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
-                    border: "1px solid rgba(225,29,72,0.12)"
-                  }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
-                      <span style={{ fontWeight: 700, color: "#be123c", fontSize: "11.5px" }}>Support Team</span>
-                      <span style={{ fontSize: "10px", color: "#9ca3af" }}>· Just now</span>
+                {/* Show fallback welcome only when no messages exist yet (avoids duplicating the server welcome message) */}
+                {showFallbackGreeting && (
+                  <div style={{ display: "flex", justifyContent: "flex-start", marginBottom: "14px" }}>
+                    <div style={{
+                      width: "30px", height: "30px", borderRadius: "50%",
+                      background: "linear-gradient(135deg,#e11d48,#be123c)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      marginRight: "8px", flexShrink: 0, fontSize: "11px", color: "#fff", fontWeight: 700
+                    }}>
+                      <Headphones size={15} color="#fff" />
                     </div>
-                    Hi {userName}! 👋 Welcome to Etukas Support. How can our support team help you today? Feel free to ask any doubts regarding products, orders, or partner onboarding.
+                    <div style={{
+                      maxWidth: "82%",
+                      padding: "12px 14px",
+                      borderRadius: "18px 18px 18px 4px",
+                      background: "#fff",
+                      color: "#1f2937",
+                      fontSize: "13.5px",
+                      lineHeight: "1.5",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.06)",
+                      border: "1px solid rgba(225,29,72,0.12)"
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "5px", marginBottom: "4px" }}>
+                        <span style={{ fontWeight: 700, color: "#be123c", fontSize: "11.5px" }}>Support Team</span>
+                        <span style={{ fontSize: "10px", color: "#9ca3af" }}>· Just now</span>
+                      </div>
+                      {partnerAccount
+                        ? `Hi ${userName}! 👋 Welcome to Etukas Partner Support. Ask us anything about your store, products, bookings, orders, or payouts.`
+                        : `Hi ${userName}! 👋 Welcome to Etukas Support. How can our support team help you today?`}
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {messages.isLoading && messageList.length === 0 && (
+                  <div style={{ display: "flex", justifyContent: "center", padding: "24px 0", color: "#9ca3af" }}>
+                    <Loader2 size={20} style={{ animation: "spin 1s linear infinite", color: "#e11d48" }} />
+                  </div>
+                )}
 
                 {/* Conversation messages */}
-                {messages.data?.map((msg) => {
+                {messageList.map((msg) => {
                   const isUser = msg.senderRole === "USER";
                   return (
                     <div
@@ -364,7 +435,8 @@ export function UserChatWidget() {
                         fontSize: "14px",
                         lineHeight: "1.5",
                         boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
-                        border: isUser ? "none" : "1px solid #f1f5f9"
+                        border: isUser ? "none" : "1px solid #f1f5f9",
+                        wordBreak: "break-word"
                       }}>
                         {!isUser && (
                           <div style={{ fontSize: "11px", fontWeight: 700, color: "#be123c", marginBottom: "3px" }}>
@@ -390,8 +462,8 @@ export function UserChatWidget() {
                 })}
 
                 {errorMessage && (
-                  <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", background: "#fef2f2", color: "#991b1b", borderRadius: "8px", fontSize: "12px", margin: "8px 0" }}>
-                    <AlertCircle size={15} />
+                  <div role="alert" style={{ display: "flex", alignItems: "center", gap: "6px", padding: "8px 12px", background: "#fef2f2", color: "#991b1b", borderRadius: "8px", fontSize: "12px", margin: "8px 0" }}>
+                    <AlertCircle size={15} style={{ flexShrink: 0 }} />
                     <span>{errorMessage}</span>
                   </div>
                 )}
@@ -399,7 +471,7 @@ export function UserChatWidget() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area - NEVER DISABLED for typing */}
+              {/* Input Area */}
               <div style={{ padding: "12px 14px", borderTop: "1px solid #f1f5f9", background: "#fff", flexShrink: 0 }}>
                 <div style={{ display: "flex", gap: "8px", alignItems: "flex-end" }}>
                   <textarea
@@ -410,10 +482,10 @@ export function UserChatWidget() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
-                        handleSend();
+                        void handleSend();
                       }
                     }}
-                    placeholder="Type your message to support team..."
+                    placeholder={partnerAccount ? "Message Partner Support team..." : "Type your message to support team..."}
                     rows={2}
                     style={{
                       flex: 1,
@@ -436,7 +508,7 @@ export function UserChatWidget() {
                   <button
                     id="user-chat-send-btn"
                     type="button"
-                    onClick={handleSend}
+                    onClick={() => void handleSend()}
                     disabled={!text.trim() || isSending}
                     style={{
                       width: "44px",
@@ -453,6 +525,7 @@ export function UserChatWidget() {
                       transition: "opacity 0.2s"
                     }}
                     title="Send message"
+                    aria-label="Send message"
                   >
                     {isSending ? (
                       <Loader2 size={18} color="#fff" style={{ animation: "spin 1s linear infinite" }} />

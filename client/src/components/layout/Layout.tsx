@@ -1,22 +1,49 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Header } from "./Header";
 import { PartnerHeader } from "./PartnerHeader";
 import { BottomNav } from "./BottomNav";
 import { UserChatWidget } from "../chat/UserChatWidget";
+import { PartnerTransitionLoader } from "../common/PartnerTransitionLoader";
 import { Facebook, Instagram, Linkedin, Youtube } from "lucide-react";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 import { isPartnerUser } from "../../lib/authRoles";
+
+function isPartnerRoutePath(pathname: string): boolean {
+  return (
+    pathname === "/partner-hub" ||
+    pathname === "/seller-hub" ||
+    pathname === "/partner-dashboard" ||
+    pathname === "/seller"
+  );
+}
 
 export function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
+  const isPartnerPage = isPartnerRoutePath(location.pathname);
+  const prevWasPartnerRef = useRef<boolean>(isPartnerPage);
+  const [showPartnerLoader, setShowPartnerLoader] = useState(false);
 
   useEffect(() => {
     const handleAuthChange = () => setCurrentUser(getStoredUser());
     window.addEventListener("etukas_auth_change", handleAuthChange);
     return () => window.removeEventListener("etukas_auth_change", handleAuthChange);
+  }, []);
+
+  const isEnteringPartner = !prevWasPartnerRef.current && isPartnerPage;
+
+  // Trigger branded transition loader whenever switching from Customer Marketplace into Partner pages
+  useEffect(() => {
+    if (!prevWasPartnerRef.current && isPartnerPage) {
+      setShowPartnerLoader(true);
+    }
+    prevWasPartnerRef.current = isPartnerPage;
+  }, [isPartnerPage]);
+
+  const handlePartnerLoaderComplete = useCallback(() => {
+    setShowPartnerLoader(false);
   }, []);
 
   const signedInPartner = isPartnerUser(currentUser);
@@ -40,11 +67,6 @@ export function Layout() {
   const isAccountSubPage =
     location.pathname === "/orders" ||
     location.pathname.startsWith("/account/");
-  const isPartnerPage =
-    location.pathname === "/partner-hub" ||
-    location.pathname === "/seller-hub" ||
-    location.pathname === "/partner-dashboard" ||
-    location.pathname === "/seller";
 
   return (
     <div
@@ -229,6 +251,13 @@ export function Layout() {
 
       {/* Customer bottom navigation is shown only on customer pages (not on checkout, order, or account subpages) */}
       {isPartnerPage || isCheckoutPage || isOrderPage || isAccountSubPage ? null : <BottomNav />}
+
+      {/* Branded transition loader when entering Etukas Partner from Customer Marketplace */}
+      <PartnerTransitionLoader
+        isActive={showPartnerLoader || isEnteringPartner}
+        targetPath={location.pathname}
+        onComplete={handlePartnerLoaderComplete}
+      />
 
       {/* Floating Chat Widget for direct User/Partner with Admin interaction */}
       <UserChatWidget />
