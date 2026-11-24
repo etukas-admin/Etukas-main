@@ -319,7 +319,7 @@ export function PartnerMobileNav({
             </Link>
           )}
           <div className="mt-2 text-center text-[10px] text-slate-400">
-            Etukas Partner Network © 2026
+            Etukas Partner Network &copy; {new Date().getFullYear()}
           </div>
         </div>
       </div>

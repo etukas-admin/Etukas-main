@@ -30,7 +30,7 @@ export function AccountSubPageHeader({
   };
 
   return (
-    <div className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur md:top-16">
+    <div className="sticky top-0 z-30 border-b border-gray-200/80 bg-white/95 backdrop-blur md:top-[var(--etukas-header-height,64px)]">
       <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <button
