@@ -72,17 +72,12 @@ export function getOrderTrackingChannelName(orderId: string): string {
 }
 
 /**
- * Vehicle Live Tracking becomes enabled once vehicle loading starts
- * (LOADING_VEHICLE / PREPARING / ASSIGNED_DRIVER / DISPATCHED).
+ * Vehicle Live Tracking becomes enabled once a delivery partner is assigned
+ * (ASSIGNED_DRIVER / DISPATCHED).
  */
 export function isVehicleTrackingEnabledStatus(status?: string | null): boolean {
   if (!status) return false;
-  return (
-    status === "LOADING_VEHICLE" ||
-    status === "PREPARING" ||
-    status === "ASSIGNED_DRIVER" ||
-    status === "DISPATCHED"
-  );
+  return status === "ASSIGNED_DRIVER" || status === "DISPATCHED";
 }
 
 const EARTH_RADIUS_METERS = 6_371_000;

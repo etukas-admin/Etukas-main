@@ -1,25 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowRight,
-  BadgeCheck,
-  Building2,
   ExternalLink,
   Handshake,
-  Headphones,
   Home,
-  LogIn,
   LogOut,
+  Mail,
   Menu,
-  Phone,
-  ShieldCheck,
   ShoppingBag,
-  Sparkles,
   UserRound
 } from "lucide-react";
 import { PartnerMobileNav } from "./PartnerMobileNav";
 import { PartnerLoginModal } from "../auth/PartnerLoginModal";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
+import { isPartnerUser } from "../../lib/authRoles";
 
 const partnerNavItems = [
   { label: "Overview", targetId: "overview" },
@@ -32,10 +27,14 @@ const partnerNavItems = [
 
 export function PartnerHeader() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState<User | null>(getStoredUser());
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+  const signedInPartner = isPartnerUser(currentUser);
+  const isDashboardView = location.pathname === "/partner-dashboard";
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -65,6 +64,11 @@ export function PartnerHeader() {
     navigate("/partner-hub");
   };
 
+  const handleSwitchToCustomerMarketplace = async () => {
+    await marketplaceApi.logout();
+    navigate("/login");
+  };
+
   const openMobileNav = useCallback(() => setIsMobileNavOpen(true), []);
   const closeMobileNav = useCallback(() => setIsMobileNavOpen(false), []);
 
@@ -90,21 +94,33 @@ export function PartnerHeader() {
 
           <div className="flex items-center gap-4 text-[11px]">
             <a
-              href="tel:18001234567"
+              href="mailto:partners@etukas.com"
               className="flex items-center gap-1 text-slate-400 hover:text-orange-400 transition-colors"
             >
-              <Phone size={12} className="text-orange-400" />
-              <span>Partner Help: 1800-XXX-XXXX</span>
+              <Mail size={12} className="text-orange-400" />
+              <span>partners@etukas.com</span>
             </a>
             <span className="text-slate-700">|</span>
-            <Link
-              to="/"
-              className="flex items-center gap-1 font-semibold text-slate-300 hover:text-white transition-colors"
-            >
-              <Home size={12} className="text-red-400" />
-              <span>Customer Marketplace</span>
-              <ExternalLink size={10} className="text-slate-400" />
-            </Link>
+            {signedInPartner ? (
+              <button
+                type="button"
+                onClick={() => void handleSwitchToCustomerMarketplace()}
+                className="flex items-center gap-1 font-semibold text-slate-300 hover:text-orange-300 transition-colors"
+                title="Sign out of your Partner account to sign in as a Customer"
+              >
+                <LogOut size={12} className="text-orange-400" />
+                <span>Switch to Customer Login</span>
+              </button>
+            ) : (
+              <Link
+                to="/"
+                className="flex items-center gap-1 font-semibold text-slate-300 hover:text-white transition-colors"
+              >
+                <Home size={12} className="text-red-400" />
+                <span>Customer Marketplace</span>
+                <ExternalLink size={10} className="text-slate-400" />
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -128,7 +144,7 @@ export function PartnerHeader() {
               <Menu size={22} />
             </button>
 
-            <Link to="/partner-hub" className="flex items-center gap-2 group">
+            <Link to={signedInPartner ? "/partner-dashboard" : "/partner-hub"} className="flex items-center gap-2 group">
               <img
                 src="/etukas-partner-logo.png"
                 alt="Etukas Partner — BUILD • CONNECT • GROW"
@@ -137,30 +153,34 @@ export function PartnerHeader() {
             </Link>
           </div>
 
-          {/* Center: Partner Navigation links (Desktop) */}
-          <nav className="hidden items-center gap-1 lg:flex">
-            {partnerNavItems.map(({ label, targetId }) => (
-              <button
-                key={targetId}
-                onClick={() => scrollToSection(targetId)}
-                className="rounded-lg px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-orange-400 transition-colors"
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
+          {/* Center: Partner Hub Navigation links (only on landing page, not inside Dashboard) */}
+          {!isDashboardView && !signedInPartner && (
+            <nav className="hidden items-center gap-1 lg:flex">
+              {partnerNavItems.map(({ label, targetId }) => (
+                <button
+                  key={targetId}
+                  onClick={() => scrollToSection(targetId)}
+                  className="rounded-lg px-3 py-2 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:text-orange-400 transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
+          )}
 
           {/* Right: Partner Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Link back to Customer Store */}
-            <Link
-              to="/"
-              className="hidden items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors sm:flex"
-              title="Return to Buyer Store"
-            >
-              <ShoppingBag size={14} className="text-orange-400" />
-              <span>Etukas Store</span>
-            </Link>
+            {/* Only show direct Customer Store link to guests (not signed-in Partners) */}
+            {!signedInPartner && (
+              <Link
+                to="/"
+                className="hidden items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 hover:text-white transition-colors sm:flex"
+                title="Return to Buyer Store"
+              >
+                <ShoppingBag size={14} className="text-orange-400" />
+                <span>Etukas Store</span>
+              </Link>
+            )}
 
             {/* Partner Auth State */}
             {currentUser ? (
@@ -218,6 +238,7 @@ export function PartnerHeader() {
         onClose={closeMobileNav}
         currentUser={currentUser}
         onLogout={handleLogout}
+        onSwitchToCustomer={handleSwitchToCustomerMarketplace}
         onOpenLoginModal={() => setIsLoginModalOpen(true)}
       />
 

@@ -677,10 +677,10 @@ export function MyOrdersPage() {
                         {canTrackVehicleLive(order.status) ? (
                           <Link
                             to={`/track/${encodeURIComponent(order.orderNumber || order.id)}`}
-                            className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700"
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-extrabold text-white shadow-xs hover:bg-emerald-700"
                           >
                             <Navigation size={12} />
-                            <span>Live Map</span>
+                            <span>Live Track Vehicle</span>
                           </Link>
                         ) : null}
 

@@ -20,6 +20,7 @@ import { loginSchema, type LoginInput } from "@etukas/shared";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { marketplaceApi } from "../../services/api";
+import { isAdminUser, isPartnerUser } from "../../lib/authRoles";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -51,9 +52,9 @@ export function LoginPage() {
       return marketplaceApi.login(payload);
     },
     onSuccess: (user) => {
-      if (user.roles.includes("ADMIN")) navigate("/admin-dashboard");
-      else if (user.roles.includes("SELLER")) navigate("/partner-dashboard");
-      else navigate("/customer");
+      if (isAdminUser(user)) navigate("/admin-dashboard", { replace: true });
+      else if (isPartnerUser(user)) navigate("/partner-dashboard", { replace: true });
+      else navigate("/customer", { replace: true });
     }
   });
 

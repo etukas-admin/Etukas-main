@@ -34,11 +34,12 @@ import {
   ZoomIn,
   Crop
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { marketplaceApi, API_BASE, getStoredUser } from "../../services/api";
+import { isAdminUser, isPartnerUser } from "../../lib/authRoles";
 import { queryKeys } from "../../lib/queryKeys";
 import {
   DeliveryStepsTracker,
@@ -90,13 +91,44 @@ type InventoryRow = {
 
 const DELIVERY_RADIUS_PRESETS = [5, 10, 25, 50, 100] as const;
 
+const VALID_SELLER_TABS = new Set(["overview", "products", "store", "orders"] as const);
+type SellerTab = "overview" | "products" | "store" | "orders";
+
 export function SellerDashboard() {
+  const currentUser = getStoredUser();
+  if (!currentUser) {
+    return <Navigate to="/partner-hub" replace />;
+  }
+  if (!isPartnerUser(currentUser) && !isAdminUser(currentUser)) {
+    return <Navigate to="/customer" replace />;
+  }
+  return <SellerDashboardContent />;
+}
+
+function SellerDashboardContent() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "store" | "orders">("overview");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialTabParam = searchParams.get("tab") as SellerTab | null;
+  const [activeTab, setActiveTabState] = useState<SellerTab>(
+    initialTabParam && VALID_SELLER_TABS.has(initialTabParam) ? initialTabParam : "overview"
+  );
+
+  // Keep activeTab in sync when returning from /track/:orderId? -> /partner-dashboard?tab=orders
+  useEffect(() => {
+    const tabParam = searchParams.get("tab") as SellerTab | null;
+    if (tabParam && VALID_SELLER_TABS.has(tabParam) && tabParam !== activeTab) {
+      setActiveTabState(tabParam);
+    }
+  }, [searchParams, activeTab]);
+
+  const setActiveTab = (tab: SellerTab) => {
+    setActiveTabState(tab);
+    setSearchParams(tab === "overview" ? {} : { tab }, { replace: true });
+  };
 
   const handleLogout = async () => {
     await marketplaceApi.logout();
-    navigate("/login");
+    navigate("/partner-hub", { replace: true });
   };
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -570,14 +602,6 @@ export function SellerDashboard() {
                   </div>
                 )}
 
-                <Link
-                  to="/technicians"
-                  className="flex items-center gap-1.5 rounded-xl border border-orange-500/50 bg-orange-500/20 px-3.5 py-2 text-xs font-bold text-orange-300 hover:bg-orange-500 hover:text-white transition-all shadow-sm"
-                >
-                  <span>View Marketplace</span>
-                  <ExternalLink size={14} />
-                </Link>
-
                 <button
                   onClick={handleLogout}
                   className="flex items-center gap-1.5 rounded-xl border border-gray-700 bg-gray-800/90 px-3.5 py-2 text-xs font-bold text-gray-200 hover:bg-red-600 hover:border-red-600 hover:text-white transition-all shadow-sm"
@@ -751,8 +775,8 @@ export function SellerDashboard() {
                       <span>GPS Coordinates</span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 font-mono text-xs text-blue-950">
-                      <div>Latitude: <strong className="text-blue-900">{technician?.latitude ? Number(technician.latitude).toFixed(6) : "16.989100"}</strong></div>
-                      <div>Longitude: <strong className="text-blue-900">{technician?.longitude ? Number(technician.longitude).toFixed(6) : "82.247500"}</strong></div>
+                      <div>Latitude: <strong className="text-blue-900">{technician?.latitude !== undefined && technician?.latitude !== null ? Number(technician.latitude).toFixed(6) : "Not set"}</strong></div>
+                      <div>Longitude: <strong className="text-blue-900">{technician?.longitude !== undefined && technician?.longitude !== null ? Number(technician.longitude).toFixed(6) : "Not set"}</strong></div>
                     </div>
                     <div className="mt-2 text-[11px] text-blue-700">
                       ✓ Used to sort nearest technicians first for local customers.
@@ -1174,6 +1198,16 @@ export function SellerDashboard() {
                   <BadgeCheck size={20} />
                   <span className="text-sm font-bold">Verified Partner</span>
                 </div>
+              ) : verificationStatus === "REJECTED" ? (
+                <div className="flex items-center gap-2 rounded-xl bg-red-500/20 border border-red-500/40 px-3.5 py-2 text-red-300">
+                  <AlertTriangle size={20} className="text-red-400" />
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider">Verification Rejected</div>
+                    <div className="text-[11px] text-red-200/80">
+                      {profileData?.rejectionReason || dashboardData?.rejectionReason || "Contact Etukas support"}
+                    </div>
+                  </div>
+                </div>
               ) : (
                 <div className="flex items-center gap-2 rounded-xl bg-amber-500/20 border border-amber-500/40 px-3.5 py-2 text-amber-300">
                   <Clock size={20} className="animate-spin text-amber-400" />
@@ -1243,60 +1277,87 @@ export function SellerDashboard() {
               </div>
             )}
 
-            {/* Metric Cards */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Gross Revenue</span>
-                  <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
-                    <IndianRupee size={20} />
-                  </div>
-                </div>
-                <div className="mt-3 text-3xl font-black text-gray-900">
-                  ₹{((dashboardData?.revenueMinor ?? 84000000) / 100).toLocaleString("en-IN")}
-                </div>
-                <div className="mt-1 text-xs text-emerald-600 font-semibold">↑ 18.2% from last month</div>
-              </div>
+            {/* Metric Cards (computed strictly from real API data, zero hardcoded placeholders) */}
+            {(() => {
+              const pendingOrdersCount = partnerOrders.filter(
+                (o) => !isOrderTrackingTerminal(o.status)
+              ).length;
+              const deliveredOrdersCount = partnerOrders.filter(
+                (o) => o.status === "DELIVERED"
+              ).length;
+              const activeCategoryCount = new Set(
+                inventoryRows.map((p) => p.category).filter((cat) => cat && cat !== "all")
+              ).size;
+              const lowStockCount = inventoryRows.filter((p) => p.stock < 20).length;
+              const totalOrdersCount = dashboardData?.totalOrders ?? partnerOrders.length;
+              const totalRevenueMinor = dashboardData?.revenueMinor ?? 0;
 
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Orders Received</span>
-                  <div className="rounded-lg bg-orange-50 p-2 text-orange-600">
-                    <ShoppingBag size={20} />
+              return (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Gross Revenue</span>
+                      <div className="rounded-lg bg-emerald-50 p-2 text-emerald-600">
+                        <IndianRupee size={20} />
+                      </div>
+                    </div>
+                    <div className="mt-3 text-3xl font-black text-gray-900">
+                      ₹{(totalRevenueMinor / 100).toLocaleString("en-IN")}
+                    </div>
+                    <div className="mt-1 text-xs text-emerald-600 font-semibold">
+                      {deliveredOrdersCount} delivered · {pendingOrdersCount} active
+                    </div>
                   </div>
-                </div>
-                <div className="mt-3 text-3xl font-black text-gray-900">
-                  {dashboardData?.totalOrders ?? 128}
-                </div>
-                <div className="mt-1 text-xs text-gray-500">14 pending fulfillment</div>
-              </div>
 
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Materials Listed</span>
-                  <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
-                    <Boxes size={20} />
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Orders Received</span>
+                      <div className="rounded-lg bg-orange-50 p-2 text-orange-600">
+                        <ShoppingBag size={20} />
+                      </div>
+                    </div>
+                    <div className="mt-3 text-3xl font-black text-gray-900">
+                      {totalOrdersCount}
+                    </div>
+                    <div className="mt-1 text-xs text-gray-500">
+                      {pendingOrdersCount} pending fulfillment
+                    </div>
                   </div>
-                </div>
-                <div className="mt-3 text-3xl font-black text-gray-900">
-                  {inventoryRows.length} items
-                </div>
-                <div className="mt-1 text-xs text-blue-600 font-semibold">Across 7 material categories</div>
-              </div>
 
-              <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Stock Alerts</span>
-                  <div className="rounded-lg bg-red-50 p-2 text-red-600">
-                    <AlertTriangle size={20} />
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Materials Listed</span>
+                      <div className="rounded-lg bg-blue-50 p-2 text-blue-600">
+                        <Boxes size={20} />
+                      </div>
+                    </div>
+                    <div className="mt-3 text-3xl font-black text-gray-900">
+                      {inventoryRows.length} items
+                    </div>
+                    <div className="mt-1 text-xs text-blue-600 font-semibold">
+                      {activeCategoryCount === 0
+                        ? "No categories active yet"
+                        : `Across ${activeCategoryCount} active categor${activeCategoryCount === 1 ? "y" : "ies"}`}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200/80 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">Stock Alerts</span>
+                      <div className="rounded-lg bg-red-50 p-2 text-red-600">
+                        <AlertTriangle size={20} />
+                      </div>
+                    </div>
+                    <div className="mt-3 text-3xl font-black text-gray-900">
+                      {lowStockCount} items
+                    </div>
+                    <div className="mt-1 text-xs text-red-600 font-semibold">
+                      {lowStockCount === 0 ? "All stock levels healthy" : "Low inventory (< 20 units)"}
+                    </div>
                   </div>
                 </div>
-                <div className="mt-3 text-3xl font-black text-gray-900">
-                  {inventoryRows.filter((p) => p.stock < 20).length} items
-                </div>
-                <div className="mt-1 text-xs text-red-600 font-semibold">Low inventory warning</div>
-              </div>
-            </div>
+              );
+            })()}
 
             {/* Category Quick Stats */}
             <div className="rounded-2xl border border-gray-200/80 bg-white p-6 shadow-sm">
@@ -1382,7 +1443,8 @@ export function SellerDashboard() {
 
             {/* Products Table */}
             <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-              <table className="min-w-full divide-y divide-gray-200 text-left text-sm">
+              <div className="overflow-x-auto w-full" style={{ WebkitOverflowScrolling: "touch" }}>
+                <table className="min-w-[880px] w-full divide-y divide-gray-200 text-left text-sm">
                 <thead className="bg-gray-50 font-bold text-gray-700">
                   <tr>
                     <th className="px-6 py-3.5">Photo</th>
@@ -1527,7 +1589,8 @@ export function SellerDashboard() {
                     </tr>
                   )}
                 </tbody>
-              </table>
+                </table>
+              </div>
             </div>
             {toggleProductMutation.error ? <p role="alert" className="text-sm text-red-700">{toggleProductMutation.error.message}</p> : null}
 
@@ -2261,10 +2324,12 @@ export function SellerDashboard() {
                   <div>
                     <span className="text-xs font-bold uppercase text-gray-400">Store Address</span>
                     <div className="font-semibold text-gray-900">
-                      {primaryStore?.addressLine1 || "Opposite Main Road, Depot Zone"}
+                      {primaryStore?.addressLine1 || "Address not configured yet"}
                     </div>
                     <div className="text-gray-600">
-                      {primaryStore?.city || "Hyderabad"}, {primaryStore?.state || "Telangana"} - {primaryStore?.postalCode || "500001"}
+                      {primaryStore
+                        ? [primaryStore.city, primaryStore.state, primaryStore.postalCode].filter(Boolean).join(", ")
+                        : "City & Pincode not configured"}
                     </div>
                   </div>
 
@@ -2275,11 +2340,11 @@ export function SellerDashboard() {
                       <span>GPS Coordinates</span>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-2 font-mono text-xs text-blue-950">
-                      <div>Latitude: <strong className="text-blue-900">{primaryStore?.latitude ? Number(primaryStore.latitude).toFixed(6) : "17.385044"}</strong></div>
-                      <div>Longitude: <strong className="text-blue-900">{primaryStore?.longitude ? Number(primaryStore.longitude).toFixed(6) : "78.486671"}</strong></div>
+                      <div>Latitude: <strong className="text-blue-900">{primaryStore?.latitude !== undefined && primaryStore?.latitude !== null ? Number(primaryStore.latitude).toFixed(6) : "Not set"}</strong></div>
+                      <div>Longitude: <strong className="text-blue-900">{primaryStore?.longitude !== undefined && primaryStore?.longitude !== null ? Number(primaryStore.longitude).toFixed(6) : "Not set"}</strong></div>
                     </div>
                     <div className="mt-2 text-[11px] text-blue-700">
-                      ✓ Etukas automatically matches your depot to customer pincodes within a 25km radius.
+                      ✓ Etukas matches your depot to nearby construction sites based on each product&apos;s delivery radius.
                     </div>
                   </div>
                 </div>

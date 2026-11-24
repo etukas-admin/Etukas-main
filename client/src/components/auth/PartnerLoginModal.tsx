@@ -17,6 +17,7 @@ import {
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { marketplaceApi, type User } from "../../services/api";
+import { isAdminUser, isPartnerUser } from "../../lib/authRoles";
 
 interface PartnerLoginModalProps {
   isOpen: boolean;
@@ -81,15 +82,19 @@ export function PartnerLoginModal({
         password
       });
     },
-    onSuccess: (user: User) => {
-      onClose();
-      // Direct partners directly to the partner dashboard
-      if (user.roles.includes("SELLER") || user.roles.includes("PARTNER")) {
-        navigate("/partner-dashboard");
-      } else if (user.roles.includes("ADMIN")) {
-        navigate("/admin");
+    onSuccess: async (user: User) => {
+      if (isPartnerUser(user)) {
+        onClose();
+        navigate("/partner-dashboard", { replace: true });
+      } else if (isAdminUser(user)) {
+        onClose();
+        navigate("/admin-dashboard", { replace: true });
       } else {
-        navigate("/partner-dashboard");
+        // Customer account attempted to log into Partner Portal — keep portals strictly separated
+        await marketplaceApi.logout();
+        setErrorMessage(
+          "This account is registered as a Customer account. Please sign in with Partner credentials or register as a Partner."
+        );
       }
     },
     onError: (err: Error) => {

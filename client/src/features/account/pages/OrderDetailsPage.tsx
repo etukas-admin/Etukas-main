@@ -187,7 +187,7 @@ export function OrderDetailsPage() {
             </div>
           </div>
 
-          {/* Prominent Vehicle Live Track Action Bar (Enabled once Vehicle Loading starts) */}
+          {/* Prominent Vehicle Live Track Action Bar (Enabled once Delivery Partner is assigned) */}
           {liveTrackEnabled ? (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-teal-50/70 to-white p-3.5">
               <div className="flex items-center gap-2.5">
@@ -203,8 +203,8 @@ export function OrderDetailsPage() {
                   </div>
                   <p className="text-[11px] text-emerald-800">
                     {order.vehicleNumber
-                      ? `Track lorry ${order.vehicleNumber} live on the map with real-time ETA.`
-                      : "Your vehicle loading has started — open the live map to track delivery."}
+                      ? `Delivery partner assigned — track lorry ${order.vehicleNumber} live on the map with real-time ETA.`
+                      : "Your delivery partner has been assigned — open the live map to track your vehicle."}
                   </p>
                 </div>
               </div>
@@ -213,7 +213,7 @@ export function OrderDetailsPage() {
                 to={trackMapUrl}
                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-etukas-red px-4 py-2.5 text-xs sm:text-sm font-black text-white shadow-md hover:bg-red-700 active:scale-95 transition"
               >
-                <MapPin size={15} />
+                <Navigation size={15} />
                 <span>Live Track Vehicle</span>
               </Link>
             </div>
@@ -226,7 +226,7 @@ export function OrderDetailsPage() {
                 <div>
                   <p className="font-bold text-gray-800">Vehicle Live Track Locked</p>
                   <p className="text-[11px] text-gray-500">
-                    Live GPS map tracking unlocks automatically once <strong>Loading on Vehicle</strong> starts.
+                    Live GPS map tracking unlocks automatically once a <strong>Delivery Partner</strong> is assigned.
                   </p>
                 </div>
               </div>
@@ -235,8 +235,8 @@ export function OrderDetailsPage() {
                 disabled
                 className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-gray-100 px-3.5 py-2 text-xs font-bold text-gray-400 cursor-not-allowed"
               >
-                <MapPin size={14} />
-                <span>Vehicle Track</span>
+                <Navigation size={14} />
+                <span>Live Track Vehicle</span>
               </button>
             </div>
           ) : null}
