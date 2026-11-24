@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 
+export const BRAND_LOADER_DONE_EVENT = "etukas_brand_loader_done";
+
 export function BrandLoader() {
   const [isExiting, setIsExiting] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
     const exitTimer = window.setTimeout(() => setIsExiting(true), 1250);
-    const hideTimer = window.setTimeout(() => setIsVisible(false), 1650);
+    const hideTimer = window.setTimeout(() => {
+      setIsVisible(false);
+      window.dispatchEvent(new Event(BRAND_LOADER_DONE_EVENT));
+    }, 1650);
 
     return () => {
       window.clearTimeout(exitTimer);

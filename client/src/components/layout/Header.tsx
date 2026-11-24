@@ -3,7 +3,6 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronRight,
   Handshake,
-  Headphones,
   LogOut,
   MapPin,
   Menu,
@@ -17,6 +16,8 @@ import { useCartQuery } from "../../features/cart/useCart";
 import { Logo } from "../common/Logo";
 import { MobileNav } from "./MobileNav";
 import { OPEN_SUPPORT_CHAT_EVENT } from "../chat/UserChatWidget";
+import { CustomerSupportIcon } from "../icons/CustomerSupportIcon";
+import { CustomerSupportPillButton } from "./CustomerSupportPillButton";
 import { getStoredUser, marketplaceApi, type User } from "../../services/api";
 import { getDefaultHomeForUser } from "../../lib/authRoles";
 import { ADDRESS_CHANGE_EVENT, getDeliveryLabel } from "../../features/location/locationStore";
@@ -175,15 +176,7 @@ export function Header({ className }: HeaderProps) {
                 </div>
 
                 <div className="flex shrink-0 items-center">
-                  <button
-                    type="button"
-                    onClick={openSupportChat}
-                    className="focus-ring flex h-9 w-9 items-center justify-center rounded-full text-gray-800 transition-colors hover:bg-etukas-pink hover:text-etukas-red active:scale-95"
-                    aria-label="Customer Support"
-                    title="Chat with Etukas Support Team"
-                  >
-                    <Headphones size={20} />
-                  </button>
+                  <CustomerSupportPillButton onClick={openSupportChat} size={30} animateOnLoad />
                 </div>
               </div>
 
@@ -304,11 +297,11 @@ export function Header({ className }: HeaderProps) {
                   type="button"
                   tabIndex={isCompact ? 0 : -1}
                   onClick={openSupportChat}
-                  className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gray-800 transition-colors hover:bg-etukas-pink hover:text-etukas-red active:scale-95"
+                  className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-transform hover:scale-105 hover:bg-etukas-pink/60 active:scale-95"
                   aria-label="Customer Support"
                   title="Chat with Etukas Support Team"
                 >
-                  <Headphones size={19} />
+                  <CustomerSupportIcon size={26} />
                 </button>
               </div>
             </div>

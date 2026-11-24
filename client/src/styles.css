@@ -212,12 +212,77 @@ textarea {
   min-width: 0;
 }
 
+/* Auto-playing collapsible Customer Support pill on initial load / refresh */
+@keyframes etukas-support-pill-label {
+  0% {
+    max-width: 0;
+    opacity: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transform: translateX(10px);
+  }
+  18% {
+    max-width: 150px;
+    opacity: 1;
+    padding-left: 12px;
+    padding-right: 4px;
+    transform: translateX(0);
+  }
+  82% {
+    max-width: 150px;
+    opacity: 1;
+    padding-left: 12px;
+    padding-right: 4px;
+    transform: translateX(0);
+  }
+  100% {
+    max-width: 0;
+    opacity: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transform: translateX(10px);
+  }
+}
+
+@keyframes etukas-support-pill-shell {
+  0% {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: 0 0 0 rgba(17, 17, 17, 0);
+  }
+  10% {
+    background-color: rgba(255, 255, 255, 0.98);
+    border-color: rgba(197, 34, 40, 0.22);
+    box-shadow: 0 6px 18px -4px rgba(17, 17, 17, 0.14);
+  }
+  86% {
+    background-color: rgba(255, 255, 255, 0.98);
+    border-color: rgba(197, 34, 40, 0.22);
+    box-shadow: 0 6px 18px -4px rgba(17, 17, 17, 0.14);
+  }
+  100% {
+    background-color: transparent;
+    border-color: transparent;
+    box-shadow: 0 0 0 rgba(17, 17, 17, 0);
+  }
+}
+
+.support-pill-shell--animate {
+  animation: etukas-support-pill-shell 4.4s cubic-bezier(0.25, 1, 0.5, 1) 0.5s 1 both;
+}
+
+.support-pill-label--animate {
+  animation: etukas-support-pill-label 4.4s cubic-bezier(0.25, 1, 0.5, 1) 0.5s 1 both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .brand-loader,
   .brand-loader__symbol,
   .brand-loader__wordmark,
   .header-collapse-band,
-  .header-compact-slot {
+  .header-compact-slot,
+  .support-pill-shell--animate,
+  .support-pill-label--animate {
     animation-duration: 1ms;
     animation-delay: 0ms;
     transition-duration: 1ms;

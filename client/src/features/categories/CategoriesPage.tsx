@@ -1,6 +1,7 @@
-import { ArrowLeft, Headphones, Search } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { OPEN_SUPPORT_CHAT_EVENT } from "../../components/chat/UserChatWidget";
+import { CustomerSupportPillButton } from "../../components/layout/CustomerSupportPillButton";
 
 const categoryRail = [
   {
@@ -115,15 +116,7 @@ export function CategoriesPage() {
           >
             <Search size={22} />
           </button>
-          <button
-            type="button"
-            onClick={openSupportChat}
-            aria-label="Customer Support"
-            title="Chat with Etukas Support Team"
-            className="focus-ring rounded-full p-1.5 text-gray-800 transition-colors hover:bg-etukas-pink hover:text-etukas-red active:scale-95"
-          >
-            <Headphones size={22} />
-          </button>
+          <CustomerSupportPillButton onClick={openSupportChat} size={27} animateOnLoad />
         </header>
 
         <div className="grid grid-cols-[104px_1fr] md:grid-cols-[132px_1fr]">
