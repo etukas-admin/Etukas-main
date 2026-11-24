@@ -183,6 +183,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const isMobileScrolled = useMobileScrollState();
   const [activePromo, setActivePromo] = useState(0);
+  const [heroSearch, setHeroSearch] = useState("");
   const [activeAddress, setActiveAddress] = useState(getSelectedAddress);
   const locationCity = activeAddress?.city || activeAddress?.district || "your area";
   const products = useProducts({
@@ -223,24 +224,40 @@ export function HomePage() {
 
   return (
     <main>
-      <section className={`sticky z-30 mx-auto -mt-px max-w-7xl border-b border-gray-400/50 bg-white px-3 transition-[padding,top] duration-300 ease-in-out md:static md:mt-0 md:border-b-0 md:bg-transparent md:px-4 md:py-4 lg:px-6 ${isMobileScrolled ? "top-[39px] py-1" : "top-[145px] py-2"}`}>
-        <div className={`flex justify-end md:mb-4 ${isMobileScrolled ? "hidden md:flex" : "mb-2"}`}>
+      <section
+        className={`sticky top-[var(--etukas-header-height,0px)] z-30 mx-auto max-w-7xl border-b border-gray-200/80 bg-white/95 px-3 backdrop-blur-sm transition-[padding,box-shadow] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:static md:mt-0 md:border-b-0 md:bg-transparent md:px-4 md:py-4 md:shadow-none md:backdrop-blur-none lg:px-6 ${
+          isMobileScrolled ? "py-1.5 shadow-[0_4px_12px_-6px_rgba(17,17,17,0.12)]" : "py-2"
+        }`}
+      >
+        <div
+          className="header-collapse-band md:hidden"
+          data-collapsed={isMobileScrolled ? "true" : "false"}
+        >
+          <div className="header-collapse-inner">
+            <div className="mb-2 flex justify-end">
+              <Link to="/categories" className="inline-flex items-center gap-1 text-sm font-semibold text-etukas-red">
+                View All <ArrowRight size={16} />
+              </Link>
+            </div>
+          </div>
+        </div>
+        <div className="mb-4 hidden justify-end md:flex">
           <Link to="/categories" className="inline-flex items-center gap-1 text-sm font-semibold text-etukas-red">
             View All <ArrowRight size={16} />
           </Link>
         </div>
         <div className={`category-strip flex gap-3 overflow-x-auto px-0.5 md:grid md:grid-cols-5 md:gap-4 md:pb-2 lg:grid-cols-10 ${isMobileScrolled ? "pb-0 md:pb-2" : "pb-1.5"}`}>
-          {homeCategories.map(({ name, slug, image, icon: Icon, bg }) => (
+          {homeCategories.map(({ name, slug, image, icon: Icon }) => (
             <Link
               key={name + slug}
               to={`/products?category=${slug}`}
-              className="group flex min-w-[74px] flex-col items-center text-center transition-transform md:min-w-[84px]"
+              className="group flex min-w-[72px] flex-col items-center text-center transition-transform md:min-w-[84px]"
             >
               <div
-                className={`relative mx-auto flex items-center justify-center transition-all duration-300 ease-out group-hover:-translate-y-1 active:scale-95 ${
+                className={`relative mx-auto flex items-center justify-center transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:-translate-y-1 active:scale-95 ${
                   isMobileScrolled
-                    ? "h-11 w-11 md:h-16 md:w-16"
-                    : "h-16 w-16 md:h-20 md:w-20"
+                    ? "h-10 w-10 md:h-16 md:w-16"
+                    : "h-14 w-14 sm:h-16 sm:w-16 md:h-20 md:w-20"
                 }`}
               >
                 {image ? (
@@ -252,12 +269,12 @@ export function HomePage() {
                   />
                 ) : (
                   <Icon
-                    size={isMobileScrolled ? 34 : 52}
+                    size={isMobileScrolled ? 32 : 50}
                     className="transition-transform duration-300 drop-shadow-sm group-hover:scale-105"
                   />
                 )}
               </div>
-              <div className="mt-1.5 line-clamp-2 max-w-[76px] text-center text-[11px] font-bold leading-tight text-gray-900 transition-colors group-hover:text-etukas-red md:max-w-[88px] md:text-xs">
+              <div className="mt-1 line-clamp-2 max-w-[74px] text-center text-[11px] font-bold leading-tight text-gray-900 transition-colors group-hover:text-etukas-red md:mt-1.5 md:max-w-[88px] md:text-xs">
                 {name}
               </div>
             </Link>
@@ -334,14 +351,27 @@ export function HomePage() {
               <p className="text-xs font-bold uppercase tracking-normal">{banners.data?.length ? currentPromo.eyebrow : "Building materials marketplace"}</p>
               <h1 className="mt-3 max-w-xl whitespace-pre-line text-4xl font-extrabold leading-tight md:text-6xl">{banners.data?.length ? currentPromo.title : "Build Better. Buy Smarter."}</h1>
               <p className="mt-4 max-w-lg text-base text-red-50 md:text-lg">{banners.data?.length ? currentPromo.description : "Find trusted building material suppliers near you."}</p>
-              <div className="mt-6 flex max-w-xl flex-col gap-2 rounded-md bg-white p-2 sm:flex-row">
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const trimmed = heroSearch.trim();
+                  navigate(trimmed ? `/products?q=${encodeURIComponent(trimmed)}` : "/products");
+                }}
+                className="mt-6 flex max-w-xl flex-col gap-2 rounded-md bg-white p-2 sm:flex-row"
+              >
                 <label className="relative flex-1">
                   <span className="sr-only">Search marketplace</span>
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                  <input className="h-11 w-full rounded-md border-0 pl-10 text-sm text-etukas-black outline-none" placeholder="Search cement, bricks, tiles..." />
+                  <input
+                    type="search"
+                    value={heroSearch}
+                    onChange={(e) => setHeroSearch(e.target.value)}
+                    className="h-11 w-full rounded-md border-0 pl-10 pr-3 text-sm text-etukas-black outline-none"
+                    placeholder="Search cement, bricks, tiles..."
+                  />
                 </label>
-                <Button className="min-w-28">Search</Button>
-              </div>
+                <Button type="submit" className="min-w-28">Search</Button>
+              </form>
             </div>
             <div className="relative min-h-52 overflow-hidden rounded-md">
               <img className="h-full w-full object-cover" src={"imageUrl" in currentPromo ? currentPromo.imageUrl : "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=1200&q=80"} alt={"imageUrl" in currentPromo ? currentPromo.title : "Construction materials and building site"} />

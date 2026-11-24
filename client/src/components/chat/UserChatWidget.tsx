@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { marketplaceApi, type ChatMessage, type ChatSession, getStoredUser } from "../../services/api";
 import { MessageCircle, X, Send, ChevronDown, Loader2, Headphones, LogIn, AlertCircle, CheckCheck } from "lucide-react";
 
+export const OPEN_SUPPORT_CHAT_EVENT = "etukas_open_support_chat";
+
 export function UserChatWidget() {
   const storedUser = getStoredUser();
   const { data: currentUser } = useQuery({
@@ -115,8 +117,8 @@ export function UserChatWidget() {
         startSession.mutate();
       }
     };
-    window.addEventListener("etukas_open_support_chat", onOpenSupportChat);
-    return () => window.removeEventListener("etukas_open_support_chat", onOpenSupportChat);
+    window.addEventListener(OPEN_SUPPORT_CHAT_EVENT, onOpenSupportChat);
+    return () => window.removeEventListener(OPEN_SUPPORT_CHAT_EVENT, onOpenSupportChat);
   }, [user, sessionId]);
 
   const handleSend = async () => {
@@ -163,50 +165,52 @@ export function UserChatWidget() {
   };
 
   return (
-    <div style={{ position: "fixed", bottom: "86px", right: "18px", zIndex: 9999 }}>
-      {/* Floating Chat Bubble Button */}
+    <div className="fixed bottom-[86px] right-3 z-[9999] md:right-[18px]">
+      {/* Floating Chat Bubble Button (desktop/tablet only; mobile uses Header Support icon) */}
       {isVisible && (!isOpen || isMinimized) && (
-        <button
-          id="user-chat-open-btn"
-          type="button"
-          onClick={handleOpen}
-          style={{
-            width: "60px",
-            height: "60px",
-            borderRadius: "50%",
-            background: "linear-gradient(135deg, #e11d48, #be123c)",
-            border: "none",
-            cursor: "pointer",
-            boxShadow: "0 6px 28px rgba(225,29,72,0.45)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            position: "relative",
-            animation: popIn ? "chatPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" : "none",
-            transform: popIn ? undefined : "scale(0)",
-            transition: "box-shadow 0.2s"
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
-          title="Chat with Support Team"
-        >
-          <MessageCircle size={27} color="#fff" />
-          {hasUnread && (
-            <span style={{
-              position: "absolute", top: "2px", right: "2px",
-              width: "15px", height: "15px", borderRadius: "50%",
-              background: "#22c55e", border: "2.5px solid white",
-              animation: "pulse 2s infinite"
-            }} />
-          )}
-        </button>
+        <div className="hidden md:block">
+          <button
+            id="user-chat-open-btn"
+            type="button"
+            onClick={handleOpen}
+            style={{
+              width: "60px",
+              height: "60px",
+              borderRadius: "50%",
+              background: "linear-gradient(135deg, #e11d48, #be123c)",
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 6px 28px rgba(225,29,72,0.45)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              position: "relative",
+              animation: popIn ? "chatPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards" : "none",
+              transform: popIn ? undefined : "scale(0)",
+              transition: "box-shadow 0.2s"
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.08)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)"; }}
+            title="Chat with Support Team"
+          >
+            <MessageCircle size={27} color="#fff" />
+            {hasUnread && (
+              <span style={{
+                position: "absolute", top: "2px", right: "2px",
+                width: "15px", height: "15px", borderRadius: "50%",
+                background: "#22c55e", border: "2.5px solid white",
+                animation: "pulse 2s infinite"
+              }} />
+            )}
+          </button>
+        </div>
       )}
 
       {/* Chat Window */}
       {isOpen && !isMinimized && (
         <div style={{
-          width: "360px",
-          maxHeight: "540px",
+          width: "min(360px, calc(100vw - 24px))",
+          maxHeight: "min(540px, calc(100dvh - 110px))",
           height: "500px",
           borderRadius: "20px",
           boxShadow: "0 12px 50px rgba(0,0,0,0.22)",

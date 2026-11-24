@@ -1,5 +1,6 @@
-import { ArrowLeft, Search, ShoppingCart } from "lucide-react";
-import { Link } from "react-router-dom";
+import { ArrowLeft, Headphones, Search } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { OPEN_SUPPORT_CHAT_EVENT } from "../../components/chat/UserChatWidget";
 
 const categoryRail = [
   {
@@ -92,6 +93,12 @@ const launches = [
 ] as const;
 
 export function CategoriesPage() {
+  const navigate = useNavigate();
+
+  const openSupportChat = () => {
+    window.dispatchEvent(new Event(OPEN_SUPPORT_CHAT_EVENT));
+  };
+
   return (
     <main className="min-h-screen bg-[#f7eef2] pb-16 md:bg-white">
       <div className="mx-auto min-h-screen max-w-md bg-white md:max-w-5xl">
@@ -100,12 +107,23 @@ export function CategoriesPage() {
             <ArrowLeft size={23} />
           </Link>
           <h1 className="flex-1 text-lg font-medium text-black">All Categories</h1>
-          <button className="focus-ring rounded-md p-1" aria-label="Search categories">
+          <button
+            type="button"
+            onClick={() => navigate("/products")}
+            className="focus-ring rounded-md p-1"
+            aria-label="Search products"
+          >
             <Search size={22} />
           </button>
-          <Link to="/cart" aria-label="Cart" className="focus-ring rounded-md p-1">
-            <ShoppingCart size={22} />
-          </Link>
+          <button
+            type="button"
+            onClick={openSupportChat}
+            aria-label="Customer Support"
+            title="Chat with Etukas Support Team"
+            className="focus-ring rounded-full p-1.5 text-gray-800 transition-colors hover:bg-etukas-pink hover:text-etukas-red active:scale-95"
+          >
+            <Headphones size={22} />
+          </button>
         </header>
 
         <div className="grid grid-cols-[104px_1fr] md:grid-cols-[132px_1fr]">

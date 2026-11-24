@@ -60,9 +60,7 @@ export function Layout() {
       {isCategoriesPage ? null : isPartnerPage ? (
         <PartnerHeader />
       ) : isAccountHubPage || isAccountSubPage ? (
-        <div className="hidden md:block">
-          <Header />
-        </div>
+        <Header className="hidden md:block" />
       ) : (
         <Header />
       )}
@@ -85,7 +83,7 @@ export function Layout() {
               <p className="mt-3 text-xs leading-relaxed text-slate-400">
                 Grow Your Business with India's dedicated construction & building materials partner network. Empowering sellers, technicians, manufacturers, and equipment owners.
               </p>
-              <p className="mt-4 text-xs text-slate-500">© 2026 Etukas Partner Network. All rights reserved.</p>
+              <p className="mt-4 text-xs text-slate-500">&copy; {new Date().getFullYear()} Etukas Partner Network. All rights reserved.</p>
             </div>
             <div>
               <h3 className="font-bold text-white text-sm">Partner Categories</h3>
@@ -189,7 +187,7 @@ export function Layout() {
             </div>
 
             <div className="mt-6 border-t border-white/10 pt-4 text-center">
-              <p className="text-xs text-slate-300 sm:text-sm md:text-base">&copy; 2026 Etukas. All rights reserved.</p>
+              <p className="text-xs text-slate-300 sm:text-sm md:text-base">&copy; {new Date().getFullYear()} Etukas. All rights reserved.</p>
               <p className="mt-1 text-xs text-slate-300 sm:text-sm md:text-base">Privacy · Terms · Refunds</p>
               <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-300">Follow Us On</h3>
               <nav aria-label="Social media" className="mt-3 flex justify-center gap-3">
