@@ -78,10 +78,10 @@ export function Layout() {
           : "bg-white pb-16 md:pb-0"
       }`}
     >
-      {/* Dynamic Header: Dedicated PartnerHeader for Partner pages, desktop-only Header on mobile Account views */}
-      {isCategoriesPage ? null : isPartnerPage ? (
+      {/* Dynamic Header: Dedicated PartnerHeader for Partner pages, desktop-only Header on mobile Categories & Account views */}
+      {isPartnerPage ? (
         <PartnerHeader />
-      ) : isAccountHubPage || isAccountSubPage ? (
+      ) : isCategoriesPage || isAccountHubPage || isAccountSubPage ? (
         <Header className="hidden md:block" />
       ) : (
         <Header />

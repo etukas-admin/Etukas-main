@@ -267,7 +267,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const marketplaceApi = {
   categories: (options?: RequestOptions) => api<Category[]>("/categories", { signal: options?.signal }),
   products: (
-    params?: { category?: string; brand?: string; city?: string; pageSize?: number; q?: string; latitude?: number; longitude?: number },
+    params?: { category?: string; brand?: string; city?: string; pageSize?: number; q?: string; sort?: "relevance" | "price_asc" | "price_desc" | "newest"; latitude?: number; longitude?: number },
     options?: RequestOptions
   ) => {
     const query = new URLSearchParams();
@@ -276,6 +276,7 @@ export const marketplaceApi = {
     if (params?.brand) query.set("brand", params.brand);
     if (params?.city) query.set("city", params.city);
     if (params?.q) query.set("q", params.q);
+    if (params?.sort) query.set("sort", params.sort);
     if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
     if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
     return api<StoreProduct[]>(`/products?${query.toString()}`, { signal: options?.signal });
@@ -555,11 +556,18 @@ export type Category = {
   name: string;
   slug: string;
   icon: string;
+  parentId?: string | null;
+  productCount?: number;
+  sampleImageUrl?: string | null;
+  children?: Category[];
 };
 
 export type Store = {
   id: string;
   name: string;
+  slug?: string;
+  addressLine1?: string;
+  storeImageUrl?: string | null;
   city: string;
   state: string;
   serviceRadiusKm: number;
@@ -585,6 +593,7 @@ export type StoreProduct = {
     name: string;
     description: string;
     unit: string;
+    brand?: string | null;
     images: { id?: string; productId?: string; url: string; altText: string }[];
     category: Category;
   };

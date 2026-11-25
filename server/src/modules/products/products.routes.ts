@@ -76,7 +76,9 @@ productsRouter.get("/", async (req, res, next) => {
     const skip = (query.page - 1) * query.pageSize;
     const productFilters: Record<string, unknown> = {};
     if (query.category) {
-      productFilters.category = { slug: query.category };
+      productFilters.category = {
+        OR: [{ slug: query.category }, { parent: { slug: query.category } }]
+      };
     }
     const andConditions: Record<string, unknown>[] = [];
     if (query.q) {
@@ -113,6 +115,8 @@ productsRouter.get("/", async (req, res, next) => {
         ? { priceMinor: "asc" as const }
         : query.sort === "price_desc"
         ? { priceMinor: "desc" as const }
+        : query.sort === "newest"
+        ? { createdAt: "desc" as const }
         : { updatedAt: "desc" as const };
 
     const include = {

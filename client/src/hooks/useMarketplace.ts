@@ -14,18 +14,23 @@ export function useCategories() {
   });
 }
 
-export function useProducts(params?: {
-  category?: string;
-  brand?: string;
-  city?: string;
-  pageSize?: number;
-  q?: string;
-  latitude?: number;
-  longitude?: number;
-}) {
+export function useProducts(
+  params?: {
+    category?: string;
+    brand?: string;
+    city?: string;
+    pageSize?: number;
+    q?: string;
+    sort?: "relevance" | "price_asc" | "price_desc" | "newest";
+    latitude?: number;
+    longitude?: number;
+  },
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: queryKeys.products.list(params),
     queryFn: ({ signal }) => marketplaceApi.products(params, { signal }),
+    enabled: options?.enabled ?? true,
     staleTime: 2 * 60 * 1000 // 2 minutes
   });
 }
