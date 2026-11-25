@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BadgeCheck,
   Building2,
   CheckCircle2,
   Heart,
@@ -10,7 +11,9 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Star,
   Store as StoreIcon,
+  Tractor,
   Truck,
   Wrench,
   X
@@ -21,16 +24,19 @@ import { CustomerSupportPillButton } from "../../components/layout/CustomerSuppo
 import { Skeleton } from "../../components/ui/Skeleton";
 import { useDebounce } from "../../hooks/useDebounce";
 import { useCategories, useProducts, useStores } from "../../hooks/useMarketplace";
+import { useTechnicians } from "../../hooks/useTechnicians";
 import { formatMoney } from "../../lib/utils";
 import {
   getProductImageUrl,
   type Category,
   type Store,
-  type StoreProduct
+  type StoreProduct,
+  type Technician
 } from "../../services/api";
 import {
   createSafeImageHandler,
-  FALLBACK_PRODUCT_IMAGE
+  FALLBACK_PRODUCT_IMAGE,
+  FALLBACK_TECHNICIAN_IMAGE
 } from "../../utils/imageFallback";
 import {
   recordRecentlyViewedStore,
@@ -39,17 +45,24 @@ import {
 } from "../account";
 import {
   ADDRESS_CHANGE_EVENT,
+  DEFAULT_CONSTRUCTION_SITE,
   getDeliveryLabel,
   getSelectedAddress
 } from "../location/locationStore";
 import {
+  buildOrderedMaterialCategories,
   computeDiscountPercent,
   extractBrandsFromProducts,
   extractStoresFromProducts,
   filterCategoriesByQuery,
+  filterServicesByQuery,
   getCategoryIconComponent,
-  getTopLevelCategories,
-  resolveCategoryImage
+  MACHINERY_SERVICES,
+  MACHINERY_TAB_SLUG,
+  resolveCategoryImage,
+  TECHNICIAN_SERVICES,
+  TECHNICIANS_TAB_SLUG,
+  type ServiceDirectoryItem
 } from "./categoryVisuals";
 
 function CategoryThumbnail({
@@ -121,11 +134,9 @@ function StoreMiniCard({ store }: { store: Store }) {
     >
       <StoreMonogram store={store} />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <p className="truncate text-xs font-extrabold text-gray-900 transition-colors group-hover:text-etukas-red sm:text-sm">
-            {store.name}
-          </p>
-        </div>
+        <p className="truncate text-xs font-extrabold text-gray-900 transition-colors group-hover:text-etukas-red sm:text-sm">
+          {store.name}
+        </p>
         <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-gray-500">
           <MapPin size={11} className="shrink-0 text-etukas-red" />
           <span className="truncate">{store.city}</span>
@@ -144,6 +155,112 @@ function StoreMiniCard({ store }: { store: Store }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function ServiceTileCard({
+  item,
+  href,
+  fallbackImage,
+  compact = false
+}: {
+  item: ServiceDirectoryItem;
+  href: string;
+  fallbackImage: string;
+  compact?: boolean;
+}) {
+  return (
+    <Link
+      to={href}
+      className={`group flex flex-col items-center justify-between rounded-2xl border border-gray-200/85 bg-white text-center shadow-xs transition-all duration-200 hover:-translate-y-0.5 hover:border-etukas-red/40 hover:shadow-md ${
+        compact ? "p-2 sm:p-2.5" : "p-3 sm:p-3.5"
+      }`}
+    >
+      <div
+        className={`relative flex w-full items-center justify-center overflow-hidden rounded-xl bg-gray-50/70 p-1.5 transition-transform duration-200 group-hover:scale-105 ${
+          compact ? "aspect-square" : "aspect-[4/3]"
+        }`}
+      >
+        <img
+          src={item.image}
+          alt={item.name}
+          className="h-full w-full object-contain drop-shadow-xs"
+          loading="lazy"
+          onError={createSafeImageHandler(fallbackImage)}
+        />
+      </div>
+      <div className="mt-2 w-full">
+        <span className="line-clamp-1 block text-[11px] font-extrabold text-gray-900 transition-colors group-hover:text-etukas-red sm:text-xs">
+          {item.name}
+        </span>
+        <span className="mt-0.5 line-clamp-1 block text-[10px] font-medium text-gray-500">
+          {item.tagline}
+        </span>
+      </div>
+      {!compact ? (
+        <span className="mt-2 inline-flex items-center justify-center rounded-full bg-etukas-red px-2.5 py-0.5 text-[10px] font-bold text-white shadow-xs transition group-hover:brightness-110">
+          Book Service
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function LiveTechnicianCard({ tech }: { tech: Technician }) {
+  return (
+    <div className="flex flex-col justify-between rounded-2xl border border-gray-200/90 bg-white p-3 shadow-xs transition hover:border-etukas-red/40 hover:shadow-md">
+      <div className="flex items-start gap-2.5">
+        <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 p-1">
+          <img
+            src={tech.avatar || FALLBACK_TECHNICIAN_IMAGE}
+            alt={tech.name}
+            className="h-full w-full object-contain"
+            loading="lazy"
+            onError={createSafeImageHandler(FALLBACK_TECHNICIAN_IMAGE)}
+          />
+          <span className="absolute bottom-0 right-0 rounded bg-etukas-green px-1 text-[8px] font-extrabold text-white">
+            LIVE
+          </span>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1">
+            <BadgeCheck size={13} className="shrink-0 text-blue-600" />
+            <h4 className="line-clamp-1 text-xs font-extrabold uppercase text-gray-900">
+              {tech.name}
+            </h4>
+          </div>
+          <p className="line-clamp-1 text-[10px] font-medium text-gray-600">
+            {tech.categories.join(", ")}
+          </p>
+          <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-etukas-green">
+            <MapPin size={10} className="shrink-0 text-etukas-red" />
+            <span>{tech.distanceKm !== undefined ? `${tech.distanceKm} km away` : tech.city}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-2.5 flex items-center justify-between border-t border-gray-100 pt-2">
+        <div>
+          <span className="text-xs font-black text-gray-900 sm:text-sm">
+            ₹{tech.chargePerHour}
+            <span className="text-[10px] font-normal text-gray-500"> / hr</span>
+          </span>
+          <div className="flex items-center gap-0.5 text-[9px] text-gray-500">
+            <Star size={9} className="fill-amber-400 text-amber-400" />
+            <span className="font-bold text-gray-700">{tech.rating.toFixed(1)}</span>
+            <span>({tech.reviewCount})</span>
+          </div>
+        </div>
+
+        <Link
+          to={`/technicians?category=${encodeURIComponent(tech.primaryCategory)}&techId=${encodeURIComponent(tech.id)}`}
+          className="inline-flex items-center justify-center rounded-lg bg-etukas-red px-2.5 py-1 text-[10px] font-bold text-white shadow-xs transition hover:bg-red-700"
+        >
+          Book Service
+        </Link>
+      </div>
+    </div>
   );
 }
 
@@ -319,6 +436,8 @@ export function CategoriesPage() {
   }, []);
 
   const locationCity = activeAddress?.city || activeAddress?.district || "your area";
+  const locationLat = activeAddress?.latitude ?? DEFAULT_CONSTRUCTION_SITE.latitude;
+  const locationLng = activeAddress?.longitude ?? DEFAULT_CONSTRUCTION_SITE.longitude;
   const locationParams = useMemo(
     () => ({
       city: activeAddress?.city || activeAddress?.district,
@@ -330,35 +449,43 @@ export function CategoriesPage() {
 
   const categoriesQuery = useCategories();
   const allCategories = categoriesQuery.data ?? [];
-  const topLevelCategories = useMemo(
-    () => getTopLevelCategories(allCategories),
+  const materialCategories = useMemo(
+    () => buildOrderedMaterialCategories(allCategories),
     [allCategories]
   );
 
-  const activeCategory = useMemo(
-    () =>
-      selectedSlug === "for-you"
-        ? undefined
-        : topLevelCategories.find((cat) => cat.slug === selectedSlug) ??
-          allCategories.find((cat) => cat.slug === selectedSlug),
-    [allCategories, selectedSlug, topLevelCategories]
-  );
+  const activeMaterialCategory = useMemo(() => {
+    if (
+      selectedSlug === "for-you" ||
+      selectedSlug === TECHNICIANS_TAB_SLUG ||
+      selectedSlug === MACHINERY_TAB_SLUG
+    ) {
+      return undefined;
+    }
+    return (
+      materialCategories.find((cat) => cat.slug === selectedSlug) ??
+      allCategories.find((cat) => cat.slug === selectedSlug)
+    );
+  }, [allCategories, materialCategories, selectedSlug]);
 
   useEffect(() => {
+    const isBuiltInTab =
+      selectedSlug === "for-you" ||
+      selectedSlug === TECHNICIANS_TAB_SLUG ||
+      selectedSlug === MACHINERY_TAB_SLUG;
+
     if (
-      selectedSlug !== "for-you" &&
+      !isBuiltInTab &&
       !categoriesQuery.isLoading &&
       !categoriesQuery.isError &&
-      allCategories.length > 0 &&
-      !activeCategory
+      !activeMaterialCategory
     ) {
       const next = new URLSearchParams(searchParams);
       next.delete("selected");
       setSearchParams(next, { replace: true });
     }
   }, [
-    activeCategory,
-    allCategories.length,
+    activeMaterialCategory,
     categoriesQuery.isError,
     categoriesQuery.isLoading,
     searchParams,
@@ -366,8 +493,18 @@ export function CategoriesPage() {
     setSearchParams
   ]);
 
-  const effectiveTab = activeCategory ? activeCategory.slug : "for-you";
+  const effectiveTab =
+    selectedSlug === TECHNICIANS_TAB_SLUG
+      ? TECHNICIANS_TAB_SLUG
+      : selectedSlug === MACHINERY_TAB_SLUG
+      ? MACHINERY_TAB_SLUG
+      : activeMaterialCategory
+      ? activeMaterialCategory.slug
+      : "for-you";
+
   const isSearchMode = trimmedQuery.length > 0;
+  const isTechniciansTab = effectiveTab === TECHNICIANS_TAB_SLUG;
+  const isMachineryTab = effectiveTab === MACHINERY_TAB_SLUG;
 
   const storesQuery = useStores(locationParams);
   const forYouProductsQuery = useProducts(
@@ -383,18 +520,35 @@ export function CategoriesPage() {
   const categoryProductsQuery = useProducts(
     {
       ...locationParams,
-      category: activeCategory?.slug,
+      category: isMachineryTab ? MACHINERY_TAB_SLUG : activeMaterialCategory?.slug,
       pageSize: 16
     },
-    { enabled: Boolean(activeCategory) && !isSearchMode }
+    { enabled: (Boolean(activeMaterialCategory) || isMachineryTab) && !isSearchMode }
+  );
+
+  const techniciansQuery = useTechnicians(
+    {
+      lat: locationLat,
+      lng: locationLng,
+      sort: "nearest"
+    },
+    { enabled: isTechniciansTab && !isSearchMode }
   );
 
   const recentlyViewed = useRecentlyViewed();
   const wishlist = useWishlist();
 
   const matchingCategories = useMemo(
-    () => filterCategoriesByQuery(topLevelCategories, trimmedQuery),
-    [topLevelCategories, trimmedQuery]
+    () => filterCategoriesByQuery(materialCategories, trimmedQuery),
+    [materialCategories, trimmedQuery]
+  );
+  const matchingTechnicians = useMemo(
+    () => filterServicesByQuery(TECHNICIAN_SERVICES, trimmedQuery),
+    [trimmedQuery]
+  );
+  const matchingMachinery = useMemo(
+    () => filterServicesByQuery(MACHINERY_SERVICES, trimmedQuery),
+    [trimmedQuery]
   );
 
   const categoryProducts = categoryProductsQuery.data ?? [];
@@ -485,7 +639,7 @@ export function CategoriesPage() {
           {isMobileSearchOpen || searchInput.length > 0 ? (
             <form onSubmit={handleSearchSubmit} role="search" className="px-3 pb-2">
               <label className="relative flex w-full items-center">
-                <span className="sr-only">Search categories and materials</span>
+                <span className="sr-only">Search categories, technicians, machinery, and materials</span>
                 <Search
                   size={16}
                   className="pointer-events-none absolute left-3 text-gray-400"
@@ -496,7 +650,7 @@ export function CategoriesPage() {
                   type="search"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Search categories, materials, brands..."
+                  placeholder="Search materials, technicians, machinery..."
                   enterKeyHint="search"
                   className="h-9 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-8 text-xs font-medium text-etukas-black outline-none placeholder:text-gray-400 focus:border-etukas-red focus:bg-white focus:ring-2 focus:ring-etukas-red/15 [&::-webkit-search-cancel-button]:hidden"
                 />
@@ -538,10 +692,8 @@ export function CategoriesPage() {
               All Categories
             </h1>
             <p className="mt-0.5 text-xs text-gray-500">
-              {topLevelCategories.length > 0
-                ? `${topLevelCategories.length} building material categories`
-                : "Browse building materials"}{" "}
-              delivering to <strong className="text-gray-800">{locationCity}</strong>
+              Building Materials, Professionals &amp; Machinery delivering to{" "}
+              <strong className="text-gray-800">{locationCity}</strong>
             </p>
           </div>
 
@@ -556,8 +708,8 @@ export function CategoriesPage() {
                 type="search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Filter categories or search materials..."
-                aria-label="Filter categories or search materials"
+                placeholder="Search materials, technicians, machinery..."
+                aria-label="Search materials, technicians, machinery"
                 className="h-9 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-8 text-xs font-medium text-etukas-black outline-none placeholder:text-gray-400 focus:border-etukas-red focus:bg-white focus:ring-2 focus:ring-etukas-red/15 [&::-webkit-search-cancel-button]:hidden"
               />
               {searchInput ? (
@@ -586,9 +738,10 @@ export function CategoriesPage() {
           {/* Left Vertical Category Rail */}
           <aside
             role="tablist"
-            aria-label="Product categories"
+            aria-label="Product and service categories"
             className="no-scrollbar sticky top-[82px] h-[calc(100dvh-9.25rem)] overflow-y-auto border-r border-gray-100 bg-gray-50/85 md:top-[var(--etukas-header-height,64px)] md:h-[calc(100dvh-var(--etukas-header-height,64px))]"
           >
+            {/* 1. For You */}
             <button
               type="button"
               role="tab"
@@ -611,64 +764,129 @@ export function CategoriesPage() {
                   For You
                 </span>
                 <span className="hidden text-[10px] font-medium text-gray-400 md:block">
-                  Curated &amp; nearby
+                  All materials &amp; services
                 </span>
               </div>
             </button>
 
-            {categoriesQuery.isLoading
-              ? Array.from({ length: 8 }).map((_, idx) => (
+            {/* 2. Building Materials (exact Homepage side-scroll order) */}
+            {materialCategories.map((category) => {
+              const isActive = effectiveTab === category.slug && !isSearchMode;
+              return (
+                <button
+                  key={category.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => selectTab(category.slug)}
+                  className={`focus-ring relative flex w-full flex-col items-center justify-center gap-1.5 border-b border-gray-200/70 px-2 py-3 text-center transition-colors md:flex-row md:justify-start md:gap-3 md:px-3.5 md:py-3 md:text-left ${
+                    isActive
+                      ? "bg-white text-etukas-red"
+                      : "text-gray-600 hover:bg-white/70 hover:text-gray-900"
+                  }`}
+                >
+                  {isActive ? (
+                    <span className="absolute inset-y-1.5 left-0 w-1 rounded-r bg-etukas-red" />
+                  ) : null}
                   <div
-                    key={idx}
-                    className="flex flex-col items-center gap-1.5 border-b border-gray-200/70 px-2 py-3 md:flex-row md:gap-3 md:px-3.5"
+                    className={`grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xs ring-1 transition md:h-10 md:w-10 ${
+                      isActive ? "ring-etukas-red/30" : "ring-gray-200/70"
+                    }`}
                   >
-                    <Skeleton className="h-11 w-11 shrink-0 rounded-2xl md:h-10 md:w-10" />
-                    <Skeleton className="h-3 w-14 md:w-24" />
+                    <CategoryThumbnail
+                      category={category}
+                      sizeClass="h-9 w-9"
+                      iconSize={26}
+                    />
                   </div>
-                ))
-              : topLevelCategories.map((category) => {
-                  const isActive = effectiveTab === category.slug && !isSearchMode;
-                  return (
-                    <button
-                      key={category.id}
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      onClick={() => selectTab(category.slug)}
-                      className={`focus-ring relative flex w-full flex-col items-center justify-center gap-1.5 border-b border-gray-200/70 px-2 py-3 text-center transition-colors md:flex-row md:justify-start md:gap-3 md:px-3.5 md:py-3 md:text-left ${
-                        isActive
-                          ? "bg-white text-etukas-red"
-                          : "text-gray-600 hover:bg-white/70 hover:text-gray-900"
-                      }`}
-                    >
-                      {isActive ? (
-                        <span className="absolute inset-y-1.5 left-0 w-1 rounded-r bg-etukas-red" />
-                      ) : null}
-                      <div
-                        className={`grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xs ring-1 transition md:h-10 md:w-10 ${
-                          isActive ? "ring-etukas-red/30" : "ring-gray-200/70"
-                        }`}
-                      >
-                        <CategoryThumbnail
-                          category={category}
-                          sizeClass="h-9 w-9"
-                          iconSize={26}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <span className="line-clamp-2 block text-[11px] font-bold leading-tight md:text-xs">
-                          {category.name}
-                        </span>
-                        {typeof category.productCount === "number" && category.productCount > 0 ? (
-                          <span className="mt-0.5 hidden text-[10px] font-medium text-gray-400 md:block">
-                            {category.productCount}{" "}
-                            {category.productCount === 1 ? "item" : "items"}
-                          </span>
-                        ) : null}
-                      </div>
-                    </button>
-                  );
-                })}
+                  <div className="min-w-0 flex-1">
+                    <span className="line-clamp-2 block text-[11px] font-bold leading-tight md:text-xs">
+                      {category.name}
+                    </span>
+                    {typeof category.productCount === "number" && category.productCount > 0 ? (
+                      <span className="mt-0.5 hidden text-[10px] font-medium text-gray-400 md:block">
+                        {category.productCount}{" "}
+                        {category.productCount === 1 ? "item" : "items"}
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              );
+            })}
+
+            {/* 3. Technicians & Professionals */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isTechniciansTab && !isSearchMode}
+              onClick={() => selectTab(TECHNICIANS_TAB_SLUG)}
+              className={`focus-ring relative flex w-full flex-col items-center justify-center gap-1.5 border-b border-gray-200/70 px-2 py-3 text-center transition-colors md:flex-row md:justify-start md:gap-3 md:px-3.5 md:py-3 md:text-left ${
+                isTechniciansTab && !isSearchMode
+                  ? "bg-white text-etukas-red"
+                  : "text-gray-600 hover:bg-white/70 hover:text-gray-900"
+              }`}
+            >
+              {isTechniciansTab && !isSearchMode ? (
+                <span className="absolute inset-y-1.5 left-0 w-1 rounded-r bg-etukas-red" />
+              ) : null}
+              <div
+                className={`grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xs ring-1 transition md:h-10 md:w-10 ${
+                  isTechniciansTab ? "ring-etukas-red/30" : "ring-gray-200/70"
+                }`}
+              >
+                <img
+                  src="/images/technicians/plumber.webp"
+                  alt="Technicians and Professionals"
+                  className="h-9 w-9 object-contain"
+                  onError={createSafeImageHandler(FALLBACK_TECHNICIAN_IMAGE)}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="line-clamp-2 block text-[11px] font-bold leading-tight md:text-xs">
+                  Professionals &amp; Technicians
+                </span>
+                <span className="mt-0.5 hidden text-[10px] font-medium text-gray-400 md:block">
+                  8 trades • Live booking
+                </span>
+              </div>
+            </button>
+
+            {/* 4. Machinery & Vehicles */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={isMachineryTab && !isSearchMode}
+              onClick={() => selectTab(MACHINERY_TAB_SLUG)}
+              className={`focus-ring relative flex w-full flex-col items-center justify-center gap-1.5 border-b border-gray-200/70 px-2 py-3 text-center transition-colors md:flex-row md:justify-start md:gap-3 md:px-3.5 md:py-3 md:text-left ${
+                isMachineryTab && !isSearchMode
+                  ? "bg-white text-etukas-red"
+                  : "text-gray-600 hover:bg-white/70 hover:text-gray-900"
+              }`}
+            >
+              {isMachineryTab && !isSearchMode ? (
+                <span className="absolute inset-y-1.5 left-0 w-1 rounded-r bg-etukas-red" />
+              ) : null}
+              <div
+                className={`grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white p-1 shadow-xs ring-1 transition md:h-10 md:w-10 ${
+                  isMachineryTab ? "ring-etukas-red/30" : "ring-gray-200/70"
+                }`}
+              >
+                <img
+                  src="/images/machinery/jcb.webp"
+                  alt="Machinery and Vehicles"
+                  className="h-9 w-9 object-contain"
+                  onError={createSafeImageHandler(FALLBACK_PRODUCT_IMAGE)}
+                />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="line-clamp-2 block text-[11px] font-bold leading-tight md:text-xs">
+                  Machinery &amp; Vehicles
+                </span>
+                <span className="mt-0.5 hidden text-[10px] font-medium text-gray-400 md:block">
+                  8 machines • Site hire
+                </span>
+              </div>
+            </button>
           </aside>
 
           {/* Right Dynamic Content Pane */}
@@ -678,28 +896,27 @@ export function CategoriesPage() {
             aria-label={
               isSearchMode
                 ? `Search results for ${trimmedQuery}`
-                : activeCategory
-                ? activeCategory.name
+                : isTechniciansTab
+                ? "Professionals and Technicians"
+                : isMachineryTab
+                ? "Machinery and Vehicles"
+                : activeMaterialCategory
+                ? activeMaterialCategory.name
                 : "For You"
             }
             className="min-w-0 px-3 py-4 sm:px-4 md:px-6 md:py-5"
           >
             {categoriesQuery.isError ? (
-              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-etukas-pink/70 p-4">
-                <div>
-                  <p className="text-xs font-extrabold text-etukas-red sm:text-sm">
-                    Unable to load live categories right now
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-gray-600">
-                    Check your connection and retry to sync the latest catalog.
-                  </p>
-                </div>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 p-3.5">
+                <p className="text-xs font-bold text-amber-900">
+                  Showing Etukas standard catalog while live category counts refresh.
+                </p>
                 <button
                   type="button"
                   onClick={() => void categoriesQuery.refetch()}
-                  className="focus-ring inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3.5 py-2 text-xs font-bold text-white transition hover:bg-red-700"
+                  className="focus-ring inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-3 py-1.5 text-xs font-bold text-white transition hover:bg-red-700"
                 >
-                  <RefreshCw size={13} /> Retry
+                  <RefreshCw size={12} /> Retry Sync
                 </button>
               </div>
             ) : null}
@@ -709,9 +926,7 @@ export function CategoriesPage() {
               <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-gray-200 bg-gray-50/70 px-4 py-3">
                   <div>
-                    <p className="text-xs font-bold text-gray-500">
-                      Showing matches for
-                    </p>
+                    <p className="text-xs font-bold text-gray-500">Showing matches for</p>
                     <h2 className="text-base font-extrabold text-etukas-black">
                       &ldquo;{trimmedQuery}&rdquo;
                     </h2>
@@ -733,11 +948,11 @@ export function CategoriesPage() {
                   </div>
                 </div>
 
-                <div>
-                  <h3 className="text-sm font-extrabold text-etukas-black">
-                    Matching Categories ({matchingCategories.length})
-                  </h3>
-                  {matchingCategories.length > 0 ? (
+                {matchingCategories.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-extrabold text-etukas-black">
+                      Building Materials ({matchingCategories.length})
+                    </h3>
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                       {matchingCategories.map((cat) => (
                         <button
@@ -766,12 +981,46 @@ export function CategoriesPage() {
                         </button>
                       ))}
                     </div>
-                  ) : (
-                    <p className="mt-2 text-xs text-gray-500">
-                      No categories matched &ldquo;{trimmedQuery}&rdquo;.
-                    </p>
-                  )}
-                </div>
+                  </div>
+                ) : null}
+
+                {matchingTechnicians.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-extrabold text-etukas-black">
+                      Professionals &amp; Technicians ({matchingTechnicians.length})
+                    </h3>
+                    <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                      {matchingTechnicians.map((pro) => (
+                        <ServiceTileCard
+                          key={pro.slug}
+                          item={pro}
+                          href={`/technicians?category=${encodeURIComponent(pro.slug)}`}
+                          fallbackImage={FALLBACK_TECHNICIAN_IMAGE}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {matchingMachinery.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-extrabold text-etukas-black">
+                      Machinery &amp; Vehicles ({matchingMachinery.length})
+                    </h3>
+                    <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                      {matchingMachinery.map((machine) => (
+                        <ServiceTileCard
+                          key={machine.slug}
+                          item={machine}
+                          href={`/products?category=${encodeURIComponent(machine.slug)}`}
+                          fallbackImage={FALLBACK_PRODUCT_IMAGE}
+                          compact
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div>
                   <div className="flex items-center justify-between gap-2">
@@ -810,25 +1059,183 @@ export function CategoriesPage() {
                   )}
                 </div>
               </div>
-            ) : activeCategory ? (
-              /* ============== MODE 2: SELECTED CATEGORY VIEW ============== */
+            ) : isTechniciansTab ? (
+              /* ============== MODE 2: PROFESSIONALS & TECHNICIANS ============== */
               <div className="space-y-7">
-                {/* Category Hero Header */}
+                <div className="flex flex-col justify-between gap-4 rounded-2xl border border-red-200/70 bg-gradient-to-r from-[#faa6a5]/35 via-etukas-pink to-white p-4 shadow-xs sm:flex-row sm:items-center sm:p-5">
+                  <div className="flex items-center gap-3.5">
+                    <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white p-1.5 shadow-sm sm:h-16 sm:w-16">
+                      <img
+                        src="/images/technicians/plumber.webp"
+                        alt="Technicians and Professionals"
+                        className="h-12 w-12 object-contain"
+                        onError={createSafeImageHandler(FALLBACK_TECHNICIAN_IMAGE)}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-etukas-red">
+                        <Wrench size={10} /> Verified Workforce
+                      </span>
+                      <h2 className="mt-1 text-lg font-extrabold text-etukas-black sm:text-xl">
+                        Professionals &amp; Technicians
+                      </h2>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        Plumbers, painters, electricians, masons &amp; engineers serving{" "}
+                        <strong className="text-gray-800">{locationCity}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    to="/technicians"
+                    className="focus-ring inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 sm:self-auto"
+                  >
+                    View All Experts <ArrowRight size={14} />
+                  </Link>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
+                    Browse by Trade ({TECHNICIAN_SERVICES.length})
+                  </h3>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+                    {TECHNICIAN_SERVICES.map((pro) => (
+                      <ServiceTileCard
+                        key={pro.slug}
+                        item={pro}
+                        href={`/technicians?category=${encodeURIComponent(pro.slug)}`}
+                        fallbackImage={FALLBACK_TECHNICIAN_IMAGE}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
+                      Nearest Verified Experts Available Live
+                    </h3>
+                    <Link
+                      to="/technicians"
+                      className="text-xs font-bold text-etukas-red hover:underline"
+                    >
+                      All Technicians &rarr;
+                    </Link>
+                  </div>
+
+                  {techniciansQuery.isLoading ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {Array.from({ length: 3 }).map((_, idx) => (
+                        <Skeleton key={idx} className="h-32 rounded-2xl" />
+                      ))}
+                    </div>
+                  ) : techniciansQuery.data?.length ? (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      {techniciansQuery.data.slice(0, 6).map((tech) => (
+                        <LiveTechnicianCard key={tech.id} tech={tech} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-3 rounded-2xl border border-dashed border-gray-200 bg-gray-50/75 p-5 text-center">
+                      <p className="text-xs font-bold text-gray-800">
+                        Explore verified technicians or update your project location to see nearest availability.
+                      </p>
+                      <Link
+                        to="/technicians"
+                        className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white hover:bg-red-700"
+                      >
+                        Browse Technicians <ArrowRight size={13} />
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isMachineryTab ? (
+              /* ============== MODE 3: MACHINERY & VEHICLES ============== */
+              <div className="space-y-7">
+                <div className="flex flex-col justify-between gap-4 rounded-2xl border border-gray-200 bg-gradient-to-r from-[#c7c5c5]/45 via-stone-100 to-white p-4 shadow-xs sm:flex-row sm:items-center sm:p-5">
+                  <div className="flex items-center gap-3.5">
+                    <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-white p-1.5 shadow-sm sm:h-16 sm:w-16">
+                      <img
+                        src="/images/machinery/jcb.webp"
+                        alt="Machinery and Heavy Vehicles"
+                        className="h-12 w-12 object-contain"
+                        onError={createSafeImageHandler(FALLBACK_PRODUCT_IMAGE)}
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-etukas-black">
+                        <Tractor size={10} /> Heavy Equipment
+                      </span>
+                      <h2 className="mt-1 text-lg font-extrabold text-etukas-black sm:text-xl">
+                        Machinery &amp; Vehicles
+                      </h2>
+                      <p className="mt-0.5 text-xs text-gray-600">
+                        JCB excavators, borewell rigs, RMC trucks, concrete mixers, rollers &amp; cranes
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    to="/products?category=construction-machinery"
+                    className="focus-ring inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 sm:self-auto"
+                  >
+                    View All Machinery <ArrowRight size={14} />
+                  </Link>
+                </div>
+
+                <div>
+                  <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
+                    Book Machine Vehicles ({MACHINERY_SERVICES.length})
+                  </h3>
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3">
+                    {MACHINERY_SERVICES.map((machine) => (
+                      <ServiceTileCard
+                        key={machine.slug}
+                        item={machine}
+                        href={`/products?category=${encodeURIComponent(machine.slug)}`}
+                        fallbackImage={FALLBACK_PRODUCT_IMAGE}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {categoryProducts.length > 0 ? (
+                  <div>
+                    <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
+                      Available Machinery Listings Near {locationCity}
+                    </h3>
+                    <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                      {categoryProducts.map((item) => (
+                        <CategoryProductCard
+                          key={item.id}
+                          item={item}
+                          wishlisted={wishlist.isWishlisted(item.id)}
+                          onToggleWishlist={wishlist.toggle}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : activeMaterialCategory ? (
+              /* ============== MODE 4: SELECTED BUILDING MATERIAL CATEGORY ============== */
+              <div className="space-y-7">
                 <div className="flex flex-col justify-between gap-4 rounded-2xl border border-etukas-red/15 bg-gradient-to-r from-etukas-pink/85 via-white to-orange-50/70 p-4 shadow-xs sm:flex-row sm:items-center sm:p-5">
                   <div className="flex items-center gap-3.5">
                     <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl border border-white bg-white p-1.5 shadow-sm sm:h-16 sm:w-16">
                       <CategoryThumbnail
-                        category={activeCategory}
+                        category={activeMaterialCategory}
                         sizeClass="h-12 w-12 sm:h-14 sm:w-14"
                         iconSize={36}
                       />
                     </div>
                     <div className="min-w-0">
                       <span className="inline-block rounded-full bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-etukas-red">
-                        Category
+                        Building Materials
                       </span>
                       <h2 className="mt-1 text-lg font-extrabold text-etukas-black sm:text-xl">
-                        {activeCategory.name}
+                        {activeMaterialCategory.name}
                       </h2>
                       <p className="mt-0.5 text-xs text-gray-600">
                         {categoryProductsQuery.isLoading
@@ -841,21 +1248,20 @@ export function CategoriesPage() {
                   </div>
 
                   <Link
-                    to={`/products?category=${encodeURIComponent(activeCategory.slug)}`}
+                    to={`/products?category=${encodeURIComponent(activeMaterialCategory.slug)}`}
                     className="focus-ring inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 sm:self-auto"
                   >
                     View All <ArrowRight size={14} />
                   </Link>
                 </div>
 
-                {/* Subcategories Grid (when present in DB) */}
-                {activeCategory.children && activeCategory.children.length > 0 ? (
+                {activeMaterialCategory.children && activeMaterialCategory.children.length > 0 ? (
                   <div>
                     <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
-                      Explore {activeCategory.name}
+                      Explore {activeMaterialCategory.name}
                     </h3>
                     <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-                      {activeCategory.children.map((child) => (
+                      {activeMaterialCategory.children.map((child) => (
                         <Link
                           key={child.id}
                           to={`/products?category=${encodeURIComponent(child.slug)}`}
@@ -882,7 +1288,6 @@ export function CategoriesPage() {
                   </div>
                 ) : null}
 
-                {/* Shop by Brand (extracted dynamically from live products) */}
                 {availableBrands.length > 0 ? (
                   <div>
                     <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
@@ -892,7 +1297,7 @@ export function CategoriesPage() {
                       {availableBrands.map((brand) => (
                         <Link
                           key={brand}
-                          to={`/products?category=${encodeURIComponent(activeCategory.slug)}&brand=${encodeURIComponent(brand)}`}
+                          to={`/products?category=${encodeURIComponent(activeMaterialCategory.slug)}&brand=${encodeURIComponent(brand)}`}
                           className="shrink-0 rounded-full border border-gray-200 bg-white px-3.5 py-1.5 text-xs font-bold text-gray-800 shadow-xs transition hover:border-etukas-red hover:bg-etukas-pink hover:text-etukas-red"
                         >
                           {brand}
@@ -902,14 +1307,13 @@ export function CategoriesPage() {
                   </div>
                 ) : null}
 
-                {/* Top Products in Category */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
-                      Top {activeCategory.name}
+                      Top {activeMaterialCategory.name}
                     </h3>
                     <Link
-                      to={`/products?category=${encodeURIComponent(activeCategory.slug)}`}
+                      to={`/products?category=${encodeURIComponent(activeMaterialCategory.slug)}`}
                       className="text-xs font-bold text-etukas-red hover:underline"
                     >
                       See all &rarr;
@@ -933,7 +1337,7 @@ export function CategoriesPage() {
                   ) : categoryProductsQuery.isError ? (
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-etukas-pink/60 p-4">
                       <p className="text-xs font-bold text-etukas-red">
-                        Could not load products for {activeCategory.name}.
+                        Could not load products for {activeMaterialCategory.name}.
                       </p>
                       <button
                         type="button"
@@ -957,7 +1361,7 @@ export function CategoriesPage() {
                   ) : (
                     <div className="mt-3">
                       <LocationEmptyProducts
-                        categoryName={activeCategory.name}
+                        categoryName={activeMaterialCategory.name}
                         cityLabel={locationCity}
                         onResetCategory={() => selectTab("for-you")}
                       />
@@ -965,12 +1369,11 @@ export function CategoriesPage() {
                   )}
                 </div>
 
-                {/* Verified Stores Supplying This Category (derived from live products) */}
                 {categoryStores.length > 0 ? (
                   <div>
                     <div className="flex items-center justify-between gap-2">
                       <h3 className="text-sm font-extrabold text-etukas-black sm:text-base">
-                        Verified Stores Supplying {activeCategory.name}
+                        Verified Stores Supplying {activeMaterialCategory.name}
                       </h3>
                       <Link
                         to="/stores"
@@ -988,17 +1391,17 @@ export function CategoriesPage() {
                 ) : null}
               </div>
             ) : (
-              /* ============== MODE 3: "FOR YOU" OVERVIEW ============== */
+              /* ============== MODE 5: "FOR YOU" OVERVIEW ============== */
               <div className="space-y-8">
-                {/* 1. Shop by Category Visual Grid */}
+                {/* 1. Building Materials (Exact Homepage Side-Scroll Order) */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <h2 className="text-base font-extrabold text-etukas-black sm:text-lg">
-                        Shop by Category
+                        Building Materials
                       </h2>
                       <p className="text-[11px] text-gray-500 sm:text-xs">
-                        Tap a category to explore products, brands, and local yards
+                        Ordered by essential site supplies — tap any material to explore
                       </p>
                     </div>
                     <Link
@@ -1009,54 +1412,102 @@ export function CategoriesPage() {
                     </Link>
                   </div>
 
-                  {categoriesQuery.isLoading ? (
-                    <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5">
-                      {Array.from({ length: 10 }).map((_, idx) => (
-                        <div
-                          key={idx}
-                          className="flex flex-col items-center rounded-2xl border border-gray-100 bg-white p-3"
-                        >
-                          <Skeleton className="h-14 w-14 rounded-2xl" />
-                          <Skeleton className="mt-2 h-3 w-16" />
+                  <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:gap-3 lg:grid-cols-5">
+                    {materialCategories.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => selectTab(category.slug)}
+                        className="focus-ring group flex flex-col items-center rounded-2xl border border-gray-200/80 bg-white p-2.5 text-center shadow-xs transition-all hover:-translate-y-0.5 hover:border-etukas-red/40 hover:shadow-md sm:p-3"
+                      >
+                        <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-gradient-to-b from-gray-50 to-stone-100/80 p-1.5 transition-transform duration-200 group-hover:scale-105 sm:h-16 sm:w-16">
+                          <CategoryThumbnail
+                            category={category}
+                            sizeClass="h-12 w-12 sm:h-14 sm:w-14"
+                            iconSize={34}
+                          />
                         </div>
-                      ))}
-                    </div>
-                  ) : topLevelCategories.length > 0 ? (
-                    <div className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4 md:gap-3 lg:grid-cols-5">
-                      {topLevelCategories.map((category) => (
-                        <button
-                          key={category.id}
-                          type="button"
-                          onClick={() => selectTab(category.slug)}
-                          className="focus-ring group flex flex-col items-center rounded-2xl border border-gray-200/80 bg-white p-2.5 text-center shadow-xs transition-all hover:-translate-y-0.5 hover:border-etukas-red/40 hover:shadow-md sm:p-3"
-                        >
-                          <div className="grid h-14 w-14 place-items-center overflow-hidden rounded-2xl bg-gradient-to-b from-gray-50 to-stone-100/80 p-1.5 transition-transform duration-200 group-hover:scale-105 sm:h-16 sm:w-16">
-                            <CategoryThumbnail
-                              category={category}
-                              sizeClass="h-12 w-12 sm:h-14 sm:w-14"
-                              iconSize={34}
-                            />
-                          </div>
-                          <span className="mt-2 line-clamp-2 text-[11px] font-extrabold leading-tight text-gray-900 transition-colors group-hover:text-etukas-red sm:text-xs">
-                            {category.name}
+                        <span className="mt-2 line-clamp-2 text-[11px] font-extrabold leading-tight text-gray-900 transition-colors group-hover:text-etukas-red sm:text-xs">
+                          {category.name}
+                        </span>
+                        {typeof category.productCount === "number" && category.productCount > 0 ? (
+                          <span className="mt-1 rounded-full bg-etukas-pink px-2 py-0.5 text-[9px] font-bold text-etukas-red">
+                            {category.productCount}{" "}
+                            {category.productCount === 1 ? "item" : "items"}
                           </span>
-                          {typeof category.productCount === "number" && category.productCount > 0 ? (
-                            <span className="mt-1 rounded-full bg-etukas-pink px-2 py-0.5 text-[9px] font-bold text-etukas-red">
-                              {category.productCount}{" "}
-                              {category.productCount === 1 ? "item" : "items"}
-                            </span>
-                          ) : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-3 text-xs text-gray-500">
-                      No active categories found.
-                    </p>
-                  )}
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
-                {/* 2. Recently Viewed (shown only when user has browsing history) */}
+                {/* 2. Professionals & Technicians */}
+                <div className="rounded-2xl bg-[#faa6a5]/25 p-3.5 ring-1 ring-[#faa6a5]/60 sm:p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-base font-extrabold text-etukas-black sm:text-lg">
+                        Professionals &amp; Technicians
+                      </h2>
+                      <p className="text-[11px] text-gray-600 sm:text-xs">
+                        Hire verified local trades &amp; engineers near {locationCity}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectTab(TECHNICIANS_TAB_SLUG)}
+                      className="shrink-0 text-xs font-bold text-etukas-red hover:underline"
+                    >
+                      View All &rarr;
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                    {TECHNICIAN_SERVICES.map((pro) => (
+                      <ServiceTileCard
+                        key={pro.slug}
+                        item={pro}
+                        href={`/technicians?category=${encodeURIComponent(pro.slug)}`}
+                        fallbackImage={FALLBACK_TECHNICIAN_IMAGE}
+                        compact
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Machinery & Vehicles */}
+                <div className="rounded-2xl bg-[#c7c5c5]/30 p-3.5 ring-1 ring-gray-200 sm:p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <h2 className="text-base font-extrabold text-etukas-black sm:text-lg">
+                        Machinery &amp; Vehicles
+                      </h2>
+                      <p className="text-[11px] text-gray-600 sm:text-xs">
+                        Book heavy construction equipment &amp; site vehicles
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectTab(MACHINERY_TAB_SLUG)}
+                      className="shrink-0 text-xs font-bold text-etukas-red hover:underline"
+                    >
+                      View All &rarr;
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                    {MACHINERY_SERVICES.map((machine) => (
+                      <ServiceTileCard
+                        key={machine.slug}
+                        item={machine}
+                        href={`/products?category=${encodeURIComponent(machine.slug)}`}
+                        fallbackImage={FALLBACK_PRODUCT_IMAGE}
+                        compact
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Recently Viewed (shown only when user has browsing history) */}
                 {recentlyViewed.items.length > 0 ? (
                   <div>
                     <div className="flex items-center justify-between gap-2">
@@ -1107,7 +1558,7 @@ export function CategoriesPage() {
                   </div>
                 ) : null}
 
-                {/* 3. Popular Verified Stores Near You */}
+                {/* 5. Popular Verified Stores Near You */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -1153,7 +1604,7 @@ export function CategoriesPage() {
                   )}
                 </div>
 
-                {/* 4. New & Trending Materials */}
+                {/* 6. New & Trending Materials */}
                 <div>
                   <div className="flex items-center justify-between gap-2">
                     <div>
@@ -1218,7 +1669,7 @@ export function CategoriesPage() {
                   )}
                 </div>
 
-                {/* 5. More on Etukas */}
+                {/* 7. Quick Hub Links */}
                 <div>
                   <h2 className="text-base font-extrabold text-etukas-black sm:text-lg">
                     More on Etukas

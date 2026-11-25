@@ -10,7 +10,7 @@ describe("Categories API & formatting", () => {
   });
 
   describe("formatCategoriesResponse", () => {
-    it("preserves base category fields, aggregates parent+child productCount, and resolves blank image urls", () => {
+    it("returns all 11 canonical categories in side-scroll order, merges DB counts/images, and appends custom categories", () => {
       const now = new Date("2026-01-01T00:00:00.000Z");
       const raw: RawCategoryRecord[] = [
         {
@@ -59,20 +59,43 @@ describe("Categories API & formatting", () => {
               images: []
             }
           ]
+        },
+        {
+          id: "cat-custom",
+          name: "Waterproofing",
+          slug: "waterproofing",
+          icon: "Package",
+          parentId: null,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+          children: [],
+          products: []
         }
       ];
 
       const formatted = formatCategoriesResponse(raw);
-      expect(formatted).toHaveLength(2);
+      expect(formatted.slice(0, 11).map((c) => c.slug)).toEqual([
+        "bricks-blocks",
+        "cement",
+        "sand-aggregates",
+        "stones-aggregates",
+        "steel-iron-bars",
+        "tiles-flooring",
+        "paints",
+        "plumbing",
+        "electrical-materials",
+        "cement-poles",
+        "construction-machinery"
+      ]);
 
-      const parent = formatted[0];
-      expect(parent.id).toBe("cat-parent");
-      expect(parent.name).toBe("Tiles and flooring");
-      expect(parent.slug).toBe("tiles-flooring");
-      expect(parent.icon).toBe("Layers");
-      expect(parent.productCount).toBe(3);
-      expect(parent.sampleImageUrl).toBe("/api/v1/products/prod-1/images/img-1");
-      expect(parent.children).toEqual([
+      const tiles = formatted.find((c) => c.slug === "tiles-flooring")!;
+      expect(tiles.id).toBe("cat-parent");
+      expect(tiles.name).toBe("Tiles and flooring");
+      expect(tiles.icon).toBe("Layers");
+      expect(tiles.productCount).toBe(3);
+      expect(tiles.sampleImageUrl).toBe("/api/v1/products/prod-1/images/img-1");
+      expect(tiles.children).toEqual([
         {
           id: "cat-child",
           name: "Vitrified Tiles",
@@ -84,12 +107,16 @@ describe("Categories API & formatting", () => {
           sampleImageUrl: "https://cdn.example.com/vitrified.webp"
         }
       ]);
-      expect("products" in parent).toBe(false);
+      expect("products" in tiles).toBe(false);
+
+      const custom = formatted.find((c) => c.slug === "waterproofing");
+      expect(custom).toBeDefined();
+      expect(formatted[formatted.length - 1].slug).toBe("waterproofing");
     });
   });
 
   describe("GET /api/v1/categories", () => {
-    it("returns enriched active categories with Cache-Control header", async () => {
+    it("returns ordered canonical + DB categories with Cache-Control header", async () => {
       const mockRows = [
         {
           id: "cat-cement",
@@ -116,8 +143,9 @@ describe("Categories API & formatting", () => {
       expect(response.status).toBe(200);
       expect(response.headers["cache-control"]).toContain("max-age=60");
       expect(response.body.ok).toBe(true);
-      expect(response.body.data).toHaveLength(1);
-      expect(response.body.data[0]).toMatchObject({
+      expect(response.body.data).toHaveLength(11);
+      expect(response.body.data[0].slug).toBe("bricks-blocks");
+      expect(response.body.data[1]).toMatchObject({
         id: "cat-cement",
         name: "Cement",
         slug: "cement",

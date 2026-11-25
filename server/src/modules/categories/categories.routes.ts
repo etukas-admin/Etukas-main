@@ -45,6 +45,20 @@ export type FormattedCategory = Omit<RawCategoryRecord, "products" | "children">
   sampleImageUrl: string | null;
 };
 
+const CANONICAL_CATEGORIES: ReadonlyArray<{ slug: string; name: string; icon: string }> = [
+  { slug: "bricks-blocks", name: "Bricks & Blocks", icon: "BrickWall" },
+  { slug: "cement", name: "Cement", icon: "Package" },
+  { slug: "sand-aggregates", name: "Sand", icon: "Mountain" },
+  { slug: "stones-aggregates", name: "Stone / Aggregate", icon: "Mountain" },
+  { slug: "steel-iron-bars", name: "Iron Bars", icon: "Grip" },
+  { slug: "tiles-flooring", name: "Tiles / Marbles", icon: "Layers" },
+  { slug: "paints", name: "Paints", icon: "Paintbrush" },
+  { slug: "plumbing", name: "Plumbing", icon: "Pipes" },
+  { slug: "electrical-materials", name: "Electricals", icon: "Cable" },
+  { slug: "cement-poles", name: "Cement Articles", icon: "UtilityPole" },
+  { slug: "construction-machinery", name: "Machinery & Vehicles", icon: "Truck" }
+];
+
 function resolveSampleImageUrl(products?: RawCategoryRecord["products"]): string | null {
   if (!products?.length) return null;
   for (const product of products) {
@@ -68,7 +82,8 @@ export function formatCategoriesResponse(rawCategories: RawCategoryRecord[]): Fo
     });
   }
 
-  return rawCategories.map(({ products: _products, children = [], ...rest }) => {
+  const formattedBySlug = new Map<string, FormattedCategory>();
+  const formattedDbList: FormattedCategory[] = rawCategories.map(({ products: _products, children = [], ...rest }) => {
     const formattedChildren: FormattedCategoryChild[] = children.map((child) => {
       const childStats = directStatsById.get(child.id);
       return {
@@ -83,13 +98,43 @@ export function formatCategoriesResponse(rawCategories: RawCategoryRecord[]): Fo
     const childCount = formattedChildren.reduce((sum, child) => sum + child.productCount, 0);
     const childSampleImage = formattedChildren.find((child) => Boolean(child.sampleImageUrl))?.sampleImageUrl ?? null;
 
-    return {
+    const formatted: FormattedCategory = {
       ...rest,
       children: formattedChildren,
       productCount: directCount + childCount,
       sampleImageUrl: ownStats?.sampleImageUrl ?? childSampleImage
     };
+    formattedBySlug.set(formatted.slug, formatted);
+    return formatted;
   });
+
+  const canonicalSlugs = new Set(CANONICAL_CATEGORIES.map((c) => c.slug));
+  const ordered: FormattedCategory[] = [];
+
+  for (const canonical of CANONICAL_CATEGORIES) {
+    const existing = formattedBySlug.get(canonical.slug);
+    if (existing) {
+      ordered.push(existing);
+    } else {
+      ordered.push({
+        id: `default-${canonical.slug}`,
+        name: canonical.name,
+        slug: canonical.slug,
+        icon: canonical.icon,
+        parentId: null,
+        isActive: true,
+        children: [],
+        productCount: 0,
+        sampleImageUrl: null
+      });
+    }
+  }
+
+  const remaining = formattedDbList
+    .filter((cat) => !canonicalSlugs.has(cat.slug))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return [...ordered, ...remaining];
 }
 
 export const categoriesRouter = Router();

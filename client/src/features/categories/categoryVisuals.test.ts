@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { Category, StoreProduct } from "../../services/api";
 import {
+  buildOrderedMaterialCategories,
   computeDiscountPercent,
   extractBrandsFromProducts,
   extractStoresFromProducts,
   filterCategoriesByQuery,
+  filterServicesByQuery,
   getCategoryIconComponent,
   getCategoryLocalImage,
   getTopLevelCategories,
-  resolveCategoryImage
+  MACHINERY_SERVICES,
+  MACHINERY_TAB_SLUG,
+  resolveCategoryImage,
+  TECHNICIAN_SERVICES
 } from "./categoryVisuals";
 
 const makeCategory = (overrides: Partial<Category> = {}): Category => ({
@@ -54,8 +59,8 @@ const makeProduct = (overrides: Partial<StoreProduct> = {}): StoreProduct => ({
 describe("categoryVisuals", () => {
   it("resolves known category slugs to verified local assets rather than external URLs", () => {
     const slugs = [
-      "cement",
       "bricks-blocks",
+      "cement",
       "sand-aggregates",
       "stones-aggregates",
       "steel-iron-bars",
@@ -64,7 +69,7 @@ describe("categoryVisuals", () => {
       "plumbing",
       "electrical-materials",
       "cement-poles",
-      "construction-machinery"
+      MACHINERY_TAB_SLUG
     ];
 
     for (const slug of slugs) {
@@ -76,6 +81,71 @@ describe("categoryVisuals", () => {
 
     expect(getCategoryIconComponent("cement")).not.toBeNull();
     expect(getCategoryIconComponent("unknown-slug")).toBeNull();
+  });
+
+  it("orders all 10 building materials exactly as the Homepage side-scroll strip even when DB is empty", () => {
+    const ordered = buildOrderedMaterialCategories([]);
+    expect(ordered.map((c) => c.slug)).toEqual([
+      "bricks-blocks",
+      "cement",
+      "sand-aggregates",
+      "stones-aggregates",
+      "steel-iron-bars",
+      "tiles-flooring",
+      "paints",
+      "plumbing",
+      "electrical-materials",
+      "cement-poles"
+    ]);
+    expect(ordered.map((c) => c.name)).toEqual([
+      "Bricks & Blocks",
+      "Cement",
+      "Sand",
+      "Stone / Aggregate",
+      "Iron Bars",
+      "Tiles / Marbles",
+      "Paints",
+      "Plumbing",
+      "Electricals",
+      "Cement Articles"
+    ]);
+  });
+
+  it("merges partial DB categories into exact side-scroll order, appends custom DB categories, and excludes machinery", () => {
+    const partialDb: Category[] = [
+      makeCategory({ id: "db-cem", slug: "cement", name: "Cement", productCount: 7, sampleImageUrl: "/img/c.webp" }),
+      makeCategory({ id: "db-mach", slug: MACHINERY_TAB_SLUG, name: "Construction machinery", productCount: 2 }),
+      makeCategory({ id: "db-custom", slug: "waterproofing", name: "Waterproofing", productCount: 3 })
+    ];
+
+    const ordered = buildOrderedMaterialCategories(partialDb);
+    expect(ordered.some((c) => c.slug === MACHINERY_TAB_SLUG)).toBe(false);
+    expect(ordered[0].slug).toBe("bricks-blocks");
+    expect(ordered[1]).toMatchObject({
+      id: "db-cem",
+      slug: "cement",
+      name: "Cement",
+      productCount: 7,
+      sampleImageUrl: "/img/c.webp"
+    });
+    expect(ordered[ordered.length - 1]).toMatchObject({
+      id: "db-custom",
+      slug: "waterproofing",
+      name: "Waterproofing",
+      productCount: 3
+    });
+  });
+
+  it("includes all 8 technician trades and all 8 machinery services with local assets and query filtering", () => {
+    expect(TECHNICIAN_SERVICES).toHaveLength(8);
+    expect(MACHINERY_SERVICES).toHaveLength(8);
+
+    for (const item of [...TECHNICIAN_SERVICES, ...MACHINERY_SERVICES]) {
+      expect(item.image).toMatch(/^\/images\/.+\.webp$/);
+    }
+
+    expect(filterServicesByQuery(TECHNICIAN_SERVICES, "plumb").map((i) => i.slug)).toEqual(["plumber"]);
+    expect(filterServicesByQuery(MACHINERY_SERVICES, "excavation").map((i) => i.slug)).toEqual(["jcb"]);
   });
 
   it("falls back to sampleImageUrl or null for unknown category slugs", () => {

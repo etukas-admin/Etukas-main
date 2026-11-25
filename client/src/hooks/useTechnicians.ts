@@ -12,7 +12,7 @@ export interface UseTechniciansParams {
   sort?: string;
 }
 
-export function useTechnicians(params: UseTechniciansParams = {}) {
+export function useTechnicians(params: UseTechniciansParams = {}, options?: { enabled?: boolean }) {
   const normalizedParams = {
     category: params.category && params.category !== "all" ? params.category : undefined,
     q: params.q?.trim() || undefined,
@@ -29,6 +29,7 @@ export function useTechnicians(params: UseTechniciansParams = {}) {
       const res = await marketplaceApi.getTechnicians(normalizedParams, { signal });
       return Array.isArray(res) ? res : [];
     },
+    enabled: options?.enabled ?? true,
     staleTime: 60 * 1000
   });
 }
