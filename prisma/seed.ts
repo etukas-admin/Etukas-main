@@ -3,6 +3,12 @@ import bcrypt from "bcryptjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
+import {
+  buildTmtVariantsForBrand,
+  STANDARD_TMT_LENGTH_METERS,
+  type TmtBrandTier,
+  type TmtGrade
+} from "@etukas/shared";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
@@ -428,6 +434,179 @@ async function main() {
     update: {},
     create: { userId: customer.id }
   });
+
+  // 3. Multi-size TMT Steel Brand Listings (Parent Product + product_variants rows)
+  const tmtSeedSpecs: Array<{
+    storeId: string;
+    brandName: string;
+    brandSlug: string;
+    tier: TmtBrandTier;
+    grade: TmtGrade;
+    baseRatePerTonInr: number;
+    supportsLite: boolean;
+    slug: string;
+    sku: string;
+  }> = [
+    {
+      storeId: store2.id,
+      brandName: "Tata Tiscon",
+      brandSlug: "tata-tiscon",
+      tier: "primary",
+      grade: "Fe 550D",
+      baseRatePerTonInr: 73500,
+      supportsLite: false,
+      slug: "tmt-tata-tiscon-fe-550d",
+      sku: "TMT-TATA-550D"
+    },
+    {
+      storeId: store.id,
+      brandName: "JSW Neosteel",
+      brandSlug: "jsw-neosteel",
+      tier: "primary",
+      grade: "Fe 550D",
+      baseRatePerTonInr: 72500,
+      supportsLite: false,
+      slug: "tmt-jsw-neosteel-fe-550d",
+      sku: "TMT-JSW-550D"
+    },
+    {
+      storeId: store2.id,
+      brandName: "Radha TMT",
+      brandSlug: "radha-tmt",
+      tier: "regional",
+      grade: "Fe 500D",
+      baseRatePerTonInr: 63000,
+      supportsLite: true,
+      slug: "tmt-radha-tmt-fe-500d",
+      sku: "TMT-RADHA-500D"
+    }
+  ];
+
+  for (const tmtSpec of tmtSeedSpecs) {
+    const billingMode = tmtSpec.tier === "primary" ? "theoretical" : "weighbridge";
+    const variants = buildTmtVariantsForBrand({
+      brandSlug: tmtSpec.brandSlug,
+      grade: tmtSpec.grade,
+      baseRatePerTonInr: tmtSpec.baseRatePerTonInr,
+      supportsLiteVariants: tmtSpec.supportsLite,
+      rodLengthMeters: STANDARD_TMT_LENGTH_METERS,
+      gstIncluded: true
+    });
+
+    const tmtMetadata = {
+      brand_name: tmtSpec.brandName,
+      brand_slug: tmtSpec.brandSlug,
+      tier: tmtSpec.tier,
+      grade: tmtSpec.grade,
+      base_rate_per_ton_inr: tmtSpec.baseRatePerTonInr,
+      supports_lite_variants: tmtSpec.supportsLite,
+      logistics: {
+        rod_length_meters: STANDARD_TMT_LENGTH_METERS,
+        billing_mode: billingMode,
+        min_order_tons: 0.5,
+        free_delivery_tons: 2.5,
+        loading_charge_per_ton_inr: 0,
+        gst_included: true,
+        extra_6mm_per_ton_inr: 2000,
+        extra_8mm_per_ton_inr: 800,
+        extra_8mm_lite_per_ton_inr: -1000
+      },
+      updated_at: new Date().toISOString()
+    };
+
+    const productName = `${tmtSpec.brandName} ${tmtSpec.grade} TMT Bars (12m)`;
+    const parentProduct = await prisma.product.upsert({
+      where: { slug: tmtSpec.slug },
+      update: {
+        categoryId: steel.id,
+        name: productName,
+        brand: tmtSpec.brandName,
+        unit: "bundle",
+        tmtMetadata: tmtMetadata as any
+      },
+      create: {
+        categoryId: steel.id,
+        name: productName,
+        slug: tmtSpec.slug,
+        brand: tmtSpec.brandName,
+        description: `${tmtSpec.brandName} ${tmtSpec.grade} IS 1786 TMT steel bars in standard 12m (40 ft) lengths across 6mm–32mm diameters.`,
+        unit: "bundle",
+        tmtMetadata: tmtMetadata as any,
+        images: {
+          create: {
+            url: "/images/pngimages/steel-iron-bars.webp",
+            altText: productName
+          }
+        }
+      }
+    });
+
+    for (const variant of variants) {
+      await prisma.productVariant.upsert({
+        where: {
+          productId_label: {
+            productId: parentProduct.id,
+            label: variant.label
+          }
+        },
+        update: {
+          diameterMm: variant.diameter_mm,
+          isLite: Boolean(variant.is_lite),
+          piecesPerBundle: variant.pieces_per_bundle,
+          weightPerMeterKg: variant.weight_per_meter_kg,
+          weightPerBundleKg: variant.approx_weight_per_bundle_kg,
+          pricePerBundleInr: variant.price_per_bundle_inr,
+          pricePerTonInr: variant.price_per_ton_inr,
+          commonUse: variant.common_use,
+          stockQuantity: variant.stock_bundles,
+          minOrderQuantity: variant.min_order_quantity ?? 1,
+          isActive: variant.is_active ?? true
+        },
+        create: {
+          productId: parentProduct.id,
+          diameterMm: variant.diameter_mm,
+          label: variant.label,
+          isLite: Boolean(variant.is_lite),
+          piecesPerBundle: variant.pieces_per_bundle,
+          weightPerMeterKg: variant.weight_per_meter_kg,
+          weightPerBundleKg: variant.approx_weight_per_bundle_kg,
+          pricePerBundleInr: variant.price_per_bundle_inr,
+          pricePerTonInr: variant.price_per_ton_inr,
+          commonUse: variant.common_use,
+          stockQuantity: variant.stock_bundles,
+          minOrderQuantity: variant.min_order_quantity ?? 1,
+          isActive: variant.is_active ?? true
+        }
+      });
+    }
+
+    const totalStockBundles = variants.reduce((sum, v) => sum + v.stock_bundles, 0);
+    await prisma.storeProduct.upsert({
+      where: {
+        storeId_productId: {
+          storeId: tmtSpec.storeId,
+          productId: parentProduct.id
+        }
+      },
+      update: {
+        priceMinor: tmtSpec.baseRatePerTonInr * 100,
+        stockQuantity: totalStockBundles,
+        deliveryEta: "Same day",
+        isActive: true
+      },
+      create: {
+        storeId: tmtSpec.storeId,
+        productId: parentProduct.id,
+        sku: tmtSpec.sku,
+        priceMinor: tmtSpec.baseRatePerTonInr * 100,
+        discountMinor: 0,
+        stockQuantity: totalStockBundles,
+        minOrderQuantity: 1,
+        deliveryEta: "Same day",
+        isActive: true
+      }
+    });
+  }
 }
 
 main()

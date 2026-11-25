@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useHeaderHeightCssVar, useHeaderScroll } from "../../hooks/useMobileScrollState";
 import { useCartQuery } from "../../features/cart/useCart";
+import { useTmtCart } from "../../features/tmt/tmtCartStore";
 import { Logo } from "../common/Logo";
 import { MobileNav } from "./MobileNav";
 import { OPEN_SUPPORT_CHAT_EVENT } from "../chat/UserChatWidget";
@@ -69,7 +70,10 @@ export function Header({ className }: HeaderProps) {
   useHeaderHeightCssVar(headerRef);
 
   const cartQuery = useCartQuery();
-  const cartCount = cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
+  const tmtCart = useTmtCart();
+  const cartCount =
+    (cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0) +
+    tmtCart.summary.totalBundles;
 
   // Keep search input synchronized with the /products?q=... query parameter.
   useEffect(() => {

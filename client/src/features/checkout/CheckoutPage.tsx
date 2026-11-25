@@ -32,6 +32,7 @@ import {
   type CheckoutInput
 } from "../../services/api";
 import { useCartQuery } from "../cart/useCart";
+import { clearTmtCartBatches } from "../tmt/tmtCartStore";
 import { getSelectedAddress, DEFAULT_CONSTRUCTION_SITE, type DeliveryAddress } from "../location/locationStore";
 import { createSafeImageHandler, FALLBACK_PRODUCT_IMAGE } from "../../utils/imageFallback";
 import { formatMoney } from "../../lib/utils";
@@ -42,6 +43,7 @@ export function CheckoutPage() {
   const location = useLocation();
   const directItem = (location.state as any)?.directItem;
   const stateCartItems = (location.state as any)?.cartItems;
+  const initialNotes = (location.state as any)?.initialNotes as string | undefined;
   const queryClient = useQueryClient();
   const cartQuery = useCartQuery();
   const storedUser = getStoredUser();
@@ -163,7 +165,7 @@ export function CheckoutPage() {
   // ─── GSTIN & Notes State ───
   const [showGstinModal, setShowGstinModal] = useState(false);
   const [gstinNumber, setGstinNumber] = useState("");
-  const [orderNotes, setOrderNotes] = useState("");
+  const [orderNotes, setOrderNotes] = useState(initialNotes || "");
 
   // ─── Payment Selection State (COD Enabled & Active First!) ───
   const [selectedPayment, setSelectedPayment] = useState<
@@ -196,6 +198,9 @@ export function CheckoutPage() {
       return res;
     },
     onSuccess: (data) => {
+      if ((location.state as any)?.hasTmtItems) {
+        clearTmtCartBatches();
+      }
       setPlacedOrder(data.order);
       void queryClient.invalidateQueries({ queryKey: ["cart"] });
       void queryClient.invalidateQueries({ queryKey: ["customer-orders"] });

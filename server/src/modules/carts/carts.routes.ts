@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { addCartItemSchema, updateCartItemSchema } from "@etukas/shared";
+import { addCartItemSchema, batchAddTmtCartSchema, updateCartItemSchema } from "@etukas/shared";
 import { prisma } from "../../config/prisma.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
@@ -63,6 +63,35 @@ cartsRouter.post("/items", async (req, res, next) => {
       create: { cartId: cart.id, storeProductId: input.storeProductId, quantity: input.quantity }
     });
     return sendCreated(res, item);
+  } catch (error) {
+    next(error);
+  }
+});
+
+cartsRouter.post("/tmt-batch", async (req, res, next) => {
+  try {
+    const input = batchAddTmtCartSchema.parse(req.body);
+    const cart = await prisma.cart.upsert({
+      where: { userId: req.user!.id },
+      update: {},
+      create: { userId: req.user!.id }
+    });
+
+    const addedItems = [];
+    for (const entry of input.items) {
+      const listing = await prisma.storeProduct.findUnique({ where: { id: entry.storeProductId } });
+      if (!listing?.isActive) {
+        throw new HttpError(404, "LISTING_NOT_AVAILABLE", `Product listing ${entry.storeProductId} is not available`);
+      }
+      const item = await prisma.cartItem.upsert({
+        where: { cartId_storeProductId: { cartId: cart.id, storeProductId: entry.storeProductId } },
+        update: { quantity: { increment: entry.quantity } },
+        create: { cartId: cart.id, storeProductId: entry.storeProductId, quantity: entry.quantity }
+      });
+      addedItems.push(item);
+    }
+
+    return sendCreated(res, { addedCount: addedItems.length, items: addedItems });
   } catch (error) {
     next(error);
   }

@@ -12,6 +12,11 @@ export const queryKeys = {
   categories: {
     all: ["categories"] as const
   },
+  tmt: {
+    brands: (params?: Record<string, unknown>) => ["tmt", "brands", params ?? {}] as const,
+    brandDetail: (slug: string, params?: Record<string, unknown>) =>
+      ["tmt", "brand", slug, params ?? {}] as const
+  },
   products: {
     all: ["products"] as const,
     list: (params?: Record<string, unknown>) => ["products", params ?? {}] as const,
