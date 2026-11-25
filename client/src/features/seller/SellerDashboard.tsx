@@ -32,13 +32,15 @@ import {
   LogOut,
   X,
   ZoomIn,
-  Crop
+  Crop,
+  TrendingUp
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
-import { marketplaceApi, API_BASE, getStoredUser } from "../../services/api";
+import { marketplaceApi, API_BASE, getStoredUser, type SellerProductListing } from "../../services/api";
+import type { SellerTmtListingInput, SellerTmtQuickRateInput } from "../../types/tmt";
 import { isAdminUser, isPartnerUser } from "../../lib/authRoles";
 import { queryKeys } from "../../lib/queryKeys";
 import {
@@ -48,6 +50,8 @@ import {
   isOrderTrackingTerminal
 } from "../checkout/DeliveryStepsTracker";
 import { ImageCropModal } from "./ImageCropModal";
+import { TmtSellerConfigurator } from "./TmtSellerConfigurator";
+import { TmtQuickRateModal } from "./TmtQuickRateModal";
 import { SellerTrackingShareButton } from "../tracking/SellerTrackingShareButton";
 
 // Available construction categories as specified: Cement, Iron, Electricals, Bricks, Sand, Stones, Tiles, etc.
@@ -153,7 +157,11 @@ function SellerDashboardContent() {
 
   // Edit product state
   const [editingProduct, setEditingProduct] = useState<{ id: string; name: string; unit: string; price: string; discount: string; stock: string; minOrder: string; deliveryRadiusKm: string; description: string } | null>(null);
+  const [editingTmtListing, setEditingTmtListing] = useState<SellerProductListing | null>(null);
+  const [quickRateListing, setQuickRateListing] = useState<SellerProductListing | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  const [tmtError, setTmtError] = useState<string | null>(null);
+  const [quickRateError, setQuickRateError] = useState<string | null>(null);
 
   // Manage images on existing product
   const [managingImagesFor, setManagingImagesFor] = useState<{ id: string; name: string; images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[] } | null>(null);
@@ -471,6 +479,53 @@ function SellerDashboardContent() {
     },
     onError: (err: Error) => {
       setEditError(err.message);
+    }
+  });
+
+  const createTmtListingMutation = useMutation({
+    mutationFn: (payload: SellerTmtListingInput) =>
+      marketplaceApi.sellerCreateTmtListing(payload),
+    onSuccess: () => {
+      setTmtError(null);
+      setShowAddModal(false);
+      setNewProdCategory("cement");
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["seller-dashboard"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+      void queryClient.invalidateQueries({ queryKey: ["tmt"] });
+    },
+    onError: (err: Error) => {
+      setTmtError(err.message);
+    }
+  });
+
+  const updateTmtListingMutation = useMutation({
+    mutationFn: ({ listingId, payload }: { listingId: string; payload: SellerTmtListingInput }) =>
+      marketplaceApi.sellerUpdateTmtListing(listingId, payload),
+    onSuccess: () => {
+      setTmtError(null);
+      setEditingTmtListing(null);
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+      void queryClient.invalidateQueries({ queryKey: ["tmt"] });
+    },
+    onError: (err: Error) => {
+      setTmtError(err.message);
+    }
+  });
+
+  const quickRateMutation = useMutation({
+    mutationFn: ({ listingId, payload }: { listingId: string; payload: SellerTmtQuickRateInput }) =>
+      marketplaceApi.sellerQuickUpdateTmtRate(listingId, payload),
+    onSuccess: () => {
+      setQuickRateError(null);
+      setQuickRateListing(null);
+      void queryClient.invalidateQueries({ queryKey: ["seller-products"] });
+      void queryClient.invalidateQueries({ queryKey: ["products"] });
+      void queryClient.invalidateQueries({ queryKey: ["tmt"] });
+    },
+    onError: (err: Error) => {
+      setQuickRateError(err.message);
     }
   });
 
@@ -1503,8 +1558,138 @@ function SellerDashboardContent() {
               />
             </div>
 
-            {/* Products Table */}
-            <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+            {/* Mobile Product Cards (< md) */}
+            <div className="space-y-3 md:hidden">
+              {sellerProductsQuery.isLoading ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+                  Loading saved inventory...
+                </div>
+              ) : sellerProductsQuery.error ? (
+                <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-700">
+                  {sellerProductsQuery.error.message}
+                </div>
+              ) : filteredProducts.length === 0 ? (
+                <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center text-sm text-gray-500">
+                  No materials found matching your filters. Click &ldquo;Add New Material&rdquo; to add your stock!
+                </div>
+              ) : (
+                filteredProducts.map((p) => {
+                  const fullListing = (sellerProductsQuery.data ?? []).find((l) => l.id === p.id);
+                  const imgUrl = fullListing ? getProductImageUrl(fullListing) : null;
+                  const tmtMeta = fullListing?.product?.tmtMetadata;
+                  const activeSizesCount = (fullListing?.product?.variants ?? []).filter(
+                    (v) => v.is_active !== false
+                  ).length;
+
+                  return (
+                    <article
+                      key={p.id}
+                      className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-xs space-y-3"
+                    >
+                      <div className="flex items-start gap-3">
+                        {imgUrl ? (
+                          <img
+                            src={imgUrl}
+                            alt={p.name}
+                            className="h-14 w-14 shrink-0 rounded-xl border border-gray-200 object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 text-gray-400">
+                            <ImagePlus size={18} />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="text-sm font-bold text-gray-900 line-clamp-2">{p.name}</h3>
+                            <button
+                              type="button"
+                              disabled={toggleProductMutation.isPending}
+                              onClick={() => toggleProductMutation.mutate({ id: p.id, isActive: !p.isActive })}
+                              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                                p.isActive
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-gray-100 text-gray-500"
+                              }`}
+                            >
+                              {p.isActive ? "Active" : "Off"}
+                            </button>
+                          </div>
+                          {tmtMeta ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-extrabold text-etukas-red">
+                                {tmtMeta.grade}
+                              </span>
+                              <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-800">
+                                {activeSizesCount} sizes active
+                              </span>
+                            </div>
+                          ) : null}
+                          <div className="mt-1.5 flex items-center justify-between text-xs">
+                            <span className="font-black text-gray-900">
+                              {tmtMeta
+                                ? `₹${tmtMeta.base_rate_per_ton_inr.toLocaleString("en-IN")} / Ton`
+                                : `₹${p.price.toLocaleString("en-IN")} / ${p.unit}`}
+                            </span>
+                            <span className={`font-bold ${p.stock < 20 ? "text-red-600" : "text-emerald-700"}`}>
+                              {p.stock} {tmtMeta ? "bundles" : "units"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-2.5">
+                        {tmtMeta && fullListing ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setQuickRateError(null);
+                              setQuickRateListing(fullListing);
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-extrabold text-orange-700"
+                          >
+                            <TrendingUp size={13} /> Quick Rate
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (tmtMeta && fullListing) {
+                              setTmtError(null);
+                              setEditingTmtListing(fullListing);
+                            } else {
+                              setEditingProduct({
+                                id: p.id,
+                                name: p.name,
+                                unit: p.unit,
+                                price: String(p.price),
+                                discount: p.discount ? String(p.discount) : "0",
+                                stock: String(p.stock),
+                                minOrder: String(p.minOrderQuantity || 1),
+                                deliveryRadiusKm: String(p.deliveryRadiusKm || 25),
+                                description: p.description
+                              });
+                            }
+                          }}
+                          className="inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700"
+                        >
+                          <Pencil size={13} /> Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fullListing && setManagingImagesFor({ id: fullListing.id, name: fullListing.product.name, images: fullListing.product.images })}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-bold text-blue-700"
+                        >
+                          <ImagePlus size={13} /> Photos
+                        </button>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Products Table (Desktop md+) */}
+            <div className="hidden overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm md:block">
               <div className="overflow-x-auto w-full" style={{ WebkitOverflowScrolling: "touch" }}>
                 <table className="min-w-[880px] w-full divide-y divide-gray-200 text-left text-sm">
                 <thead className="bg-gray-50 font-bold text-gray-700">
@@ -1560,6 +1745,16 @@ function SellerDashboardContent() {
                       <td className="px-6 py-4">
                         <div className="font-bold text-gray-900">{p.name}</div>
                         <div className="font-mono text-xs text-gray-400">SKU: {p.sku}</div>
+                        {fullListing?.product?.tmtMetadata ? (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <span className="rounded bg-red-50 px-1.5 py-0.5 text-[10px] font-extrabold text-etukas-red">
+                              {fullListing.product.tmtMetadata.grade}
+                            </span>
+                            <span className="rounded bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-800">
+                              {(fullListing.product.variants ?? []).filter((v) => v.is_active !== false).length} sizes active
+                            </span>
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-6 py-4">
                         <span className="capitalize rounded-md bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
@@ -1568,20 +1763,33 @@ function SellerDashboardContent() {
                       </td>
                       <td className="px-6 py-4 text-gray-600">{p.unit}</td>
                       <td className="px-6 py-4">
-                        <div className="font-bold text-gray-900">
-                          ₹{p.price.toLocaleString("en-IN")}
-                        </div>
-                        {p.discount > 0 ? (
-                          <div className="text-[11px] font-bold text-emerald-600">
-                            Discount: ₹{p.discount.toLocaleString("en-IN")} OFF
-                          </div>
+                        {fullListing?.product?.tmtMetadata ? (
+                          <>
+                            <div className="font-bold text-gray-900">
+                              ₹{fullListing.product.tmtMetadata.base_rate_per_ton_inr.toLocaleString("en-IN")} / Ton
+                            </div>
+                            <div className="text-[11px] font-semibold text-orange-700">
+                              Base Rate • Multi-size
+                            </div>
+                          </>
                         ) : (
-                          <div className="text-[11px] text-gray-400 font-normal">No discount</div>
+                          <>
+                            <div className="font-bold text-gray-900">
+                              ₹{p.price.toLocaleString("en-IN")}
+                            </div>
+                            {p.discount > 0 ? (
+                              <div className="text-[11px] font-bold text-emerald-600">
+                                Discount: ₹{p.discount.toLocaleString("en-IN")} OFF
+                              </div>
+                            ) : (
+                              <div className="text-[11px] text-gray-400 font-normal">No discount</div>
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 font-bold ${p.stock < 20 ? "text-red-600" : "text-emerald-700"}`}>
-                          {p.stock} units
+                          {p.stock} {fullListing?.product?.tmtMetadata ? "bundles" : "units"}
                           {p.stock < 20 && <AlertTriangle size={14} />}
                         </span>
                         <div className="text-[11px] font-semibold text-gray-500 mt-0.5">
@@ -1606,19 +1814,39 @@ function SellerDashboardContent() {
                         </button>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          {fullListing?.product?.tmtMetadata ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setQuickRateError(null);
+                                setQuickRateListing(fullListing);
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2 py-1 text-xs font-extrabold text-orange-700 hover:bg-orange-100"
+                              title="Update today's TMT per-ton base rate in 5 seconds"
+                            >
+                              <TrendingUp size={13} /> Quick Rate
+                            </button>
+                          ) : null}
                           <button
-                            onClick={() => setEditingProduct({
-                              id: p.id,
-                              name: p.name,
-                              unit: p.unit,
-                              price: String(p.price),
-                              discount: p.discount ? String(p.discount) : "0",
-                              stock: String(p.stock),
-                              minOrder: String(p.minOrderQuantity || 1),
-                              deliveryRadiusKm: String(p.deliveryRadiusKm || 25),
-                              description: p.description
-                            })}
+                            onClick={() => {
+                              if (fullListing?.product?.tmtMetadata) {
+                                setTmtError(null);
+                                setEditingTmtListing(fullListing);
+                              } else {
+                                setEditingProduct({
+                                  id: p.id,
+                                  name: p.name,
+                                  unit: p.unit,
+                                  price: String(p.price),
+                                  discount: p.discount ? String(p.discount) : "0",
+                                  stock: String(p.stock),
+                                  minOrder: String(p.minOrderQuantity || 1),
+                                  deliveryRadiusKm: String(p.deliveryRadiusKm || 25),
+                                  description: p.description
+                                });
+                              }
+                            }}
                             className="text-xs font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
                             title="Edit product details"
                           >
@@ -1659,12 +1887,28 @@ function SellerDashboardContent() {
             {/* Modal for adding product */}
             {showAddModal && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-                <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                <div
+                  className={`w-full rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto ${
+                    newProdCategory === "iron" ? "max-w-4xl" : "max-w-lg"
+                  }`}
+                >
                   <div className="flex items-center justify-between border-b pb-3">
-                    <h3 className="text-lg font-bold text-gray-900">Add Material to Store Catalog</h3>
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">
+                        {newProdCategory === "iron"
+                          ? "TMT Bars Yard Listing & Rate Configurator"
+                          : "Add Material to Store Catalog"}
+                      </h3>
+                      {newProdCategory === "iron" ? (
+                        <p className="text-xs text-gray-500">
+                          Configure all diameters (6mm–32mm) and daily base rate in a single save
+                        </p>
+                      ) : null}
+                    </div>
                     <button
                       onClick={() => {
                         setShowAddModal(false);
+                        setTmtError(null);
                         setNewProdImageBase64(undefined);
                         setNewProdImagePreview(null);
                         setImageError(null);
@@ -1676,6 +1920,44 @@ function SellerDashboardContent() {
                     </button>
                   </div>
 
+                  {newProdCategory === "iron" ? (
+                    <div className="mt-4 space-y-4">
+                      <div>
+                        <label className="block text-xs font-bold uppercase text-gray-700">Material Category</label>
+                        <select
+                          value={newProdCategory}
+                          onChange={(e) => {
+                            setNewProdCategory(e.target.value);
+                            const found = MATERIAL_CATEGORIES.find((c) => c.id === e.target.value);
+                            if (found?.unit) setNewProdUnit(found.unit);
+                          }}
+                          className="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold shadow-sm focus:border-orange-500 focus:outline-none"
+                        >
+                          {MATERIAL_CATEGORIES.filter((c) => c.id !== "all").map((cat) => (
+                            <option key={cat.id} value={cat.id}>
+                              {cat.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <TmtSellerConfigurator
+                        storeCity={primaryStore?.city}
+                        hasStoreCoords={
+                          primaryStore?.latitude != null && primaryStore?.longitude != null
+                        }
+                        isSaving={createTmtListingMutation.isPending}
+                        errorMessage={tmtError}
+                        onCancel={() => {
+                          setShowAddModal(false);
+                          setTmtError(null);
+                        }}
+                        onSubmit={async (payload) => {
+                          await createTmtListingMutation.mutateAsync(payload);
+                        }}
+                      />
+                    </div>
+                  ) : (
                   <form onSubmit={handleAddProduct} className="mt-4 space-y-4">
                     <div>
                       <label className="block text-xs font-bold uppercase text-gray-700">Material Category</label>
@@ -1973,9 +2255,74 @@ function SellerDashboardContent() {
                       </Button>
                     </div>
                   </form>
+                  )}
                 </div>
               </div>
             )}
+
+            {/* Edit TMT Listing Configurator Modal */}
+            {editingTmtListing && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+                <div className="w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">
+                        Edit TMT Yard Listing &amp; Variants
+                      </h3>
+                      <p className="text-xs text-gray-500">{editingTmtListing.product.name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTmtListing(null);
+                        setTmtError(null);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="mt-4">
+                    <TmtSellerConfigurator
+                      editingListing={editingTmtListing}
+                      storeCity={primaryStore?.city}
+                      hasStoreCoords={
+                        primaryStore?.latitude != null && primaryStore?.longitude != null
+                      }
+                      isSaving={updateTmtListingMutation.isPending}
+                      errorMessage={tmtError}
+                      onCancel={() => {
+                        setEditingTmtListing(null);
+                        setTmtError(null);
+                      }}
+                      onSubmit={async (payload) => {
+                        await updateTmtListingMutation.mutateAsync({
+                          listingId: editingTmtListing.id,
+                          payload
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick Daily TMT Rate Modal */}
+            {quickRateListing ? (
+              <TmtQuickRateModal
+                key={quickRateListing.id}
+                listing={quickRateListing}
+                isSaving={quickRateMutation.isPending}
+                errorMessage={quickRateError}
+                onClose={() => {
+                  setQuickRateListing(null);
+                  setQuickRateError(null);
+                }}
+                onSave={async (listingId, payload) => {
+                  await quickRateMutation.mutateAsync({ listingId, payload });
+                }}
+              />
+            ) : null}
 
             {/* Edit Product Modal */}
             {editingProduct && (

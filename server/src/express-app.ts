@@ -32,6 +32,7 @@ import { storesRouter } from "./modules/stores/stores.routes.js";
 import { techniciansRouter } from "./modules/technicians/technicians.routes.js";
 import { chatRouter, adminChatRouter } from "./modules/chat/chat.routes.js";
 import { driverRouter, orderTrackingRouter } from "./modules/tracking/tracking.routes.js";
+import { tmtRouter } from "./modules/tmt/tmt.routes.js";
 import { prisma } from "./config/prisma.js";
 import { errorHandler, notFoundHandler } from "./middleware/error.js";
 import { apiLimiter, requireCsrf } from "./middleware/security.js";
@@ -167,6 +168,7 @@ export function createApp() {
   app.use("/api/v1", apiLimiter);
   app.use("/api/v1/auth", authRouter);
   app.use("/api/v1/categories", categoriesRouter);
+  app.use("/api/v1/tmt", tmtRouter);
   app.use("/api/v1/products", productsRouter);
   app.use("/api/v1/stores", storesRouter);
   app.use("/api/v1/technicians", techniciansRouter);

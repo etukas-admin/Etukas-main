@@ -10,7 +10,15 @@ import {
   updateOrderTracking,
   type OrderRecord
 } from "../orders/orders.routes.js";
-import { orderTrackingUpdateSchema } from "@etukas/shared";
+import {
+  calcWeightPerMeterKg,
+  orderTrackingUpdateSchema,
+  sellerTmtListingSchema,
+  sellerTmtQuickRateSchema,
+  TMT_CATEGORY_SLUG,
+  type TmtMetadata,
+  type TmtVariant
+} from "@etukas/shared";
 import { randomUUID } from "node:crypto";
 import { Router } from "express";
 import { z } from "zod";
@@ -19,6 +27,12 @@ import { prisma } from "../../config/prisma.js";
 import { requireAuth, requireRole } from "../../middleware/auth.js";
 import { isMissingColumnError } from "../../utils/geo.js";
 import { HttpError, sendCreated, sendOk } from "../../utils/http.js";
+import {
+  getFallbackTmtListingById,
+  isMissingTmtSchemaError,
+  recalculateTmtVariantsFromQuickRate,
+  saveFallbackTmtListing
+} from "../tmt/tmt.store.js";
 
 export const sellerRouter = Router();
 sellerRouter.use(requireAuth, requireRole(Role.SELLER, Role.MANUFACTURER, Role.ADMIN));
@@ -250,6 +264,27 @@ const SELLER_LISTING_INCLUDE = {
           sortOrder: true
         }
       },
+      category: true,
+      variants: {
+        orderBy: { diameterMm: "asc" as const }
+      }
+    }
+  },
+  store: true
+} as const;
+
+const SELLER_LISTING_NO_TMT_INCLUDE = {
+  product: {
+    include: {
+      images: {
+        select: {
+          id: true,
+          productId: true,
+          url: true,
+          altText: true,
+          sortOrder: true
+        }
+      },
       category: true
     }
   },
@@ -271,15 +306,45 @@ const SELLER_LISTING_LEGACY_SELECT = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
-  ...SELLER_LISTING_INCLUDE
+  ...SELLER_LISTING_NO_TMT_INCLUDE
 } as const;
 
+function mapDbVariantsToTmt(variants?: any[]): TmtVariant[] | undefined {
+  if (!Array.isArray(variants) || variants.length === 0) return undefined;
+  return variants.map((v) => ({
+    id: v.id,
+    product_id: v.productId,
+    diameter_mm: Number(v.diameterMm),
+    label: v.label,
+    is_lite: Boolean(v.isLite),
+    pieces_per_bundle: Number(v.piecesPerBundle),
+    weight_per_meter_kg: Number(v.weightPerMeterKg),
+    approx_weight_per_bundle_kg: Number(v.weightPerBundleKg),
+    price_per_bundle_inr: Number(v.pricePerBundleInr),
+    price_per_ton_inr: Number(v.pricePerTonInr),
+    common_use: v.commonUse,
+    stock_bundles: Number(v.stockQuantity ?? 0),
+    min_order_quantity: Number(v.minOrderQuantity ?? 1),
+    is_active: v.isActive !== false
+  }));
+}
+
 function formatSellerListing(listing: any) {
+  const fallbackTmt = getFallbackTmtListingById(listing.id);
+  const mappedVariants =
+    mapDbVariantsToTmt(listing.product?.variants) ?? fallbackTmt?.variants;
+  const resolvedTmtMetadata =
+    (listing.product?.tmtMetadata as TmtMetadata | null | undefined) ??
+    fallbackTmt?.metadata ??
+    null;
+
   return {
     ...listing,
     deliveryRadiusKm: listing.deliveryRadiusKm ?? listing.store?.serviceRadiusKm ?? 25,
     product: {
       ...listing.product,
+      tmtMetadata: resolvedTmtMetadata,
+      ...(mappedVariants ? { variants: mappedVariants } : {}),
       images: (listing.product?.images ?? []).map((img: any) => ({
         id: img.id,
         productId: img.productId,
@@ -304,12 +369,30 @@ sellerRouter.get("/products", async (req, res, next) => {
         orderBy: { updatedAt: "desc" }
       });
     } catch (err) {
-      if (!isMissingColumnError(err, "deliveryRadiusKm")) throw err;
-      listings = await prisma.storeProduct.findMany({
-        where: { store: { sellerProfileId: profile.id } },
-        select: SELLER_LISTING_LEGACY_SELECT,
-        orderBy: { updatedAt: "desc" }
-      });
+      if (isMissingTmtSchemaError(err)) {
+        try {
+          listings = await prisma.storeProduct.findMany({
+            where: { store: { sellerProfileId: profile.id } },
+            include: SELLER_LISTING_NO_TMT_INCLUDE,
+            orderBy: { updatedAt: "desc" }
+          });
+        } catch (err2) {
+          if (!isMissingColumnError(err2, "deliveryRadiusKm")) throw err2;
+          listings = await prisma.storeProduct.findMany({
+            where: { store: { sellerProfileId: profile.id } },
+            select: SELLER_LISTING_LEGACY_SELECT,
+            orderBy: { updatedAt: "desc" }
+          });
+        }
+      } else if (isMissingColumnError(err, "deliveryRadiusKm")) {
+        listings = await prisma.storeProduct.findMany({
+          where: { store: { sellerProfileId: profile.id } },
+          select: SELLER_LISTING_LEGACY_SELECT,
+          orderBy: { updatedAt: "desc" }
+        });
+      } else {
+        throw err;
+      }
     }
     return sendOk(res, listings.map(formatSellerListing));
   } catch (error) {
@@ -499,6 +582,499 @@ sellerRouter.patch("/products/:id", async (req, res, next) => {
         select: SELLER_LISTING_LEGACY_SELECT
       });
     }
+    return sendOk(res, formatSellerListing(updated));
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ─── TMT Yard Listing Configurator & Quick Daily Rate Update ─────────────────
+
+function parseSellerBase64Image(imageBase64?: string) {
+  if (!imageBase64) return null;
+  const match = imageBase64.match(/^data:([a-zA-Z0-9.+/-]+\/[a-zA-Z0-9.+/-]+);base64,(.+)$/);
+  if (!match) throw new HttpError(400, "INVALID_IMAGE", "Invalid image data format");
+  const [, mimeType, b64data] = match;
+  if (!ALLOWED_IMAGE_TYPES.includes(mimeType)) {
+    throw new HttpError(400, "INVALID_IMAGE_TYPE", `Image must be one of: ${ALLOWED_IMAGE_TYPES.join(", ")}`);
+  }
+  const buffer = Buffer.from(b64data, "base64");
+  if (buffer.length > MAX_IMAGE_SIZE_BYTES) {
+    throw new HttpError(400, "IMAGE_TOO_LARGE", "Image must be under 500 KB");
+  }
+  return { buffer, mimeType, sizeBytes: buffer.length };
+}
+
+sellerRouter.post("/tmt-products", async (req, res, next) => {
+  try {
+    const input = sellerTmtListingSchema.parse(req.body);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    const profileStores = Array.isArray((profile as any).stores) ? (profile as any).stores : [];
+    const store =
+      profileStores[0] ??
+      (await prisma.store.findFirst({
+        where: { sellerProfileId: profile.id },
+        orderBy: { createdAt: "asc" }
+      }));
+    if (!store) throw new HttpError(404, "STORE_NOT_FOUND", "Store not found");
+
+    const approved = profile.verificationStatus === VerificationStatus.APPROVED;
+    if (approved && !store.isActive) {
+      throw new HttpError(409, "STORE_INACTIVE", "Your partner account is approved, but the store is inactive. Contact Etukas support.");
+    }
+
+    const parsedImage = parseSellerBase64Image(input.imageBase64);
+    const dbCategory = await prisma.category.upsert({
+      where: { slug: TMT_CATEGORY_SLUG },
+      update: { isActive: true },
+      create: {
+        name: "Steel and iron bars",
+        slug: TMT_CATEGORY_SLUG,
+        icon: "Grip",
+        isActive: true
+      }
+    });
+
+    const activeVariants = input.variants.filter((v) => v.isActive);
+    const totalStockBundles = activeVariants.reduce((sum, v) => sum + v.stockBundles, 0);
+    const resolvedRadiusKm = input.deliveryRadiusKm ?? store.serviceRadiusKm ?? 25;
+    const createdListings: any[] = [];
+
+    for (const grade of input.grades) {
+      const productId = randomUUID();
+      const imageId = parsedImage ? randomUUID() : undefined;
+      const sku = `TMT-${input.brandSlug.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8)}-${grade.replace(/\s+/g, "")}-${randomUUID().slice(0, 5).toUpperCase()}`;
+      const productName = `${input.brandName} ${grade} TMT Bars (${input.logistics.rodLengthMeters}m)`;
+      const slugBase = `${input.brandSlug}-${grade.toLowerCase().replace(/\s+/g, "-")}`.slice(0, 120);
+      const productSlug = `${slugBase}-${randomUUID().slice(0, 8)}`;
+
+      const tmtMetadata: TmtMetadata = {
+        brand_name: input.brandName,
+        brand_slug: input.brandSlug,
+        tier: input.tier,
+        grade,
+        base_rate_per_ton_inr: input.baseRatePerTonInr,
+        supports_lite_variants: input.supportsLiteVariants,
+        logistics: {
+          rod_length_meters: input.logistics.rodLengthMeters,
+          billing_mode: input.logistics.billingMode,
+          min_order_tons: input.logistics.minOrderTons,
+          free_delivery_tons: input.logistics.freeDeliveryTons,
+          loading_charge_per_ton_inr: input.logistics.loadingChargePerTonInr,
+          gst_included: input.logistics.gstIncluded,
+          extra_6mm_per_ton_inr: input.logistics.extra6mmPerTonInr,
+          extra_8mm_per_ton_inr: input.logistics.extra8mmPerTonInr,
+          extra_8mm_lite_per_ton_inr: input.logistics.extra8mmLitePerTonInr
+        },
+        updated_at: new Date().toISOString()
+      };
+
+      const mappedVariants: TmtVariant[] = input.variants.map((v) => ({
+        id: randomUUID(),
+        product_id: productId,
+        diameter_mm: v.diameterMm,
+        label: v.label,
+        is_lite: v.isLite,
+        pieces_per_bundle: v.piecesPerBundle,
+        weight_per_meter_kg: v.weightPerMeterKg ?? calcWeightPerMeterKg(v.diameterMm),
+        approx_weight_per_bundle_kg: v.approxWeightPerBundleKg,
+        price_per_bundle_inr: Math.round(v.pricePerBundleInr),
+        price_per_ton_inr: Math.round(v.pricePerTonInr),
+        common_use: v.commonUse,
+        stock_bundles: v.stockBundles,
+        min_order_quantity: v.minOrderQuantity,
+        is_active: v.isActive
+      }));
+
+      const imageCreateBlock = parsedImage && imageId
+        ? {
+            images: {
+              create: {
+                id: imageId,
+                url: `/api/v1/products/${productId}/images/${imageId}`,
+                altText: productName,
+                sortOrder: 0,
+                metadata: {
+                  imageData: parsedImage.buffer.toString("base64"),
+                  mimeType: parsedImage.mimeType,
+                  sizeBytes: parsedImage.sizeBytes
+                }
+              }
+            }
+          }
+        : input.suggestedImageUrl
+        ? {
+            images: {
+              create: {
+                url: input.suggestedImageUrl,
+                altText: productName,
+                sortOrder: 0
+              }
+            }
+          }
+        : {};
+
+      let listing: any;
+      try {
+        listing = await prisma.storeProduct.create({
+          data: {
+            sku,
+            priceMinor: Math.round(input.baseRatePerTonInr * 100),
+            discountMinor: 0,
+            stockQuantity: totalStockBundles,
+            minOrderQuantity: 1,
+            deliveryRadiusKm: resolvedRadiusKm,
+            isActive: approved,
+            store: { connect: { id: store.id } },
+            product: {
+              create: {
+                id: productId,
+                categoryId: dbCategory.id,
+                name: productName,
+                slug: productSlug,
+                brand: input.brandName,
+                description:
+                  input.description ||
+                  `${input.brandName} ${grade} IS 1786 TMT bars (${input.logistics.rodLengthMeters}m) • ${activeVariants.map((v) => v.label).join(", ")}`,
+                unit: "bundle",
+                tmtMetadata: tmtMetadata as any,
+                ...imageCreateBlock,
+                variants: {
+                  create: mappedVariants.map((v) => ({
+                    id: v.id,
+                    diameterMm: v.diameter_mm,
+                    label: v.label,
+                    isLite: Boolean(v.is_lite),
+                    piecesPerBundle: v.pieces_per_bundle,
+                    weightPerMeterKg: v.weight_per_meter_kg,
+                    weightPerBundleKg: v.approx_weight_per_bundle_kg,
+                    pricePerBundleInr: v.price_per_bundle_inr,
+                    pricePerTonInr: v.price_per_ton_inr,
+                    commonUse: v.common_use,
+                    stockQuantity: v.stock_bundles,
+                    minOrderQuantity: v.min_order_quantity ?? 1,
+                    isActive: v.is_active !== false
+                  }))
+                }
+              }
+            }
+          },
+          include: SELLER_LISTING_INCLUDE
+        });
+      } catch (err) {
+        if (!isMissingTmtSchemaError(err) && !isMissingColumnError(err, "deliveryRadiusKm")) {
+          throw err;
+        }
+        listing = await prisma.storeProduct.create({
+          data: {
+            sku,
+            priceMinor: Math.round(input.baseRatePerTonInr * 100),
+            discountMinor: 0,
+            stockQuantity: totalStockBundles,
+            minOrderQuantity: 1,
+            isActive: approved,
+            store: { connect: { id: store.id } },
+            product: {
+              create: {
+                id: productId,
+                categoryId: dbCategory.id,
+                name: productName,
+                slug: productSlug,
+                brand: input.brandName,
+                description:
+                  input.description ||
+                  `${input.brandName} ${grade} IS 1786 TMT bars (${input.logistics.rodLengthMeters}m)`,
+                unit: "bundle",
+                ...imageCreateBlock
+              }
+            }
+          },
+          select: SELLER_LISTING_LEGACY_SELECT
+        });
+      }
+
+      saveFallbackTmtListing({
+        listingId: listing.id,
+        productId: listing.productId,
+        sellerProfileId: profile.id,
+        storeId: store.id,
+        storeName: store.name,
+        storeCity: store.city,
+        storeState: store.state,
+        storeLat: store.latitude != null ? Number(store.latitude) : null,
+        storeLng: store.longitude != null ? Number(store.longitude) : null,
+        storeRadiusKm: store.serviceRadiusKm ?? 25,
+        deliveryRadiusKm: resolvedRadiusKm,
+        isActive: listing.isActive,
+        metadata: tmtMetadata,
+        variants: mappedVariants,
+        updatedAt: new Date().toISOString()
+      });
+
+      createdListings.push(formatSellerListing(listing));
+    }
+
+    return sendCreated(res, {
+      listings: createdListings,
+      count: createdListings.length
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+sellerRouter.patch("/tmt-products/:listingId", async (req, res, next) => {
+  try {
+    const input = sellerTmtListingSchema.parse(req.body);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+    const listing = await prisma.storeProduct.findFirst({
+      where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+      include: { store: true, product: true }
+    });
+    if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
+
+    const primaryGrade = input.grades[0];
+    const activeVariants = input.variants.filter((v) => v.isActive);
+    const totalStockBundles = activeVariants.reduce((sum, v) => sum + v.stockBundles, 0);
+    const productName = `${input.brandName} ${primaryGrade} TMT Bars (${input.logistics.rodLengthMeters}m)`;
+    const resolvedRadiusKm = input.deliveryRadiusKm ?? listing.store?.serviceRadiusKm ?? 25;
+
+    const tmtMetadata: TmtMetadata = {
+      brand_name: input.brandName,
+      brand_slug: input.brandSlug,
+      tier: input.tier,
+      grade: primaryGrade,
+      base_rate_per_ton_inr: input.baseRatePerTonInr,
+      supports_lite_variants: input.supportsLiteVariants,
+      logistics: {
+        rod_length_meters: input.logistics.rodLengthMeters,
+        billing_mode: input.logistics.billingMode,
+        min_order_tons: input.logistics.minOrderTons,
+        free_delivery_tons: input.logistics.freeDeliveryTons,
+        loading_charge_per_ton_inr: input.logistics.loadingChargePerTonInr,
+        gst_included: input.logistics.gstIncluded,
+        extra_6mm_per_ton_inr: input.logistics.extra6mmPerTonInr,
+        extra_8mm_per_ton_inr: input.logistics.extra8mmPerTonInr,
+        extra_8mm_lite_per_ton_inr: input.logistics.extra8mmLitePerTonInr
+      },
+      updated_at: new Date().toISOString()
+    };
+
+    const mappedVariants: TmtVariant[] = input.variants.map((v) => ({
+      id: `${listing.productId}-${v.label.toLowerCase().replace(/\s+/g, "-")}`,
+      product_id: listing.productId,
+      diameter_mm: v.diameterMm,
+      label: v.label,
+      is_lite: v.isLite,
+      pieces_per_bundle: v.piecesPerBundle,
+      weight_per_meter_kg: v.weightPerMeterKg ?? calcWeightPerMeterKg(v.diameterMm),
+      approx_weight_per_bundle_kg: v.approxWeightPerBundleKg,
+      price_per_bundle_inr: Math.round(v.pricePerBundleInr),
+      price_per_ton_inr: Math.round(v.pricePerTonInr),
+      common_use: v.commonUse,
+      stock_bundles: v.stockBundles,
+      min_order_quantity: v.minOrderQuantity,
+      is_active: v.isActive
+    }));
+
+    try {
+      await prisma.product.update({
+        where: { id: listing.productId },
+        data: {
+          name: productName,
+          brand: input.brandName,
+          description:
+            input.description ||
+            `${input.brandName} ${primaryGrade} IS 1786 TMT bars (${input.logistics.rodLengthMeters}m) • ${activeVariants.map((v) => v.label).join(", ")}`,
+          tmtMetadata: tmtMetadata as any
+        }
+      });
+
+      for (const v of mappedVariants) {
+        await prisma.productVariant.upsert({
+          where: { productId_label: { productId: listing.productId, label: v.label } },
+          update: {
+            diameterMm: v.diameter_mm,
+            isLite: Boolean(v.is_lite),
+            piecesPerBundle: v.pieces_per_bundle,
+            weightPerMeterKg: v.weight_per_meter_kg,
+            weightPerBundleKg: v.approx_weight_per_bundle_kg,
+            pricePerBundleInr: v.price_per_bundle_inr,
+            pricePerTonInr: v.price_per_ton_inr,
+            commonUse: v.common_use,
+            stockQuantity: v.stock_bundles,
+            minOrderQuantity: v.min_order_quantity ?? 1,
+            isActive: v.is_active !== false
+          },
+          create: {
+            productId: listing.productId,
+            diameterMm: v.diameter_mm,
+            label: v.label,
+            isLite: Boolean(v.is_lite),
+            piecesPerBundle: v.pieces_per_bundle,
+            weightPerMeterKg: v.weight_per_meter_kg,
+            weightPerBundleKg: v.approx_weight_per_bundle_kg,
+            pricePerBundleInr: v.price_per_bundle_inr,
+            pricePerTonInr: v.price_per_ton_inr,
+            commonUse: v.common_use,
+            stockQuantity: v.stock_bundles,
+            minOrderQuantity: v.min_order_quantity ?? 1,
+            isActive: v.is_active !== false
+          }
+        });
+      }
+    } catch (err) {
+      if (!isMissingTmtSchemaError(err)) throw err;
+      await prisma.product.update({
+        where: { id: listing.productId },
+        data: {
+          name: productName,
+          brand: input.brandName,
+          description: input.description || productName
+        }
+      });
+    }
+
+    let updated: any;
+    try {
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: {
+          priceMinor: Math.round(input.baseRatePerTonInr * 100),
+          stockQuantity: totalStockBundles,
+          deliveryRadiusKm: resolvedRadiusKm
+        },
+        include: SELLER_LISTING_INCLUDE
+      });
+    } catch (err) {
+      if (!isMissingTmtSchemaError(err) && !isMissingColumnError(err, "deliveryRadiusKm")) {
+        throw err;
+      }
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: {
+          priceMinor: Math.round(input.baseRatePerTonInr * 100),
+          stockQuantity: totalStockBundles
+        },
+        select: SELLER_LISTING_LEGACY_SELECT
+      });
+    }
+
+    saveFallbackTmtListing({
+      listingId: listing.id,
+      productId: listing.productId,
+      sellerProfileId: profile.id,
+      storeId: listing.storeId,
+      storeName: listing.store.name,
+      storeCity: listing.store.city,
+      storeState: listing.store.state,
+      storeLat: listing.store.latitude != null ? Number(listing.store.latitude) : null,
+      storeLng: listing.store.longitude != null ? Number(listing.store.longitude) : null,
+      storeRadiusKm: listing.store.serviceRadiusKm ?? 25,
+      deliveryRadiusKm: resolvedRadiusKm,
+      isActive: updated.isActive,
+      metadata: tmtMetadata,
+      variants: mappedVariants,
+      updatedAt: new Date().toISOString()
+    });
+
+    return sendOk(res, formatSellerListing(updated));
+  } catch (error) {
+    next(error);
+  }
+});
+
+sellerRouter.patch("/tmt-products/:listingId/quick-rate", async (req, res, next) => {
+  try {
+    const input = sellerTmtQuickRateSchema.parse(req.body);
+    const profile = await sellerProfile(req.user!.id, req.user?.email);
+
+    let listing: any;
+    try {
+      listing = await prisma.storeProduct.findFirst({
+        where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+        include: SELLER_LISTING_INCLUDE
+      });
+    } catch (err) {
+      if (!isMissingTmtSchemaError(err)) throw err;
+      listing = await prisma.storeProduct.findFirst({
+        where: { id: req.params.listingId, store: { sellerProfileId: profile.id } },
+        select: SELLER_LISTING_LEGACY_SELECT
+      });
+    }
+    if (!listing) throw new HttpError(404, "LISTING_NOT_FOUND", "Listing not found");
+
+    const fallback = getFallbackTmtListingById(listing.id);
+    const existingMeta =
+      (listing.product?.tmtMetadata as TmtMetadata | null | undefined) ?? fallback?.metadata;
+    const existingVariants =
+      mapDbVariantsToTmt(listing.product?.variants) ?? fallback?.variants ?? [];
+
+    if (!existingMeta || existingVariants.length === 0) {
+      throw new HttpError(400, "NOT_A_TMT_LISTING", "This listing does not have TMT variant configuration");
+    }
+
+    const { updatedMetadata, updatedVariants } = recalculateTmtVariantsFromQuickRate(
+      existingVariants,
+      existingMeta,
+      input
+    );
+
+    try {
+      await prisma.product.update({
+        where: { id: listing.productId },
+        data: { tmtMetadata: updatedMetadata as any }
+      });
+
+      for (const v of updatedVariants) {
+        await prisma.productVariant.updateMany({
+          where: { productId: listing.productId, label: v.label },
+          data: {
+            pricePerBundleInr: v.price_per_bundle_inr,
+            pricePerTonInr: v.price_per_ton_inr
+          }
+        });
+      }
+    } catch (err) {
+      if (!isMissingTmtSchemaError(err)) throw err;
+    }
+
+    let updated: any;
+    try {
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: { priceMinor: Math.round(input.baseRatePerTonInr * 100) },
+        include: SELLER_LISTING_INCLUDE
+      });
+    } catch (err) {
+      if (!isMissingTmtSchemaError(err) && !isMissingColumnError(err, "deliveryRadiusKm")) {
+        throw err;
+      }
+      updated = await prisma.storeProduct.update({
+        where: { id: listing.id },
+        data: { priceMinor: Math.round(input.baseRatePerTonInr * 100) },
+        select: SELLER_LISTING_LEGACY_SELECT
+      });
+    }
+
+    saveFallbackTmtListing({
+      listingId: listing.id,
+      productId: listing.productId,
+      sellerProfileId: profile.id,
+      storeId: listing.storeId,
+      storeName: listing.store.name,
+      storeCity: listing.store.city,
+      storeState: listing.store.state,
+      storeLat: listing.store.latitude != null ? Number(listing.store.latitude) : null,
+      storeLng: listing.store.longitude != null ? Number(listing.store.longitude) : null,
+      storeRadiusKm: listing.store.serviceRadiusKm ?? 25,
+      deliveryRadiusKm: updated.deliveryRadiusKm ?? listing.store?.serviceRadiusKm ?? 25,
+      isActive: updated.isActive,
+      metadata: updatedMetadata,
+      variants: updatedVariants,
+      updatedAt: new Date().toISOString()
+    });
+
     return sendOk(res, formatSellerListing(updated));
   } catch (error) {
     next(error);

@@ -27,10 +27,13 @@ import {
   Wrench,
 } from "lucide-react";
 import { SellerGroupSection } from "./SellerGroup";
+import { TmtCartBatchCard } from "./TmtCartBatchCard";
 import { OrderSummary } from "./OrderSummary";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { useCartQuery, useClearCart } from "./useCart";
 import { enrichCartItems, groupByStore } from "./cartTypes";
+import { useTmtCart } from "../tmt/tmtCartStore";
+import { TMT_WEIGHBRIDGE_NOTE } from "../../types/tmt";
 import { formatMoney } from "../../lib/utils";
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
@@ -186,6 +189,7 @@ function MobileStickyBar({
 export function CartPage() {
   const cart = useCartQuery();
   const clearCart = useClearCart();
+  const tmtCart = useTmtCart();
   const navigate = useNavigate();
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
@@ -195,17 +199,91 @@ export function CartPage() {
     [cart.data?.items]
   );
   const sellerGroups = useMemo(() => groupByStore(enrichedItems), [enrichedItems]);
-  const totalQty = useMemo(
+  const dbTotalQty = useMemo(
     () => enrichedItems.reduce((sum, item) => sum + item.quantity, 0),
     [enrichedItems]
   );
 
+  const hasTmtBatches = tmtCart.batches.length > 0;
+  const hasDbItems = Boolean(cart.data && cart.data.items.length > 0);
+  const hasAnyItems = hasDbItems || hasTmtBatches;
+
+  const combinedCartTotals = useMemo(() => {
+    const dbTotals = cart.data?.totals ?? {
+      subtotalMinor: 0,
+      taxMinor: 0,
+      discountMinor: 0,
+      totalMinor: 0
+    };
+    const tmtMinor = tmtCart.summary.totalMinor;
+    return {
+      subtotalMinor: dbTotals.subtotalMinor + tmtMinor,
+      taxMinor: dbTotals.taxMinor,
+      discountMinor: dbTotals.discountMinor,
+      totalMinor: dbTotals.totalMinor + tmtMinor
+    };
+  }, [cart.data?.totals, tmtCart.summary.totalMinor]);
+
+  const combinedSummaryCart = useMemo(
+    () => ({
+      id: cart.data?.id ?? "tmt-local-cart",
+      items: cart.data?.items ?? [],
+      totals: combinedCartTotals
+    }),
+    [cart.data?.id, cart.data?.items, combinedCartTotals]
+  );
+
+  const combinedItemCount =
+    (cart.data?.items.length ?? 0) + tmtCart.summary.totalLines;
+  const combinedTotalQty = dbTotalQty + tmtCart.summary.totalBundles;
+
   const handleCheckout = () => {
-    navigate("/checkout", { state: { cartItems: enrichedItems } });
+    const tmtCheckoutItems = tmtCart.batches.flatMap((batch) =>
+      batch.lines.map((line) => ({
+        id: `${batch.id}__${line.label}`,
+        storeProductId: batch.storeProductId,
+        productName: `${batch.brandName} ${batch.grade} ${line.label} (${batch.rodLengthMeters}m)`,
+        unit: "bundle",
+        quantity: line.bundles,
+        priceMinor: Math.round(line.pricePerBundleInr * 100),
+        originalPriceMinor: Math.round(line.pricePerBundleInr * 100),
+        imageUrl: batch.imageUrl,
+        category: "Steel and iron bars",
+        storeId: batch.storeId,
+        storeName: batch.storeName
+      }))
+    );
+
+    const dbCheckoutItems = enrichedItems.map((item) => ({
+      id: item.id,
+      storeProductId: item.storeProduct.id,
+      productName: item.storeProduct.product.name,
+      unit: item.storeProduct.product.unit || "piece",
+      quantity: item.quantity,
+      priceMinor: item.storeProduct.priceMinor,
+      originalPriceMinor: Math.round(item.storeProduct.priceMinor * 1.3),
+      imageUrl: item.storeProduct.product.images?.[0]?.url,
+      category: item.storeProduct.product.category?.name || "Building Material",
+      storeId: item.storeProduct.store.id,
+      storeName: item.storeProduct.store.name
+    }));
+
+    navigate("/checkout", {
+      state: {
+        cartItems: [...tmtCheckoutItems, ...dbCheckoutItems],
+        hasTmtItems: hasTmtBatches,
+        initialNotes: hasTmtBatches ? TMT_WEIGHBRIDGE_NOTE : undefined
+      }
+    });
   };
 
   const handleClearCart = () => {
     const ids = cart.data?.items.map((i) => i.id) ?? [];
+    tmtCart.clearAll();
+    if (ids.length === 0) {
+      setShowClearConfirm(false);
+      return;
+    }
     clearCart.mutate(ids, {
       onSuccess: () => setShowClearConfirm(false),
     });
@@ -227,16 +305,16 @@ export function CartPage() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-extrabold text-etukas-black">Shopping Cart</h1>
-            {cart.data && cart.data.items.length > 0 && (
+            {hasAnyItems && (
               <p className="mt-1 text-sm text-gray-500">
-                {cart.data.items.length} {cart.data.items.length === 1 ? "item" : "items"} from{" "}
-                {sellerGroups.length} {sellerGroups.length === 1 ? "seller" : "sellers"}
+                {combinedItemCount} {combinedItemCount === 1 ? "item" : "items"}
+                {hasTmtBatches ? ` • ${tmtCart.summary.totalTons.toFixed(2)} Tons TMT Steel` : ""}
               </p>
             )}
           </div>
 
           {/* Clear cart button */}
-          {cart.data && cart.data.items.length > 0 && (
+          {hasAnyItems && (
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}
@@ -275,23 +353,32 @@ export function CartPage() {
         </div>
 
         {/* Content area */}
-        {cart.isLoading ? (
+        {cart.isLoading && !hasTmtBatches ? (
           <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
             <CartSkeleton />
             <div className="hidden lg:block">
               <div className="h-96 animate-pulse rounded-2xl bg-gray-100" />
             </div>
           </div>
-        ) : isAuthError ? (
+        ) : isAuthError && !hasTmtBatches ? (
           <SignInPrompt />
-        ) : cart.error ? (
+        ) : cart.error && !hasTmtBatches && !isAuthError ? (
           <CartError onRetry={() => cart.refetch()} />
-        ) : !cart.data || cart.data.items.length === 0 ? (
+        ) : !hasAnyItems ? (
           <EmptyCart />
         ) : (
           <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
-            {/* ── Left: Seller-grouped items ── */}
+            {/* ── Left: TMT Steel Batches + Seller-grouped items ── */}
             <div className="space-y-6">
+              {tmtCart.batches.map((batch) => (
+                <TmtCartBatchCard
+                  key={batch.id}
+                  batch={batch}
+                  onUpdateLineQuantity={tmtCart.updateLineQuantity}
+                  onRemoveBatch={tmtCart.removeBatch}
+                />
+              ))}
+
               {sellerGroups.map((group, idx) => (
                 <SellerGroupSection key={group.storeId} group={group} index={idx} />
               ))}
@@ -311,11 +398,11 @@ export function CartPage() {
             <div className="hidden lg:block">
               <div className="sticky top-24">
                 <OrderSummary
-                  cart={cart.data}
-                  itemCount={cart.data.items.length}
-                  totalQty={totalQty}
+                  cart={combinedSummaryCart}
+                  itemCount={combinedItemCount}
+                  totalQty={combinedTotalQty}
                   onCheckout={handleCheckout}
-                  checkoutDisabled={cart.data.items.length === 0}
+                  checkoutDisabled={!hasAnyItems}
                 />
               </div>
             </div>
@@ -324,10 +411,10 @@ export function CartPage() {
       </main>
 
       {/* Mobile sticky checkout bar */}
-      {cart.data && cart.data.items.length > 0 && (
+      {hasAnyItems && (
         <MobileStickyBar
-          total={cart.data.totals.totalMinor}
-          itemCount={cart.data.items.length}
+          total={combinedCartTotals.totalMinor}
+          itemCount={combinedItemCount}
           onCheckout={handleCheckout}
           disabled={false}
         />

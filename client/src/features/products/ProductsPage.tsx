@@ -9,6 +9,7 @@ import { getProductImageUrl } from "../../services/api";
 import { useWishlist } from "../account";
 import { ADDRESS_CHANGE_EVENT, getDeliveryLabel, getSelectedAddress } from "../location/locationStore";
 import { LocationRefreshingOverlay } from "../location/LocationRefreshingOverlay";
+import { TMT_MASTER_BRANDS } from "../../types/tmt";
 
 const cementBrands = [
   {
@@ -76,6 +77,52 @@ function CementBrandGrid() {
   );
 }
 
+function TmtSteelSpotlightBanner() {
+  return (
+    <section className="mb-6 overflow-hidden rounded-2xl border border-red-200 bg-gradient-to-r from-[#9e141a] via-[#C52228] to-[#1e293b] p-4 text-white shadow-sm sm:p-5">
+      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-amber-200">
+            <Sparkles size={11} /> Dedicated TMT Steel Ordering Hub
+          </span>
+          <h2 className="mt-1.5 text-lg font-black sm:text-xl">
+            Order Multi-Size TMT Steel Bars (6mm – 32mm) by Brand
+          </h2>
+          <p className="mt-0.5 text-xs text-red-50/90">
+            Compare live yard rates across Tata Tiscon, JSW, Jindal, SAIL, Vizag, Radha &amp; Telangana/AP mills with vehicle fit &amp; house steel estimator.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Link
+            to="/categories/tmt-steel"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-white px-4 py-2 text-xs font-black text-etukas-red shadow hover:bg-red-50"
+          >
+            <span>Open TMT Brands Hub</span>
+            <ArrowRight size={14} />
+          </Link>
+          <Link
+            to="/guides/tmt-bars"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/30 bg-white/10 px-3.5 py-2 text-xs font-bold text-white hover:bg-white/20"
+          >
+            Buyer Guide
+          </Link>
+        </div>
+      </div>
+
+      <div className="no-scrollbar mt-3.5 flex gap-2 overflow-x-auto pb-0.5">
+        {TMT_MASTER_BRANDS.slice(0, 10).map((b) => (
+          <Link
+            key={b.slug}
+            to={`/categories/tmt-steel/${encodeURIComponent(b.slug)}`}
+            className="shrink-0 rounded-xl border border-white/20 bg-black/25 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-xs transition hover:bg-white hover:text-etukas-red"
+          >
+            {b.name} • ₹{b.base_rate_per_ton_inr.toLocaleString("en-IN")}/T
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
 export function ProductsPage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category");
@@ -112,6 +159,7 @@ export function ProductsPage() {
   return (
     <main className="mx-auto max-w-7xl px-4 py-8 lg:px-6">
       {category === "cement" ? <CementBrandGrid /> : null}
+      {category === "steel-iron-bars" ? <TmtSteelSpotlightBanner /> : null}
 
       {/* Location Refresh Banner */}
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-center rounded-2xl bg-gradient-to-r from-etukas-pink/80 via-white to-etukas-pink/40 border border-etukas-red/20 p-4 shadow-sm">

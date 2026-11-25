@@ -4,11 +4,15 @@ import { Grid3X3, Home, ShoppingCart, UserRound } from "lucide-react";
 import { getStoredUser, type User } from "../../services/api";
 import { getDefaultHomeForUser } from "../../lib/authRoles";
 import { useCartQuery } from "../../features/cart/useCart";
+import { useTmtCart } from "../../features/tmt/tmtCartStore";
 
 export function BottomNav() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => getStoredUser());
   const cartQuery = useCartQuery();
-  const cartCount = cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0;
+  const tmtCart = useTmtCart();
+  const cartCount =
+    (cartQuery.data?.items.reduce((acc, item) => acc + item.quantity, 0) ?? 0) +
+    tmtCart.summary.totalBundles;
 
   useEffect(() => {
     const handleAuthChange = () => setCurrentUser(getStoredUser());

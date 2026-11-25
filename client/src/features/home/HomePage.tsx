@@ -32,6 +32,7 @@ import {
 type HomeCategory = {
   name: string;
   slug: string;
+  href?: string;
   image: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
   bg: string;
@@ -69,6 +70,7 @@ const homeCategories: readonly HomeCategory[] = [
   {
     name: "Iron Bars",
     slug: "steel-iron-bars",
+    href: "/categories/tmt-steel",
     image: "/images/pngimages/steel-iron-bars.webp",
     icon: IronBarsIcon,
     bg: "from-sky-50 to-blue-100/70 border-blue-200/60",
@@ -247,10 +249,10 @@ export function HomePage() {
           </Link>
         </div>
         <div className={`category-strip flex gap-3 overflow-x-auto px-0.5 md:grid md:grid-cols-5 md:gap-4 md:pb-2 lg:grid-cols-10 ${isMobileScrolled ? "pb-0 md:pb-2" : "pb-1.5"}`}>
-          {homeCategories.map(({ name, slug, image, icon: Icon }) => (
+          {homeCategories.map(({ name, slug, href, image, icon: Icon }) => (
             <Link
               key={name + slug}
-              to={`/products?category=${slug}`}
+              to={href ?? `/products?category=${slug}`}
               className="group flex min-w-[72px] flex-col items-center text-center transition-transform md:min-w-[84px]"
             >
               <div

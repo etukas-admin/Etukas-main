@@ -22,6 +22,9 @@ import { HomePage } from "./features/home/HomePage";
 import { LocationPage } from "./features/location/LocationPage";
 import { ProductsPage } from "./features/products/ProductsPage";
 import { ProductDetailsPage } from "./features/products/ProductDetailsPage";
+import { TmtBrandSelectionPage } from "./features/tmt/pages/TmtBrandSelectionPage";
+import { TmtOrderMatrixPage } from "./features/tmt/pages/TmtOrderMatrixPage";
+import { TmtBuyerGuidePage } from "./features/tmt/pages/TmtBuyerGuidePage";
 import { SellerDashboard } from "./features/seller/SellerDashboard";
 import { SellerEnquiryPage } from "./features/seller/SellerEnquiryPage";
 import { SellerHubPage } from "./features/seller/SellerHubPage";
@@ -79,6 +82,9 @@ export default function App() {
         <Route path="technicians" element={<TechniciansPage />} />
         <Route path="technicians/:category" element={<TechniciansPage />} />
         <Route path="categories" element={<CategoriesPage />} />
+        <Route path="categories/tmt-steel" element={<TmtBrandSelectionPage />} />
+        <Route path="categories/tmt-steel/:brandSlug" element={<TmtOrderMatrixPage />} />
+        <Route path="guides/tmt-bars" element={<TmtBuyerGuidePage />} />
         <Route path="cart" element={<CartPage />} />
         <Route path="checkout" element={<CheckoutPage />} />
         <Route path="order-confirmed/:orderId" element={<OrderConfirmedPage />} />

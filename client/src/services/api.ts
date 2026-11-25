@@ -8,7 +8,15 @@ import type {
   OrderTrackingUpdateInput,
   TruckLocationPayload,
   TripSessionInfo,
-  TrackingLinkResponse
+  TrackingLinkResponse,
+  TmtBrandCatalogItem,
+  TmtBrandTier,
+  TmtGrade,
+  TmtMetadata,
+  TmtVariant,
+  SellerTmtListingInput,
+  SellerTmtQuickRateInput,
+  BatchAddTmtCartInput
 } from "@etukas/shared";
 
 export type {
@@ -353,6 +361,50 @@ export const marketplaceApi = {
     api<{ id: string }>(`/admin/banners/${encodeURIComponent(id)}`, { method: "DELETE" }),
   cart: (options?: RequestOptions) => api<Cart>("/cart", { signal: options?.signal }),
   addToCart: (storeProductId: string, quantity: number) => api("/cart/items", { method: "POST", body: JSON.stringify({ storeProductId, quantity }) }),
+  batchAddCartItems: (body: BatchAddTmtCartInput) =>
+    api<{ addedCount: number; items: Array<{ id: string; quantity: number }> }>("/cart/tmt-batch", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  tmtBrands: (
+    params?: {
+      tier?: TmtBrandTier | "all";
+      grade?: TmtGrade | "all";
+      q?: string;
+      city?: string;
+      latitude?: number;
+      longitude?: number;
+    },
+    options?: RequestOptions
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.tier) query.set("tier", params.tier);
+    if (params?.grade) query.set("grade", params.grade);
+    if (params?.q) query.set("q", params.q);
+    if (params?.city) query.set("city", params.city);
+    if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
+    if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
+    const qs = query.toString();
+    return api<TmtBrandCatalogItem[]>(qs ? `/tmt/brands?${qs}` : "/tmt/brands", {
+      signal: options?.signal
+    });
+  },
+  tmtBrandBySlug: (
+    brandSlug: string,
+    params?: { grade?: TmtGrade; city?: string; latitude?: number; longitude?: number },
+    options?: RequestOptions
+  ) => {
+    const query = new URLSearchParams();
+    if (params?.grade) query.set("grade", params.grade);
+    if (params?.city) query.set("city", params.city);
+    if (params?.latitude !== undefined) query.set("latitude", String(params.latitude));
+    if (params?.longitude !== undefined) query.set("longitude", String(params.longitude));
+    const qs = query.toString();
+    return api<{ brand: TmtBrandCatalogItem; offers: TmtBrandCatalogItem[] }>(
+      `/tmt/brands/${encodeURIComponent(brandSlug)}${qs ? `?${qs}` : ""}`,
+      { signal: options?.signal }
+    );
+  },
   sellerRegStep1: (body: { contactPerson: string; mobile: string; email: string }) =>
     api<SellerRegistrationResult>("/seller-registration/step1", { method: "POST", body: JSON.stringify(body) }),
   sellerRegStep2: (body: Record<string, unknown>) =>
@@ -392,6 +444,21 @@ export const marketplaceApi = {
     api<SellerProductListing>("/seller/products", { method: "POST", body: JSON.stringify(body) }),
   sellerUpdateProduct: (id: string, body: { isActive?: boolean; priceMinor?: number; discountMinor?: number; stockQuantity?: number; minOrderQuantity?: number; deliveryRadiusKm?: number; name?: string; unit?: string; description?: string }) =>
     api<SellerProductListing>(`/seller/products/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) }),
+  sellerCreateTmtListing: (body: SellerTmtListingInput) =>
+    api<{ listings: SellerProductListing[]; count: number }>("/seller/tmt-products", {
+      method: "POST",
+      body: JSON.stringify(body)
+    }),
+  sellerUpdateTmtListing: (listingId: string, body: SellerTmtListingInput) =>
+    api<SellerProductListing>(`/seller/tmt-products/${encodeURIComponent(listingId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
+  sellerQuickUpdateTmtRate: (listingId: string, body: SellerTmtQuickRateInput) =>
+    api<SellerProductListing>(`/seller/tmt-products/${encodeURIComponent(listingId)}/quick-rate`, {
+      method: "PATCH",
+      body: JSON.stringify(body)
+    }),
   submitOrderReview: (orderId: string, body: { rating: number; comment?: string }) =>
     api<{ message: string; review: { rating: number; comment?: string; createdAt: string }; order: OrderRecord }>(`/orders/${encodeURIComponent(orderId)}/reviews`, {
       method: "POST",
@@ -784,6 +851,9 @@ export type SellerProductListing = {
     name: string;
     description: string;
     unit: string;
+    brand?: string | null;
+    tmtMetadata?: TmtMetadata | null;
+    variants?: TmtVariant[];
     images: { id: string; url: string; altText: string; sortOrder: number; metadata?: { imageData?: string; mimeType?: string; sizeBytes?: number } | null }[];
     category: Category;
   };

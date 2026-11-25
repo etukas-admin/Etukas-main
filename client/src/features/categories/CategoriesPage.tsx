@@ -64,6 +64,7 @@ import {
   TECHNICIANS_TAB_SLUG,
   type ServiceDirectoryItem
 } from "./categoryVisuals";
+import { TMT_MASTER_BRANDS } from "../../types/tmt";
 
 function CategoryThumbnail({
   category,
@@ -1248,12 +1249,56 @@ export function CategoriesPage() {
                   </div>
 
                   <Link
-                    to={`/products?category=${encodeURIComponent(activeMaterialCategory.slug)}`}
+                    to={
+                      activeMaterialCategory.slug === "steel-iron-bars"
+                        ? "/categories/tmt-steel"
+                        : `/products?category=${encodeURIComponent(activeMaterialCategory.slug)}`
+                    }
                     className="focus-ring inline-flex shrink-0 items-center justify-center gap-1.5 self-start rounded-xl bg-etukas-red px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-red-700 sm:self-auto"
                   >
-                    View All <ArrowRight size={14} />
+                    {activeMaterialCategory.slug === "steel-iron-bars"
+                      ? "TMT Brands & Order"
+                      : "View All"}{" "}
+                    <ArrowRight size={14} />
                   </Link>
                 </div>
+
+                {activeMaterialCategory.slug === "steel-iron-bars" ? (
+                  <div className="rounded-2xl border border-etukas-red/20 bg-white p-4 shadow-xs space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-extrabold text-etukas-black">
+                          TMT Steel Brands &amp; Multi-Size Ordering
+                        </h3>
+                        <p className="text-[11px] text-gray-500">
+                          Tap any Primary or Telangana/AP Regional mill to order 6mm–32mm bundles together
+                        </p>
+                      </div>
+                      <Link
+                        to="/guides/tmt-bars"
+                        className="text-xs font-extrabold text-etukas-red hover:underline"
+                      >
+                        Steel Estimator &amp; Buyer Guide &rarr;
+                      </Link>
+                    </div>
+                    <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
+                      {TMT_MASTER_BRANDS.map((brand) => (
+                        <Link
+                          key={brand.slug}
+                          to={`/categories/tmt-steel/${encodeURIComponent(brand.slug)}`}
+                          className="shrink-0 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-left transition hover:border-etukas-red hover:bg-etukas-pink/50"
+                        >
+                          <span className="block text-xs font-extrabold text-etukas-black">
+                            {brand.name}
+                          </span>
+                          <span className="block text-[10px] font-bold text-etukas-red">
+                            ₹{brand.base_rate_per_ton_inr.toLocaleString("en-IN")}/T
+                          </span>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 {activeMaterialCategory.children && activeMaterialCategory.children.length > 0 ? (
                   <div>
